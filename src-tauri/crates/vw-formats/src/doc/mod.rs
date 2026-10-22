@@ -3,6 +3,8 @@
 //! 本模块只依赖字节与格式自身，不依赖 `vw-core`；DTO 直接由命令层返回。
 
 pub mod arena;
+pub mod asb;
+pub mod asb_ops;
 pub mod bbs;
 pub mod binary;
 pub mod ctb;
@@ -54,6 +56,7 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
         "ctb" => Ok(ctb::build(bytes)),
         "fmd" => Ok(fmd::build(bytes)),
         "fsb" => Ok(fsb::build(bytes)),
+        "asb" => asb::build(bytes).map_err(crate::Error::BadData),
         _ => Ok(binary::build(bytes, ext)),
     }
 }

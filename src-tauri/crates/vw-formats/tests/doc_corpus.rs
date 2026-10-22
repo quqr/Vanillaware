@@ -165,6 +165,49 @@ fn fsb_corpus_is_closed() {
 
 #[test]
 #[ignore = "需要本机 UO 语料"]
+fn asb_corpus_parses_to_eof() {
+    let dir = corpus(
+        "VW_CORPUS_ASB",
+        r"F:\Codes\UNICORN OVERLORD\extract\000\Script",
+    );
+    let files = files(&dir, "asb");
+    if files.is_empty() {
+        eprintln!("跳过：{} 下没有 .asb", dir.display());
+        return;
+    }
+
+    let mut failed = 0usize;
+    let mut enums = 0u64;
+    let mut functions = 0u64;
+    let mut globals = 0u64;
+    let mut strings = 0u64;
+    for path in &files {
+        match doc::parse_file(path, None) {
+            Ok(arena) if check_ok(&arena, "asb.eof") == Some(true) => {
+                enums += arena.sum_field("enums");
+                functions += arena.sum_field("functions") + arena.sum_field("globalFuncs");
+                globals += arena.sum_field("globals");
+                strings += arena.sum_field("strings");
+            }
+            Ok(_) => {
+                failed += 1;
+                eprintln!("未到 EOF: {}", path.display());
+            }
+            Err(error) => {
+                failed += 1;
+                eprintln!("解析失败 {}: {error}", path.display());
+            }
+        }
+    }
+    eprintln!(
+        ".asb: {} 个，失败 {failed}；enum {enums} / func {functions} / global {globals} / string {strings}",
+        files.len()
+    );
+    assert_eq!(failed, 0);
+}
+
+#[test]
+#[ignore = "需要本机 UO 语料"]
 fn bbs_corpus_is_closed() {
     let dir = corpus(
         "VW_CORPUS_BBS",
