@@ -1,0 +1,17 @@
+[package]
+name = "vw-formats"
+version = "0.1.0"
+edition = "2021"
+description = "Vanillaware 二进制格式的编排层：消费 vw-gen 的 Kaitai 生成物 + 手写像素 codec"
+publish = false
+
+[dependencies]
+vw-gen = { path = "../vw-gen" }
+kaitai = { path = "../../vendor/kaitai" }
+texture2ddecoder = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+flate2 = "1"

@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+  "src-tauri",
+  "crates/vw-gen",
+  "crates/vw-formats",
+  "crates/vw-core",
+  "crates/vw-media",
+]
+# 不是 crate：ksc 预编译分发包 / kaitai runtime 作为 path 依赖（非成员）
+exclude = ["kaitai-struct-compiler-0.11", "vendor/kaitai"]
+
+# 优化配置必须放在 workspace 根（Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration）
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+# 开发构建也要能看：预览热路径是纯 CPU 的 BC7 解码 + PNG 编码，
+# 实测（4096² 图集）debug 4.0s/2.5s vs release 0.53s/0.13s。
+# 自身 crate 用 opt-level=1 保住断点体验，依赖（wgpu/image/纹理解码链）拉到 3。
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+

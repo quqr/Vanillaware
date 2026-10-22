@@ -1,0 +1,5 @@
+allowBuilds:
+  canvas: false
+  canvas@2.11.2: true
+  gl: false
+  pixijs: true

@@ -1,0 +1,9 @@
+[package]
+name = "vw-gen"
+version = "0.1.0"
+edition = "2021"
+description = "ksc 0.11 生成的 Kaitai Struct 解析器（禁止手改 src/gen）"
+publish = false
+
+[dependencies]
+kaitai = { path = "../../vendor/kaitai" }

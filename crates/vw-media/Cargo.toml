@@ -1,0 +1,16 @@
+[package]
+name = "vw-media"
+version = "0.1.0"
+edition = "2021"
+description = "缩略图磁盘缓存与 PNG 编码"
+publish = false
+
+[dependencies]
+vw-formats = { path = "../vw-formats" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 只开 PNG，避免把 jpeg/webp/gif 全套编解码器拖进来
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+tempfile = "3"

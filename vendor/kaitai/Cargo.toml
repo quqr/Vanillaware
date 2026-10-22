@@ -1,0 +1,23 @@
+[package]
+name = "kaitai"
+version = "0.11.0"
+authors = ["Bradlee Speice <bradlee@speice.io>", "Aon"]
+edition = "2018"
+description = "Kaitai Struct: runtime library for Rust (vendored verbatim from kaitai-io/kaitai_struct_rust_runtime v0.11.0)"
+license = "MIT"
+
+# 本目录位于上层 workspace 内但已在上层 Cargo.toml 中 exclude，
+# 不再声明独立 [workspace] 表（嵌套 workspace root 会与上层 [profile] 冲突）。
+
+[features]
+# 未启用：type_name_of_val 依赖不稳定 API，仅声明以消除 unexpected_cfgs 警告
+type_name_of_val = []
+
+[dependencies]
+encoding-next = "0.3"
+cp437 = "*"
+unicode-segmentation = "1.9.0"
+flate2 = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
