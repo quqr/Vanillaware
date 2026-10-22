@@ -322,15 +322,11 @@ impl Builder {
 
         let id = self.nodes.len() as u32;
         let mut name = name.into();
-        if name.len() > MAX_STRING {
-            name.truncate(MAX_STRING);
-            name.push('…');
+        if clamp_string(&mut name) {
             self.truncated = true;
         }
         let value = value.map(|mut text| {
-            if text.len() > MAX_STRING {
-                text.truncate(MAX_STRING);
-                text.push('…');
+            if clamp_string(&mut text) {
                 self.truncated = true;
             }
             text
@@ -357,6 +353,20 @@ impl Builder {
 
         id
     }
+}
+
+/// 按 UTF-8 字符边界截断；返回是否发生截断。
+fn clamp_string(text: &mut String) -> bool {
+    if text.len() <= MAX_STRING {
+        return false;
+    }
+    let mut end = MAX_STRING;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    text.push('…');
+    true
 }
 
 #[cfg(test)]

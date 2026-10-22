@@ -13,6 +13,18 @@ pub fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
     ]))
 }
 
+pub fn u8_at(bytes: &[u8], at: usize) -> Option<u8> {
+    bytes.get(at).copied()
+}
+
+pub fn i8_at(bytes: &[u8], at: usize) -> Option<i8> {
+    bytes.get(at).map(|&byte| byte as i8)
+}
+
+pub fn i16_at(bytes: &[u8], at: usize) -> Option<i16> {
+    u16_at(bytes, at).map(|value| value as i16)
+}
+
 pub fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
     let slice = bytes.get(at..at + 2)?;
     Some(u16::from_le_bytes([slice[0], slice[1]]))

@@ -5,10 +5,15 @@
 pub mod arena;
 pub mod bbs;
 pub mod binary;
+pub mod ctb;
+pub mod fms;
 pub mod ftx;
 pub mod mbs;
+pub mod mpd;
 pub mod osb;
+pub mod otm;
 pub mod rdr;
+pub mod rsc;
 pub mod text;
 
 use std::path::Path;
@@ -40,6 +45,11 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
         }
         "bbs" => Ok(bbs::build(bytes)),
         "osb" => Ok(osb::build(bytes)),
+        "fms" => Ok(fms::build(bytes)),
+        "rsc" => Ok(rsc::build(bytes)),
+        "otm" => Ok(otm::build(bytes)),
+        "mpd" => Ok(mpd::build(bytes)),
+        "ctb" => Ok(ctb::build(bytes)),
         _ => Ok(binary::build(bytes, ext)),
     }
 }
