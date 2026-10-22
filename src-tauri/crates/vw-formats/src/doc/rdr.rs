@@ -2,6 +2,17 @@
 //!
 //! 不引入 byteorder / nom；格式解析的边界错误由调用方转成 `warn` / `check`。
 
+pub fn f32_at(bytes: &[u8], at: usize) -> Option<f32> {
+    u32_at(bytes, at).map(f32::from_bits)
+}
+
+pub fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
+    let slice = bytes.get(at..at + 8)?;
+    Some(u64::from_le_bytes([
+        slice[0], slice[1], slice[2], slice[3], slice[4], slice[5], slice[6], slice[7],
+    ]))
+}
+
 pub fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
     let slice = bytes.get(at..at + 2)?;
     Some(u16::from_le_bytes([slice[0], slice[1]]))

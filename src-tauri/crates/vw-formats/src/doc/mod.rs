@@ -3,10 +3,13 @@
 //! 本模块只依赖字节与格式自身，不依赖 `vw-core`；DTO 直接由命令层返回。
 
 pub mod arena;
+pub mod bbs;
 pub mod binary;
 pub mod ftx;
 pub mod mbs;
+pub mod osb;
 pub mod rdr;
+pub mod text;
 
 use std::path::Path;
 
@@ -35,6 +38,8 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
             let tag = tag.unwrap_or("swi_unic");
             Ok(mbs::build(bytes, tag))
         }
+        "bbs" => Ok(bbs::build(bytes)),
+        "osb" => Ok(osb::build(bytes)),
         _ => Ok(binary::build(bytes, ext)),
     }
 }
@@ -76,6 +81,34 @@ mod tests {
         let arena = parse_bytes(&bytes, "mbs", Some("swi_unic")).expect("mbs");
         let page = arena.page(1, arena.root(), 0, 100).unwrap();
         assert!(page.total >= 2);
+    }
+
+    #[test]
+    fn bbs_view_reads_counts_and_offsets() {
+        let mut bytes = vec![0u8; 0x380];
+        bytes[..4].copy_from_slice(b"UBBS");
+        for index in 0..9 {
+            bytes[0x338 + index * 8..0x340 + index * 8]
+                .copy_from_slice(&0x380u64.to_le_bytes());
+        }
+
+        let arena = parse_bytes(&bytes, "bbs", None).expect("bbs");
+        let page = arena.page(1, arena.root(), 0, 100).unwrap();
+        assert!(page.total >= 3);
+    }
+
+    #[test]
+    fn osb_view_walks_empty_scene() {
+        let mut bytes = vec![0u8; 0x8a];
+        bytes[..4].copy_from_slice(b"OSB\0");
+        bytes[4..8].copy_from_slice(&1u32.to_le_bytes());
+        bytes[0x14..0x18].copy_from_slice(&0x18u32.to_le_bytes());
+        // 场景根：type 2, body 0x52, children 0, pad。
+        bytes[0x28..0x2c].copy_from_slice(&2u32.to_le_bytes());
+        bytes[0x2c..0x30].copy_from_slice(&0x52u32.to_le_bytes());
+
+        let arena = parse_bytes(&bytes, "osb", None).expect("osb");
+        assert!(arena.total_nodes() > 3);
     }
 
     #[test]
