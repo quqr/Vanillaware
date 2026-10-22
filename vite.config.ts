@@ -13,6 +13,10 @@ export default defineConfig(() => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  // pixi.js 单包超过 Vite 默认 500kB 提示阈值；体积已由 gzip 控制，不拆包。
+  build: {
+    chunkSizeWarningLimit: 1000,
+  },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,

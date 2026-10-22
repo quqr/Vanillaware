@@ -54,31 +54,33 @@ export function StructurePanel({ path, tag }: { path: string; tag: string }) {
   }
 
   return (
-    <div className="structure">
-      <div className="bar">
-        <button className="btn tiny" disabled={busy} onClick={() => void exportQuad()}>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex flex-none items-center gap-2 border-b border-base-300 bg-base-200 px-2 py-1.5">
+        <button className="btn btn-xs" disabled={busy} onClick={() => void exportQuad()}>
           导出 Quad
         </button>
-        {busy && <span className="dim mono">转换中…</span>}
-        <div className="spacer" />
+        {busy && <span className="font-mono text-xs text-base-content/50">转换中…</span>}
+        <div className="flex-1" />
         {result && (
-          <span className={`badge ${result.selfCheck.length > 0 ? "err" : "ok"}`}>
+          <span className={`badge badge-sm ${result.selfCheck.length > 0 ? "badge-error" : "badge-success"}`}>
             self-check {result.selfCheck.length}
           </span>
         )}
       </div>
 
-      <div className="json-panel">
-        {error && <div className="issue">{error}</div>}
-        {!result && !busy && <div className="dim">等待转换结果</div>}
+      <div className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[11px]">
+        {error && <div className="alert alert-error alert-soft mb-1.5 p-2 text-xs break-all">{error}</div>}
+        {!result && !busy && <div className="text-base-content/50">等待转换结果</div>}
         {result && <JsonTree value={result.quad} />}
       </div>
 
-      <div className="report-panel">
-        <div className="section-title">自检（结构不变量）</div>
-        {result?.selfCheck.length === 0 && <div className="dim mono">全部成立</div>}
+      <div className="max-h-48 shrink-0 overflow-auto border-t border-base-300 bg-base-200 p-2">
+        <div className="mb-1.5 text-[10px] uppercase tracking-wider text-base-content/60">自检（结构不变量）</div>
+        {result?.selfCheck.length === 0 && (
+          <div className="font-mono text-xs text-base-content/50">全部成立</div>
+        )}
         {result?.selfCheck.map((issue, index) => (
-          <div key={index} className="issue">
+          <div key={index} className="alert alert-error alert-soft mb-1 p-2 font-mono text-[11px] break-all">
             {issue}
           </div>
         ))}

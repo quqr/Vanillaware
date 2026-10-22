@@ -76,3 +76,10 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | **真值 / Golden** | 由 PHP 权威工具跑出的产物，用作逐字段比对基准。 | Artifacts produced by the authoritative PHP tool, used as byte/field comparison baselines. |
 | **结构等价 / Structural equivalence** | JSON 校验判据：递归比较键值，忽略键序与空白，容忍缺省键差异。见 ADR-0006。 | The JSON verification predicate: recursive key/value comparison ignoring key order and whitespace. |
 | **自洽性检查 / Consistency check** | 无 golden 平台（v76/v72）的校验强度：解析不崩 + 索引/尺寸/引用不变量成立。见 ADR-0006。 | Verification strength for platforms without golden: parse must not fail, and index/size/reference invariants must hold. |
+
+## 界面层 / UI layer
+
+| 术语 | 中文释义 | English |
+| --- | --- | --- |
+| **主题 / Theme** | daisyUI 内置配色方案，经 `<html data-theme>` 切换；默认 dark，选择存于 `localStorage["vw-theme"]`。见 ADR-0017。 | A daisyUI built-in color scheme switched through `<html data-theme>`; dark by default, persisted in `localStorage["vw-theme"]`. See ADR-0017. |
+| **语义色 / Semantic Color** | 随主题变化的 daisyUI 颜色名（`base-*`、`primary`、`success` 等）；界面不得出现固定色值。 | Theme-aware daisyUI color names (`base-*`, `primary`, `success`, …). Fixed color values must not appear in the UI. |

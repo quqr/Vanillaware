@@ -34,10 +34,14 @@ export function HexViewer({ entry }: { entry: FileEntry }) {
   }, [entry.path]);
 
   if (error) {
-    return <div className="pending-hint" style={{ color: "var(--error)" }}>{error}</div>;
+    return <div className="flex flex-1 items-center justify-center p-4 text-sm text-error">{error}</div>;
   }
   if (!bytes) {
-    return <div className="pending-hint">读取中…</div>;
+    return (
+      <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
+        读取中…
+      </div>
+    );
   }
 
   const rows: string[] = [];
@@ -51,11 +55,13 @@ export function HexViewer({ entry }: { entry: FileEntry }) {
   }
 
   return (
-    <div className="hex-viewer">
-      <div className="hex-note dim mono">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex-none border-b border-base-300 p-1.5 font-mono text-[10px] text-base-content/50">
         头部 {bytes.length} 字节（上限 {HEAD_BYTES}）· 文件共 {entry.size} 字节
       </div>
-      <pre className="hex-dump mono">{rows.join("\n")}</pre>
+      <pre className="min-h-0 flex-1 overflow-auto bg-base-100 p-2 font-mono text-[11px] leading-snug">
+        {rows.join("\n")}
+      </pre>
     </div>
   );
 }

@@ -19,18 +19,18 @@ export function JsonTree({
 
   if (value === null) {
     return (
-      <div className="node">
-        {name !== undefined && <span className="node-key">{name}: </span>}
-        <span className="node-null">null</span>
+      <div className="font-mono text-[11px]">
+        {name !== undefined && <span className="text-info">{name}: </span>}
+        <span className="text-base-content/50">null</span>
       </div>
     );
   }
 
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return (
-      <div className="node">
-        {name !== undefined && <span className="node-key">{name}: </span>}
-        <span className={typeof value === "string" ? "node-str" : "node-num"}>
+      <div className="font-mono text-[11px]">
+        {name !== undefined && <span className="text-info">{name}: </span>}
+        <span className={typeof value === "string" ? "text-success" : "text-warning"}>
           {typeof value === "string" ? JSON.stringify(value) : String(value)}
         </span>
       </div>
@@ -40,20 +40,20 @@ export function JsonTree({
   const brackets = isArray ? ["[", "]"] : ["{", "}"];
 
   return (
-    <div className="node">
-      <span className="node-toggle" onClick={() => setOpen((v) => !v)}>
+    <div className="font-mono text-[11px]">
+      <span className="cursor-pointer text-base-content/70 hover:text-primary" onClick={() => setOpen((v) => !v)}>
         {open ? "▾ " : "▸ "}
-        {name !== undefined && <span className="node-key">{name}: </span>}
-        <span className="dim">
+        {name !== undefined && <span className="text-info">{name}: </span>}
+        <span className="text-base-content/50">
           {brackets[0]}
           {open ? "" : `${count}`}
         </span>
-        {!open && <span className="dim">{brackets[1]}</span>}
+        {!open && <span className="text-base-content/50">{brackets[1]}</span>}
       </span>
 
       {open && (
         <>
-          <div className="node-children">
+          <div className="ml-3.5 border-l border-base-300 pl-1.5">
             {entries
               ? entries.map(([key, child]) => (
                   <JsonTree key={key} name={key} value={child} depth={depth + 1} />
@@ -62,7 +62,7 @@ export function JsonTree({
                   <JsonTree key={index} name={String(index)} value={child} depth={depth + 1} />
                 ))}
           </div>
-          <div className="dim">{brackets[1]}</div>
+          <div className="text-base-content/50">{brackets[1]}</div>
         </>
       )}
     </div>

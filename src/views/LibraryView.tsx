@@ -21,7 +21,7 @@ export function LibraryView() {
   const [viewerWidth, setViewerWidth] = useState(460);
 
   return (
-    <div className="library">
+    <div className="flex h-full flex-col">
       <Toolbar
         treeOpen={treeOpen}
         viewerOpen={viewerOpen}
@@ -29,10 +29,13 @@ export function LibraryView() {
         onToggleViewer={() => setViewerOpen((v) => !v)}
       />
 
-      <div className="library-body">
+      <div className="flex min-h-0 flex-1">
         {treeOpen ? (
           <>
-            <aside className="pane pane-tree" style={{ width: treeWidth }}>
+            <aside
+              className="flex shrink-0 flex-col overflow-hidden border-r border-base-300 bg-base-200"
+              style={{ width: treeWidth }}
+            >
               <DirectoryTree />
             </aside>
             <Divider onDelta={(dx) => setTreeWidth((w) => clamp(w + dx, TREE_MIN, TREE_MAX))} />
@@ -41,14 +44,17 @@ export function LibraryView() {
           <CollapsedStrip label="目录" onClick={() => setTreeOpen(true)} />
         )}
 
-        <section className="pane pane-files">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-base-100">
           {viewMode === "list" ? <FileList /> : <FileGrid />}
         </section>
 
         {viewerOpen ? (
           <>
             <Divider onDelta={(dx) => setViewerWidth((w) => clamp(w - dx, VIEWER_MIN, VIEWER_MAX))} />
-            <aside className="pane pane-viewer" style={{ width: viewerWidth }}>
+            <aside
+              className="flex shrink-0 flex-col overflow-hidden border-l border-base-300 bg-base-200"
+              style={{ width: viewerWidth }}
+            >
               <ViewerPanel />
             </aside>
           </>
@@ -63,7 +69,7 @@ export function LibraryView() {
 function Divider({ onDelta }: { onDelta: (dx: number) => void }) {
   return (
     <div
-      className="divider"
+      className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary/40"
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
@@ -79,7 +85,11 @@ function Divider({ onDelta }: { onDelta: (dx: number) => void }) {
 
 function CollapsedStrip({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button className="pane-collapsed" onClick={onClick} title={`展开${label}`}>
+    <button
+      className="btn btn-xs h-full w-7 shrink-0 rounded-none px-0 tracking-widest [writing-mode:vertical-rl]"
+      onClick={onClick}
+      title={`展开${label}`}
+    >
       {label}
     </button>
   );

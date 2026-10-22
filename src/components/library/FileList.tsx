@@ -6,6 +6,8 @@ import { useRows } from "./rows";
 import { Thumb } from "./icons";
 import { noteListScroll } from "../../lib/thumbCache";
 
+const GRID = "grid grid-cols-[28px_minmax(0,1fr)_76px_110px_130px] items-center gap-2 px-2.5";
+
 /** 列表视图：虚拟化行，键盘可选、双击打开。 */
 export function FileList() {
   const { rows, searching } = useRows();
@@ -30,17 +32,17 @@ export function FileList() {
   }, [rows.length]);
 
   if (phase === "error") {
-    return <div className="list-empty" style={{ color: "var(--error)" }}>{error}</div>;
+    return <div className="p-4 text-sm text-error">{error}</div>;
   }
   if (!root) {
-    return <div className="list-empty">打开一个目录开始浏览</div>;
+    return <div className="p-4 text-sm text-base-content/60">打开一个目录开始浏览</div>;
   }
   if (rows.length === 0) {
     return (
-      <div className="list-empty">
+      <div className="p-4 text-sm text-base-content/60">
         {phase === "loading" ? "读取中…" : searching ? "没有匹配的资源" : "此目录没有收录的资源"}
         {!searching && hiddenFiles > 0 && phase === "ready" && (
-          <span className="dim mono" style={{ display: "block", marginTop: 6 }}>
+          <span className="mt-1.5 block font-mono text-xs text-base-content/40">
             另有 {hiddenFiles} 个文件不在格式注册表内，未收录
           </span>
         )}
@@ -50,7 +52,7 @@ export function FileList() {
 
   return (
     <div
-      className="file-list"
+      className="min-h-0 flex-1 overflow-auto outline-none"
       ref={scrollRef}
       onScroll={noteListScroll}
       tabIndex={0}
@@ -60,7 +62,9 @@ export function FileList() {
         if (target) open(target);
       }}
     >
-      <div className="file-list-head">
+      <div
+        className={`${GRID} sticky top-0 z-10 h-7 border-b border-base-300 bg-base-200 font-mono text-[10px] uppercase tracking-wider text-base-content/60`}
+      >
         <span />
         <span>名称</span>
         <span>格式</span>
@@ -74,22 +78,23 @@ export function FileList() {
           return (
             <div
               key={row.path}
-              className="file-row"
-              data-selected={row.path === selectedPath}
+              className={`${GRID} absolute inset-x-0 border-b border-base-300/40 hover:bg-base-200 ${
+                row.path === selectedPath ? "bg-primary/10" : ""
+              }`}
               style={{ transform: `translateY(${item.start}px)`, height: item.size }}
               title={row.path}
               onClick={(event) => select(row.path, event.ctrlKey || event.metaKey || event.shiftKey)}
               onDoubleClick={() => open(row.path)}
             >
-              <span className="cell-icon">
+              <span className="flex items-center justify-center">
                 <Thumb path={row.path} kind={row.kind} size={20} hasThumb={row.hasThumb} deferred />
               </span>
-              <span className="cell-name">{row.name}</span>
-              <span className="cell-format">{row.label}</span>
-              <span className="cell-meta mono">
+              <span className="truncate">{row.name}</span>
+              <span className="font-mono text-[10px] text-base-content/50">{row.label}</span>
+              <span className="truncate font-mono text-[10px] text-base-content/50">
                 {searching ? shorten(row.dir ?? "") : row.size === null ? "—" : formatBytes(row.size)}
               </span>
-              <span className="cell-meta mono">
+              <span className="truncate font-mono text-[10px] text-base-content/50">
                 {row.mtimeMs ? formatDate(row.mtimeMs) : "—"}
               </span>
             </div>

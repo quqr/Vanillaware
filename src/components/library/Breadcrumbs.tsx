@@ -6,24 +6,28 @@ export function Breadcrumbs() {
   const dir = useLibraryStore((s) => s.dir);
   const navigate = useLibraryStore((s) => s.navigate);
 
-  if (!root || !dir) return <div className="crumbs dim">未打开目录</div>;
+  if (!root || !dir) return <div className="px-2 text-xs text-base-content/50">未打开目录</div>;
 
   const segments = buildSegments(root, dir);
 
   return (
-    <div className="crumbs" title={dir}>
-      {segments.map((segment, index) => (
-        <span key={segment.path} className="crumb-item">
-          {index > 0 && <span className="crumb-sep">›</span>}
-          <button
-            className="crumb"
-            data-active={segment.path.toLowerCase() === dir.toLowerCase()}
-            onClick={() => void navigate(segment.path)}
-          >
-            {segment.name}
-          </button>
-        </span>
-      ))}
+    <div className="breadcrumbs min-w-0 overflow-hidden text-xs" title={dir}>
+      <ul>
+        {segments.map((segment) => {
+          const active = segment.path.toLowerCase() === dir.toLowerCase();
+          return (
+            <li key={segment.path}>
+              <button
+                className={`link link-hover max-w-48 truncate ${active ? "font-semibold text-base-content" : "text-base-content/60"}`}
+                aria-current={active ? "page" : undefined}
+                onClick={() => void navigate(segment.path)}
+              >
+                {segment.name}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

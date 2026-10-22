@@ -73,9 +73,12 @@ export function Thumb({
 
   const box = { width: size, height: size };
 
-  if (url) return <img className="thumb" style={box} src={url} alt="" />;
+  if (url) return <img className="object-contain" style={box} src={url} alt="" />;
   return (
-    <span className="icon-slot" style={box} data-failed={failed}>
+    <span
+      className={`flex items-center justify-center ${failed ? "text-error/60" : "text-base-content/50"}`}
+      style={box}
+    >
       <KindIcon kind={kind} size={Math.max(12, size - 6)} />
     </span>
   );

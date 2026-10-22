@@ -41,14 +41,14 @@ export function FileGrid() {
   });
 
   if (phase === "error") {
-    return <div className="list-empty" style={{ color: "var(--error)" }}>{error}</div>;
+    return <div className="p-4 text-sm text-error">{error}</div>;
   }
   if (!root) {
-    return <div className="list-empty">打开一个目录开始浏览</div>;
+    return <div className="p-4 text-sm text-base-content/60">打开一个目录开始浏览</div>;
   }
   if (rows.length === 0) {
     return (
-      <div className="list-empty">
+      <div className="p-4 text-sm text-base-content/60">
         {phase === "loading" ? "读取中…" : searching ? "没有匹配的资源" : "此目录没有收录的资源"}
       </div>
     );
@@ -56,7 +56,7 @@ export function FileGrid() {
 
   return (
     <div
-      className="file-grid"
+      className="min-h-0 flex-1 overflow-auto p-2.5 outline-none"
       ref={scrollRef}
       tabIndex={0}
       onKeyDown={(event) => {
@@ -72,7 +72,7 @@ export function FileGrid() {
           return (
             <div
               key={virtualRow.key}
-              className="file-grid-row"
+              className="absolute left-0 grid"
               style={{
                 transform: `translateY(${virtualRow.start}px)`,
                 height: CARD_H,
@@ -83,17 +83,18 @@ export function FileGrid() {
               {slice.map((row) => (
                 <button
                   key={row.path}
-                  className="file-card"
-                  data-selected={row.path === selectedPath}
+                  className={`card card-sm flex h-full flex-col items-center gap-1 overflow-hidden border bg-base-100 p-2 text-center ${
+                    row.path === selectedPath ? "border-primary bg-primary/10" : "border-base-300"
+                  }`}
                   title={row.path}
                   onClick={(event) => select(row.path, event.ctrlKey || event.metaKey || event.shiftKey)}
                   onDoubleClick={() => open(row.path)}
                 >
-                  <span className="file-card-thumb">
+                  <span className="flex h-28 items-center justify-center bg-base-200">
                     <Thumb path={row.path} kind={row.kind} size={112} hasThumb={row.hasThumb} />
                   </span>
-                  <span className="file-card-name">{row.name}</span>
-                  <span className="file-card-format mono">{row.label}</span>
+                  <span className="w-full truncate px-1 text-[11px]">{row.name}</span>
+                  <span className="font-mono text-[10px] text-base-content/50">{row.label}</span>
                 </button>
               ))}
             </div>

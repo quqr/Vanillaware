@@ -4,10 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
+    <title>Vanillaware</title>
   </head>
 
   <body>
+    <script>
+      // 与 src/store/appStore.ts 的 THEMES 保持同步；启动前应用，避免主题闪烁。
+      try {
+        const saved = localStorage.getItem("vw-theme");
+        const themes = ["dark", "light", "corporate", "business", "nord", "dim", "night", "dracula"];
+        if (themes.includes(saved)) document.documentElement.dataset.theme = saved;
+      } catch {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

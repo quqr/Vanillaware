@@ -397,22 +397,29 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   }
 
   if (!path) {
-    return <div className="pending-hint">选择一个 .mbs 文件</div>;
-  }
-
-  if (loading && !scene) {
-    return <div className="pending-hint">解析中…</div>;
-  }
-
-  if (error) {
     return (
-      <div className="pending-hint" style={{ color: "var(--error)" }}>
-        {error}
+      <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
+        选择一个 .mbs 文件
       </div>
     );
   }
 
-  if (!scene) return <div className="pending-hint">无内容</div>;
+  if (loading && !scene) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
+        解析中…
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="flex flex-1 items-center justify-center p-4 text-sm text-error">{error}</div>;
+  }
+
+  if (!scene)
+    return (
+      <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">无内容</div>
+    );
 
   const animation = scene.animations[animationIndex] ?? null;
   const total = animation?.frames.length ?? 0;
@@ -422,10 +429,10 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   const layers = scene.keyframe[keyframeId]?.layers.filter((layer): layer is SceneLayer => layer !== null) ?? [];
 
   return (
-    <div className="player">
-      <div className="player-bar">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex flex-none items-center gap-1.5 border-b border-base-300 bg-base-200 px-2 py-1.5">
         <select
-          className="select"
+          className="select select-xs"
           value={animationIndex}
           onChange={(event) => selectAnimation(Number(event.target.value))}
           title={`动画（${scene.animations.length}）`}
@@ -437,14 +444,14 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           ))}
         </select>
 
-        <button className="btn tiny" onClick={togglePlay} disabled={total === 0}>
+        <button className="btn btn-xs" onClick={togglePlay} disabled={total === 0}>
           {playing ? "暂停" : "播放"}
         </button>
-        <button className="btn tiny" onClick={() => seek(hud.frameIndex - 1)} title="上一帧">
+        <button className="btn btn-xs" onClick={() => seek(hud.frameIndex - 1)} title="上一帧">
           ◀
         </button>
         <button
-          className="btn tiny"
+          className="btn btn-xs"
           onClick={() => seek(Math.min(total - 1, hud.frameIndex + 1))}
           title="下一帧"
         >
@@ -452,7 +459,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         </button>
 
         <select
-          className="select"
+          className="select select-xs"
           value={speed}
           onChange={(event) => setSpeed(Number(event.target.value))}
           title="播放速度"
@@ -464,23 +471,33 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           ))}
         </select>
 
-        <div className="spacer" />
-        <span className="mono dim">
+        <div className="flex-1" />
+        <span className="font-mono text-[11px] text-base-content/60">
           {hud.frameIndex + 1}/{total} · t{hud.time} · loop {loopId}
         </span>
       </div>
 
-      <div className="canvas-wrap" ref={wrapRef}>
-        <div className="canvas-hud">
-          <span className="badge">{Math.round(zoomLabel * 100)}%</span>
-          <span className="badge">{hud.layerCount} layers</span>
-          {currentFrame?.attach && <span className="badge ok">{currentFrame.attach.kind}</span>}
+      <div
+        className="relative min-h-0 flex-1 cursor-grab overflow-hidden bg-base-200 active:cursor-grabbing"
+        ref={wrapRef}
+        style={{
+          backgroundImage:
+            "repeating-conic-gradient(color-mix(in oklab, currentColor 12%, transparent) 0% 25%, transparent 0% 50%)",
+          backgroundSize: "16px 16px",
+        }}
+      >
+        <div className="pointer-events-none absolute left-2 top-2 flex gap-1.5">
+          <span className="badge badge-sm bg-base-100/90">{Math.round(zoomLabel * 100)}%</span>
+          <span className="badge badge-sm bg-base-100/90">{hud.layerCount} layers</span>
+          {currentFrame?.attach && (
+            <span className="badge badge-sm badge-success">{currentFrame.attach.kind}</span>
+          )}
         </div>
       </div>
 
-      <div className="timeline">
+      <div className="flex flex-none flex-col gap-1.5 border-t border-base-300 bg-base-200 px-2 py-1.5">
         <div
-          className="timeline-track"
+          className="relative h-6 cursor-pointer border border-base-300 bg-base-100"
           onPointerDown={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             const ratio = Math.min(0.999, Math.max(0, (event.clientX - rect.left) / rect.width));
@@ -490,29 +507,39 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           {total > 0 &&
             total <= 240 &&
             animation?.frames.map((_, index) => (
-              <div key={index} className="timeline-tick" style={{ left: `${(index / total) * 100}%` }} />
+              <div
+                key={index}
+                className="absolute inset-y-0 w-px bg-base-300"
+                style={{ left: `${(index / total) * 100}%` }}
+              />
             ))}
           {loopId >= 0 && total > 0 && (
-            <div className="timeline-loop" style={{ left: `${(loopId / total) * 100}%` }} title="循环起点" />
+            <div
+              className="absolute inset-y-0 w-px bg-warning"
+              style={{ left: `${(loopId / total) * 100}%` }}
+              title="循环起点"
+            />
           )}
           <div
-            className="timeline-cursor"
+            className="absolute -top-0.5 -bottom-0.5 w-0.5 bg-primary shadow-md"
             style={{ left: `${total > 0 ? (hud.frameIndex / total) * 100 : 0}%` }}
           />
         </div>
       </div>
 
-      <details className="player-details">
-        <summary className="mono dim">
+      <details className="collapse collapse-arrow shrink-0 border-t border-base-300 bg-base-200">
+        <summary className="collapse-title font-mono text-xs text-base-content/60">
           图层 {layers.length} · 调试
         </summary>
-        <div className="player-layers">
-          {layers.length === 0 && <div className="dim mono">本帧没有贴图图层</div>}
+        <div className="collapse-content">
+          {layers.length === 0 && (
+            <div className="font-mono text-xs text-base-content/50">本帧没有贴图图层</div>
+          )}
           {layers.map((layer, index) => (
             <LayerRow key={index} index={index} layer={layer} color={currentFrame?.color ?? null} />
           ))}
 
-          <div className="player-toggles">
+          <div className="mt-2 border-t border-base-300 pt-1.5">
             <ToggleRow label="命中框" checked={showHitbox} onChange={setShowHitbox} />
             <ToggleRow label="四边形描边" checked={showOutline} onChange={setShowOutline} />
             <ToggleRow label="应用雾色" checked={applyTint} onChange={setApplyTint} />
@@ -547,10 +574,14 @@ function positionsOf(quad: number[], matrix: number[]): Float32Array {
 function LayerRow({ index, layer, color }: { index: number; layer: SceneLayer; color: string | null }) {
   const fog = layer.fog?.[0] ?? null;
   return (
-    <div className="layer-row" data-on={layer.texId !== null}>
-      <span className="sw" style={{ background: fog ?? "transparent", borderColor: "#36414c" }} />
-      <span className="idx">{index}</span>
-      <span className="txt" title={`${layer.flags} · blend ${layer.blendId}`}>
+    <div
+      className={`flex items-center gap-1.5 border-b border-base-300 px-1 py-0.5 font-mono text-[11px] text-base-content/80 ${
+        layer.texId === null ? "opacity-40" : ""
+      }`}
+    >
+      <span className="size-2 shrink-0 border border-base-300" style={{ background: fog ?? "transparent" }} />
+      <span className="w-6 shrink-0 text-base-content/50">{index}</span>
+      <span className="min-w-0 truncate" title={`${layer.flags} · blend ${layer.blendId}`}>
         tex {layer.texId ?? "-"} · b{layer.blendId} · {layer.flags}
         {color ? ` · ${color}` : ""}
       </span>
@@ -568,9 +599,14 @@ function ToggleRow({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="layer-row" data-on={checked} style={{ cursor: "pointer" }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <span className="txt">{label}</span>
+    <label className="flex cursor-pointer items-center gap-1.5 py-0.5 font-mono text-[11px]">
+      <input
+        type="checkbox"
+        className="toggle toggle-xs"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className={checked ? "" : "text-base-content/50"}>{label}</span>
     </label>
   );
 }
