@@ -230,8 +230,11 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     setZoomLabel(renderer.getCamera().zoom);
   }, []);
 
-  /** 画布与渲染器生命周期：只在挂载时创建一次，切换文件不重建 WebGL 上下文。 */
+  /** 画布与渲染器生命周期：场景首次到达后才创建（此前组件走 loading/empty 分支，
+   *  wrapRef 还是 null）。之后切换文件复用同一个 WebGL 上下文。 */
+  const hasScene = scene !== null;
   useEffect(() => {
+    if (!hasScene) return;
     const wrap = wrapRef.current;
     if (!wrap) return;
 
@@ -339,7 +342,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
       detach();
       created?.destroy();
     };
-  }, [drawFrame, fitScene]);
+  }, [drawFrame, fitScene, hasScene]);
 
   /** 画布尺寸变化 → 渲染器 resize + 重画。 */
   useEffect(() => {
