@@ -80,6 +80,9 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | **文档树 / Document Tree** | 把任意格式投影成同一套扁平 arena 节点；前端按节点 id 分页展开，不一次性传输整棵树。见 ADR-0018。 | A flat arena projection of any format; the front end expands nodes by id in pages instead of receiving the whole tree at once. See ADR-0018. |
 | **文档句柄 / Doc Handle** | 文档缓存的 `u64` 标识；缓存淘汰后失效，调用方必须重新打开。 | A `u64` identifier for a cached document; invalid after eviction, so callers must reopen. |
 | **游戏档案 / Game Profile** | 由目录名嗅探得到的游戏身份，只决定默认 mbs tag 与优先查看器，不参与可见性。 | Game identity inferred from directory names; only supplies a default mbs tag and preferred viewers, never visibility. |
+| **反汇编 / Disassembly** | ASB 字节码 → 助记符 + 操作数 + 跨表注记（调用目标、全局、跳转标签）。 | ASB bytecode → mnemonics plus operands and cross-table notes (call targets, globals, jump labels). |
+| **伪代码 / Pseudo-code** | 对表达式栈做模拟得到的可读语句；控制流保留 label + goto，不追求可编译。 | Readable statements from simulating the expression stack; control flow stays as label + goto, not compilable. |
+| **布局示意图 / Layout schematic** | BBS 的 bbox、物件、雾区四边形与相机轨迹的 SVG 示意，不是真实渲染。 | An SVG schematic of a BBS bbox, objects, fog quads and camera routes — not a real render. |
 
 ## 界面层 / UI layer
 

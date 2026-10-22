@@ -236,6 +236,40 @@ fn asb_disasm_sample_matches_golden() {
 
 #[test]
 #[ignore = "需要本机 UO 语料"]
+fn bbs_layout_sample_is_nonempty() {
+    let dir = corpus(
+        "VW_CORPUS_BBS",
+        r"F:\Codes\UNICORN OVERLORD\extract\000\BattleBG",
+    );
+    let files = files(&dir, "bbs");
+    let Some(path) = files.first() else {
+        eprintln!("跳过：{} 下没有 .bbs", dir.display());
+        return;
+    };
+    let bytes = std::fs::read(path).unwrap();
+    let layout = doc::bbs::layout(&bytes);
+    assert!(layout.bbox.iter().all(|value| value.is_finite()));
+    assert!(!layout.objects.is_empty());
+    assert!(!layout.mbs_names.is_empty());
+}
+
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn fms_text_sample_is_nonempty() {
+    let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\Fms\ScriptText.fms");
+    if !path.is_file() {
+        eprintln!("跳过：{} 不存在", path.display());
+        return;
+    }
+    let bytes = std::fs::read(path).unwrap();
+    let table = doc::fms::text_table(&bytes);
+    assert_eq!(table.count as usize, table.strings.len());
+    assert!(!table.strings.is_empty());
+    assert!(table.strings.iter().any(|text| !text.is_empty()));
+}
+
+#[test]
+#[ignore = "需要本机 UO 语料"]
 fn bbs_corpus_is_closed() {
     let dir = corpus(
         "VW_CORPUS_BBS",

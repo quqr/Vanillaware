@@ -35,6 +35,9 @@ ADR-0013 把 `viewers` 与 `has_thumb` 挂在 `Kind` 上。当格式从 3 种扩
   句柄为 `u64`，淘汰后返回 `HANDLE_EXPIRED`，前端重新打开而不是静默空白。
 - **游戏档案**：有界目录名嗅探（根 + 2 级父目录 + 最多 256 项目录项），只决定默认 `mbs_tag`；
   用户手选 tag 的优先级高于档案默认值（`tagSource = "manual"`）。
+- **第二批查看器**：`asb` 提供反汇编（`doc_asm`）与伪代码（`doc_pseudo`，表达式栈模拟 + label/goto）；
+  `bbs` 提供布局示意图（`doc_layout`，bbox / 物件 / 雾区四边形 / 相机轨迹）；`fms` 提供文本表
+  （`doc_text`，虚拟列表 + 子串过滤）。三者都复用同一套 Rust 解析结果，不引入前端格式知识。
 
 ## 权衡
 
