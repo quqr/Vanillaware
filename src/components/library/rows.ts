@@ -53,8 +53,10 @@ export function useRows(): { rows: Row[]; searching: boolean; total: number; tru
       };
     }
 
+    const needle = query.trim().toLowerCase();
     const rows: Row[] = files
       .filter((file) => visible(file.ext))
+      .filter((file) => needle.length === 0 || file.name.toLowerCase().includes(needle))
       .map((file) => ({
         path: file.path,
         name: file.name,

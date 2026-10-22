@@ -17,7 +17,6 @@ export function Toolbar({
   onToggleViewer: () => void;
 }) {
   const root = useLibraryStore((s) => s.root);
-  const phase = useLibraryStore((s) => s.listingPhase);
   const openRoot = useLibraryStore((s) => s.openRoot);
   const back = useLibraryStore((s) => s.back);
   const forward = useLibraryStore((s) => s.forward);
@@ -53,7 +52,7 @@ export function Toolbar({
   return (
     <div className="flex flex-none flex-col">
       <div className={BAR}>
-        <button className="btn btn-sm btn-primary" onClick={() => void openRoot()} disabled={phase === "loading"}>
+        <button className="btn btn-sm btn-primary" onClick={() => void openRoot()}>
           打开目录
         </button>
 
@@ -83,7 +82,11 @@ export function Toolbar({
               <li key={mode}>
                 <button
                   className={profileMode === mode ? "menu-active" : ""}
-                  onClick={() => setProfileMode(mode)}
+                  onClick={(event) => {
+                    const details = event.currentTarget.closest("details");
+                    if (details instanceof HTMLDetailsElement) details.open = false;
+                    setProfileMode(mode);
+                  }}
                 >
                   {mode === "auto" ? "自动嗅探" : PROFILE_PRESETS[mode].label}
                 </button>
@@ -100,14 +103,20 @@ export function Toolbar({
           <ul className="dropdown-content menu menu-sm z-50 mt-2 w-40 rounded-box bg-base-100 p-1 shadow">
             {THEMES.map((name) => (
               <li key={name}>
-                <label className="justify-between">
+                <label
+                  className="justify-between"
+                  onClick={(event) => {
+                    const details = event.currentTarget.closest("details");
+                    if (details instanceof HTMLDetailsElement) details.open = false;
+                  }}
+                >
                   {name}
                   <input
                     type="radio"
                     name="theme"
                     className="theme-controller radio radio-xs"
                     value={name}
-                    defaultChecked={name === theme}
+                    checked={name === theme}
                     onChange={() => setTheme(name)}
                   />
                 </label>

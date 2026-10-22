@@ -56,6 +56,12 @@ export function ViewerPanel() {
   }
 
   const entry = meta?.entry ?? null;
+  // 切换文件后旧 tab 可能不属于新格式（例如 asb → bbs 仍保留 asm）；
+  // 统一回退到该格式声明的第一个查看器。
+  const activeViewer =
+    entry && openedViewer && entry.viewers.includes(openedViewer)
+      ? openedViewer
+      : (entry?.viewers[0] ?? null);
 
   return (
     <aside className="flex flex-1 flex-col overflow-hidden">
@@ -114,6 +120,12 @@ export function ViewerPanel() {
         </div>
       )}
 
+      {metaPhase === "error" && (
+        <div className="m-2 alert alert-error alert-soft text-xs">
+          无法读取该文件的元信息
+        </div>
+      )}
+
       {metaPhase === "ready" && entry && openedPath === entry.path && (
         <>
           <div role="tablist" className="tabs tabs-border tabs-xs px-2">
@@ -121,7 +133,7 @@ export function ViewerPanel() {
               <button
                 key={id}
                 role="tab"
-                className={`tab ${id === openedViewer ? "tab-active" : ""}`}
+                className={`tab ${id === activeViewer ? "tab-active" : ""}`}
                 onClick={() => setViewerTab(id)}
               >
                 {VIEWERS[id]?.label ?? id}
@@ -130,14 +142,20 @@ export function ViewerPanel() {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {(VIEWERS[openedViewer ?? ""] ?? VIEWERS.hex).render(entry, tag)}
-            {!VIEWERS[openedViewer ?? ""] && (
+            {(VIEWERS[activeViewer ?? ""] ?? VIEWERS.hex).render(entry, tag)}
+            {activeViewer && !VIEWERS[activeViewer] && (
               <div className="p-2 font-mono text-xs text-base-content/60">
-                未知查看器「{openedViewer}」，已退化为十六进制
+                未知查看器「{activeViewer}」，已退化为十六进制
               </div>
             )}
           </div>
         </>
+      )}
+
+      {metaPhase === "ready" && entry && openedPath !== entry.path && (
+        <div className="flex flex-1 items-center justify-center p-4 text-xs text-base-content/50">
+          双击文件打开查看器
+        </div>
       )}
     </aside>
   );

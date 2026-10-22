@@ -94,6 +94,7 @@ export function Thumb({
   useEffect(() => {
     if (!hasThumb) {
       setUrl(null);
+      setFailed(false);
       return;
     }
 

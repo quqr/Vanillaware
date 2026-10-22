@@ -17,6 +17,9 @@ export function FileGrid() {
   const phase = useLibraryStore((s) => s.listingPhase);
   const root = useLibraryStore((s) => s.root);
   const error = useLibraryStore((s) => s.listingError);
+  const formatFilter = useLibraryStore((s) => s.formatFilter);
+  const query = useLibraryStore((s) => s.query);
+  const hiddenFiles = useLibraryStore((s) => s.hiddenFiles);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -28,7 +31,7 @@ export function FileGrid() {
     observer.observe(node);
     setWidth(node.clientWidth);
     return () => observer.disconnect();
-  }, []);
+  }, [rows.length]);
 
   const cols = Math.max(1, Math.floor((width - GAP) / (CARD_W + GAP)));
   const rowCount = Math.ceil(rows.length / cols);
@@ -49,7 +52,18 @@ export function FileGrid() {
   if (rows.length === 0) {
     return (
       <div className="p-4 text-sm text-base-content/60">
-        {phase === "loading" ? "读取中…" : searching ? "没有匹配的资源" : "此目录没有收录的资源"}
+        {phase === "loading"
+          ? "读取中…"
+          : searching || query.trim().length > 0
+            ? "没有匹配的资源"
+            : formatFilter.length > 0
+              ? "当前格式过滤没有匹配项"
+              : "此目录没有收录的资源"}
+        {!searching && hiddenFiles > 0 && phase === "ready" && (
+          <span className="mt-1.5 block font-mono text-xs text-base-content/40">
+            另有 {hiddenFiles} 个文件不在格式注册表内，未收录
+          </span>
+        )}
       </div>
     );
   }

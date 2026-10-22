@@ -42,7 +42,7 @@ function buildSegments(root: string, dir: string): { name: string; path: string 
 
     let cursor = root;
     for (const part of rest.split(/[\\/]/)) {
-      cursor = `${cursor}\\${part}`;
+      cursor = joinPath(cursor, part);
       segments.push({ name: part, path: cursor });
     }
     return segments;
@@ -52,7 +52,12 @@ function buildSegments(root: string, dir: string): { name: string; path: string 
   const parts = dir.split(/[\\/]/).filter(Boolean);
   let cursor = "";
   return parts.map((part, index) => {
-    cursor = index === 0 ? `${part}\\` : `${cursor}${cursor.endsWith("\\") ? "" : "\\"}${part}`;
+    cursor = index === 0 ? `${part}\\` : joinPath(cursor, part);
     return { name: part, path: cursor };
   });
+}
+
+function joinPath(base: string, part: string): string {
+  if (base.endsWith("\\") || base.endsWith("/")) return `${base}${part}`;
+  return `${base}\\${part}`;
 }

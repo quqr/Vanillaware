@@ -41,38 +41,41 @@ function TreeNode({ path, name, depth }: { path: string; name: string; depth: nu
   const hasChildren = (node?.dirs.length ?? 0) > 0;
 
   return (
-    <>
-      <li>
-        <button
-          className={active ? "menu-active" : ""}
-          style={{ paddingLeft: 6 + depth * 12 }}
-          title={path}
-          onClick={() => {
-            // 行点击 = 导航；未加载过的节点顺手展开。折叠只由箭头负责，避免“想进去却被收起”。
-            if (!node) toggleExpanded(path);
-            void navigate(path);
+    <li>
+      <button
+        className={`w-full ${active ? "menu-active" : ""}`}
+        title={path}
+        aria-expanded={expanded}
+        onClick={() => {
+          // 行点击只导航；列表请求会同时填充树节点并展开祖先链。
+          // 折叠/展开只由左侧箭头负责，避免“想进去却被收起”。
+          void navigate(path);
+        }}
+      >
+        <span
+          className={`inline-flex w-2.5 shrink-0 items-center justify-center text-base-content/50 transition-transform ${
+            expanded ? "rotate-90" : ""
+          } ${!hasChildren && node?.phase === "ready" ? "invisible" : ""}`}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleExpanded(path);
           }}
         >
-          <span
-            className={`w-2.5 shrink-0 text-base-content/50 transition-transform ${
-              expanded ? "rotate-90" : ""
-            } ${!hasChildren && node?.phase === "ready" ? "invisible" : ""}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleExpanded(path);
-            }}
-          >
-            {hasChildren || node?.phase !== "ready" ? "▸" : ""}
-          </span>
-          <span className="truncate">{name}</span>
-          {node?.phase === "loading" && <span className="font-mono text-base-content/50">…</span>}
-        </button>
-      </li>
+          {hasChildren || node?.phase !== "ready" ? "▸" : ""}
+        </span>
+        <span className="truncate">{name}</span>
+        {node?.phase === "loading" && <span className="font-mono text-base-content/50">…</span>}
+        {node?.phase === "error" && <span className="font-mono text-error" title="读取失败">!</span>}
+      </button>
 
-      {expanded &&
-        node?.dirs.map((child) => (
-          <TreeNode key={child.path} path={child.path} name={child.name} depth={depth + 1} />
-        ))}
-    </>
+      {expanded && node && node.dirs.length > 0 && (
+        <ul>
+          {node.dirs.map((child) => (
+            <TreeNode key={child.path} path={child.path} name={child.name} depth={depth + 1} />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }

@@ -95,8 +95,8 @@ const EMPTY_INDEX: IndexStatus = { state: "idle", count: 0, root: null, error: n
 const SEARCH_DEBOUNCE = 180;
 const INDEX_POLL = 400;
 
-/** 同一目录的并发读取合并。 */
-const listingInflight = new Map<string, Promise<void>>();
+/** 列表请求序号：只有最后一次请求能写回当前列表，避免旧响应覆盖新目录。 */
+let listingSeq = 0;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let indexTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -143,8 +143,9 @@ function parentOf(path: string): string | null {
 export const useLibraryStore = create<LibraryState>((set, get) => {
   /** 读一层目录；`asTree` 时只更新树节点，否则同时作为当前列表。 */
   function loadDir(path: string, asTree: boolean): Promise<void> {
-    const existing = listingInflight.get(path);
-    if (existing) return existing;
+    // 只有「当前列表」请求参与序号竞争；树展开请求不能推进序号，
+    // 否则祖先链的树加载会把当前目录的列表响应判成过期，永远停在 loading。
+    const seq = asTree ? listingSeq : ++listingSeq;
 
     if (asTree) {
       set((prev) => ({
@@ -154,14 +155,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({ listingPhase: "loading", listingError: null });
     }
 
-    const task = (async () => {
+    return (async () => {
       try {
         const listing = await api.listDir(path);
         set((prev) => {
           const next: Partial<State> = {
             tree: { ...prev.tree, [listing.path]: { dirs: listing.dirs, phase: "ready" } },
           };
-          if (!asTree) {
+          // 只有最后一次列表请求、且路径仍是当前目录时才写列表，
+          // 否则旧目录的响应会把新目录覆盖掉。
+          if (!asTree && seq === listingSeq) {
             next.dir = listing.path;
             next.parent = listing.parent;
             next.dirs = listing.dirs;
@@ -183,15 +186,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
               },
             };
           }
+          if (seq !== listingSeq) return {};
           return { listingPhase: "error", listingError: String(e) };
         });
-      } finally {
-        listingInflight.delete(path);
       }
     })();
-
-    listingInflight.set(path, task);
-    return task;
   }
 
   async function loadMeta(path: string) {
@@ -292,8 +291,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     ...initialState,
 
     async openRoot() {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const picked = await open({ directory: true, multiple: false, title: "选择资源目录" });
+      let picked: string | string[] | null = null;
+      try {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        picked = await open({ directory: true, multiple: false, title: "选择资源目录" });
+      } catch (e) {
+        set({ listingPhase: "error", listingError: String(e) });
+        return;
+      }
       if (typeof picked !== "string") return;
 
       clearThumbUrls();
@@ -308,10 +313,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         cacheEpoch: previous.cacheEpoch,
       });
 
-      set({ history: [picked], historyIndex: 0 });
+      set({ history: [picked], historyIndex: 0, expanded: { [picked]: true } });
+      // 根目录只走一次列表请求；失败时必须落到 error，不能停在 loading。
       await loadDir(picked, false);
-      // 根默认展开：打开目录就该看到第一层。
-      set((prev) => ({ expanded: { ...prev.expanded, [picked]: true } }));
 
       try {
         const status = await api.startIndex(picked);
@@ -323,7 +327,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     async navigate(path) {
-      if (get().dir?.toLowerCase() === path.toLowerCase()) return;
+      const same = get().dir?.toLowerCase() === path.toLowerCase();
+      if (same && get().listingPhase !== "error") return;
       navigateTo(path, true);
     },
 
