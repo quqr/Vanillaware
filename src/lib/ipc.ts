@@ -140,6 +140,33 @@ export interface DocOpen {
   page: DocPage;
 }
 
+// ─── ASB 反汇编 ─────────────────────────────────────
+
+export interface AsmFunction {
+  index: number;
+  name: string;
+  ret: string;
+  params: number;
+  bytecode: number;
+}
+
+export interface AsmLine {
+  index: number;
+  op: string;
+  args: string[];
+  note: string | null;
+}
+
+export interface Asm {
+  functions: AsmFunction[];
+  selected: number;
+  lines: AsmLine[];
+}
+
+export interface Pseudo {
+  text: string;
+}
+
 // ─── 索引 ───────────────────────────────────────────
 
 export interface IndexedFile {
@@ -276,6 +303,9 @@ export const api = {
   openDoc: (path: string, tag?: string) => invoke<DocOpen>("open_doc", { path, tag }),
   docChildren: (handle: number, node: number, offset?: number, limit?: number) =>
     invoke<DocPage>("doc_children", { handle, node, offset, limit }),
+  docAsm: (path: string, fn?: number) => invoke<Asm>("doc_asm", { path, function: fn }),
+  docPseudo: (path: string, fn?: number) =>
+    invoke<Pseudo>("doc_pseudo", { path, function: fn }),
   fileMeta: (path: string) => invoke<FileMeta>("file_meta", { path }),
   fileThumb: (path: string) => invoke<ArrayBuffer>("file_thumb", { path }),
   readFileHead: (path: string, maxBytes: number) =>

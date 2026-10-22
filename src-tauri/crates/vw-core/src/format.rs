@@ -134,7 +134,7 @@ pub const FORMATS: &[Format] = &[
         ext: "asb",
         kind: Kind::Script,
         label: "ASB",
-        viewers: DOC_HEX,
+        viewers: &["asm", "doc", "hex"],
         has_thumb: false,
     },
     Format {

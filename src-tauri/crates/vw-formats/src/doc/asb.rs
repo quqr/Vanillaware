@@ -3,6 +3,8 @@
 //! 逐行复刻 `uo_asb.py` 的 Reader：解析全部声明与函数调试信息以精确到达 EOF；
 //! 字节码只保留指令数，不在此展开（反汇编是后续查看器）。
 
+use serde::Serialize;
+
 use super::arena::{Builder, DocArena, DocMark};
 use super::asb_ops::{ArgKind, ASB_OPS};
 
@@ -62,7 +64,7 @@ struct TypeDecl {
     has_destructor: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct FuncInfo {
     name: String,
     ret: String,
@@ -77,9 +79,13 @@ struct FuncInfo {
     vars: usize,
     param_names: usize,
     vft_index: i64,
+    ops: Vec<(u8, Vec<i64>)>,
+    var_list: Vec<(i64, String, String)>,
+    param_list: Vec<String>,
 }
 
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 struct Module {
     strip_debug: bool,
     enums: Vec<TypeDecl>,
@@ -91,6 +97,12 @@ struct Module {
     binds: Vec<(String, String)>,
     strings: Vec<String>,
     funcdefs: usize,
+    bind_sigs: Vec<(FuncInfo, String)>,
+    used_funcs: Vec<Option<FuncInfo>>,
+    used_types: Vec<Option<TypeInfo>>,
+    used_type_ids: Vec<DataType>,
+    used_global_props: Vec<(String, String)>,
+    used_obj_props: Vec<(Option<TypeInfo>, String)>,
 }
 
 struct Reader<'a> {
@@ -290,25 +302,28 @@ impl<'a> Reader<'a> {
         ))
     }
 
-    fn byte_code(&mut self) -> Result<usize, String> {
+    fn byte_code(&mut self) -> Result<Vec<(u8, Vec<i64>)>, String> {
         let count = self.enc_int()?.max(0) as usize;
+        let mut out = Vec::with_capacity(count);
         for _ in 0..count {
-            let op = self.u8()? as usize;
+            let op = self.u8()?;
             let kind = ASB_OPS
-                .get(op)
+                .get(op as usize)
                 .map(|(_, kind)| *kind)
                 .ok_or_else(|| format!("未知操作码 {op}"))?;
-            let args = match kind {
+            let arg_count = match kind {
                 ArgKind::None => 0,
                 ArgKind::One => 1,
                 ArgKind::Two => 2,
                 ArgKind::Three => 3,
             };
-            for _ in 0..args {
-                self.enc_int()?;
+            let mut args = Vec::with_capacity(arg_count);
+            for _ in 0..arg_count {
+                args.push(self.enc_int()?);
             }
+            out.push((op, args));
         }
-        Ok(count)
+        Ok(out)
     }
 
     fn function(&mut self) -> Result<Option<FuncInfo>, String> {
@@ -331,7 +346,8 @@ impl<'a> Reader<'a> {
                         if bits & 4 != 0 {
                             return Ok(Some(info));
                         }
-                        info.bytecode = self.byte_code()?;
+                        info.ops = self.byte_code()?;
+                        info.bytecode = info.ops.len();
                         info.var_space = self.enc_int()?;
                         if bits & 8 != 0 {
                             let count = self.enc_int()?.max(0);
@@ -366,19 +382,22 @@ impl<'a> Reader<'a> {
                                     self.string()?;
                                 }
                             }
-                            info.vars = self.enc_int()?.max(0) as usize;
-                            for _ in 0..info.vars {
-                                self.enc_int()?;
-                                self.enc_int()?;
-                                self.string()?;
-                                self.data_type()?;
+                            let var_count = self.enc_int()?.max(0);
+                            for _ in 0..var_count {
+                                let _stack_pos = self.enc_int()?;
+                                let offset = self.enc_int()?;
+                                let name = self.string()?;
+                                let dtype = self.data_type()?;
+                                info.var_list.push((offset, name, dtype_brief(&dtype)));
                             }
+                            info.vars = info.var_list.len();
                             info.section = self.string()?;
                             info.declared_at = self.enc_int()?;
-                            info.param_names = self.enc_int()?.max(0) as usize;
-                            for _ in 0..info.param_names {
-                                self.string()?;
+                            let param_count = self.enc_int()?.max(0);
+                            for _ in 0..param_count {
+                                info.param_list.push(self.string()?);
                             }
+                            info.param_names = info.param_list.len();
                         }
                     }
                     2 | 3 => {
@@ -537,30 +556,34 @@ impl<'a> Reader<'a> {
         for _ in 0..bind_count {
             let (info, _) = self.func_signature()?;
             let target = self.string()?;
-            module.binds.push((info.name, target));
+            module.binds.push((info.name.clone(), target.clone()));
+            module.bind_sigs.push((info, target));
         }
 
         let used_types = self.enc_int()?.max(0);
         for _ in 0..used_types {
-            self.type_info()?;
+            module.used_types.push(self.type_info()?);
         }
         let used_type_ids = self.enc_int()?.max(0);
         for _ in 0..used_type_ids {
-            self.data_type()?;
+            module.used_type_ids.push(self.data_type()?);
         }
         let used_funcs = self.enc_int()?.max(0);
         for _ in 0..used_funcs {
             let tag = self.u8()?;
-            if tag != b'n' {
-                self.func_signature()?;
+            if tag == b'n' {
+                module.used_funcs.push(None);
+            } else {
+                module.used_funcs.push(Some(self.func_signature()?.0));
             }
         }
         let used_global_props = self.enc_int()?.max(0);
         for _ in 0..used_global_props {
-            self.string()?;
-            self.string()?;
+            let name = self.string()?;
+            let namespace = self.string()?;
             self.data_type()?;
             self.u8()?;
+            module.used_global_props.push((name, namespace));
         }
         let string_count = self.enc_int()?.max(0);
         for _ in 0..string_count {
@@ -568,8 +591,9 @@ impl<'a> Reader<'a> {
         }
         let used_obj_props = self.enc_int()?.max(0);
         for _ in 0..used_obj_props {
-            self.type_info()?;
-            self.string()?;
+            let owner = self.type_info()?;
+            let name = self.string()?;
+            module.used_obj_props.push((owner, name));
         }
 
         Ok(module)
@@ -728,6 +752,591 @@ fn build_function(builder: &mut Builder, parent: u32, index: usize, info: &FuncI
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsmFunctionDto {
+    pub index: u32,
+    pub name: String,
+    pub ret: String,
+    pub params: u32,
+    pub bytecode: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsmLineDto {
+    pub index: u32,
+    pub op: String,
+    pub args: Vec<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsmDto {
+    pub functions: Vec<AsmFunctionDto>,
+    pub selected: u32,
+    pub lines: Vec<AsmLineDto>,
+}
+
+/// 反汇编一个函数；`function_index` 是「functions + globalFuncs」合并后的下标。
+pub fn disassemble_file(bytes: &[u8], function_index: Option<usize>) -> Result<AsmDto, String> {
+    let mut reader = Reader::new(bytes);
+    let module = reader.read_module()?;
+
+    let mut functions = Vec::with_capacity(module.functions.len() + module.global_funcs.len());
+    for (index, info) in module
+        .functions
+        .iter()
+        .chain(module.global_funcs.iter())
+        .enumerate()
+    {
+        functions.push(AsmFunctionDto {
+            index: index as u32,
+            name: info.name.clone(),
+            ret: info.ret.clone(),
+            params: info.params as u32,
+            bytecode: info.bytecode as u32,
+        });
+    }
+
+    if functions.is_empty() {
+        return Ok(AsmDto {
+            functions,
+            selected: 0,
+            lines: Vec::new(),
+        });
+    }
+
+    let selected = function_index.unwrap_or(0).min(functions.len() - 1);
+    let info = if selected < module.functions.len() {
+        &module.functions[selected]
+    } else {
+        &module.global_funcs[selected - module.functions.len()]
+    };
+
+    Ok(AsmDto {
+        functions,
+        selected: selected as u32,
+        lines: disassemble(&module, info),
+    })
+}
+
+fn disassemble(module: &Module, info: &FuncInfo) -> Vec<AsmLineDto> {
+    let mut lines = Vec::with_capacity(info.ops.len());
+    for (index, (op, args)) in info.ops.iter().enumerate() {
+        let name = ASB_OPS
+            .get(*op as usize)
+            .map(|(name, _)| *name)
+            .unwrap_or("???");
+        let note = disassembly_note(module, name, args, index);
+        lines.push(AsmLineDto {
+            index: index as u32,
+            op: name.to_string(),
+            args: args.iter().map(i64::to_string).collect(),
+            note,
+        });
+    }
+    lines
+}
+
+fn disassembly_note(module: &Module, op: &str, args: &[i64], index: usize) -> Option<String> {
+    let first = args.first().copied().unwrap_or(-1);
+    match op {
+        "CALL" | "CALLSYS" | "CALLINTF" | "Thiscall1" => {
+            module
+                .used_funcs
+                .get(first as usize)
+                .and_then(|entry| entry.as_ref())
+                .map(|sig| format!("{} ({} params)", sig.name, sig.params))
+                .or_else(|| Some(format!("uf[{first}]?")))
+        }
+        "ALLOC" | "FREE" | "REFCPY" | "RefCpyV" | "OBJTYPE" => {
+            let mut note = module
+                .used_type_ids
+                .get(first as usize)
+                .map(dtype_brief)
+                .unwrap_or_else(|| format!("ut[{first}]?"));
+            if op == "ALLOC" && args.len() > 1 && args[1] > 0 {
+                if let Some(Some(ctor)) = module.used_funcs.get((args[1] - 1) as usize) {
+                    note.push_str(&format!(" ctor {}", ctor.name));
+                }
+            }
+            Some(note)
+        }
+        "PGA" | "PshGPtr" | "LDG" | "PshG4" | "LdGRdR4" | "CpyGtoV4" | "CpyVtoG4"
+        | "SetG4" => {
+            if first & 1 != 0 {
+                let global = (first >> 1) as usize;
+                Some(
+                    module
+                        .used_global_props
+                        .get(global)
+                        .map(|(name, namespace)| {
+                            if namespace.is_empty() {
+                                name.clone()
+                            } else {
+                                format!("{namespace}::{name}")
+                            }
+                        })
+                        .unwrap_or_else(|| format!("gp[{global}]?")),
+                )
+            } else {
+                let string_index = (first >> 1) as usize;
+                if matches!(op, "PGA" | "PshGPtr") {
+                    module.strings.get(string_index).map(|text| {
+                        let short: String = text.chars().take(60).collect();
+                        format!("str {short:?}")
+                    })
+                } else {
+                    Some(format!("stridx {string_index}?"))
+                }
+            }
+        }
+        "JMP" | "JZ" | "JNZ" | "JS" | "JNS" | "JP" | "JNP" | "JLowZ" | "JLowNZ" => {
+            Some(format!("-> {}", index as i64 + 1 + first))
+        }
+        "COPY" => module
+            .used_type_ids
+            .get(first as usize)
+            .map(dtype_brief),
+        "CALLBND" => module
+            .bind_sigs
+            .get(first as usize)
+            .map(|(sig, target)| format!("{} from {target}", sig.name)),
+        "PshC4" | "PshC8" => Some(first.to_string()),
+        "SetV4" | "SetV1" | "SetV2" if args.len() > 1 => {
+            Some(format!("v{} = {}", args[0], args[1]))
+        }
+        "ADDSi" | "LoadThisR" if args.len() >= 2 => {
+            let prop = args[0] as usize;
+            let type_index = args[1] as usize;
+            let prop_name = module
+                .used_obj_props
+                .get(prop)
+                .map(|(_, name)| name.clone())
+                .unwrap_or_else(|| format!("prop[{prop}]"));
+            let type_name = module
+                .used_type_ids
+                .get(type_index)
+                .map(dtype_brief)
+                .unwrap_or_else(|| format!("ut[{type_index}]"));
+            Some(format!("{prop_name} ; {type_name}"))
+        }
+        "LoadRObjR" | "LoadVObjR" if args.len() >= 3 => {
+            let prop = args[1] as usize;
+            let type_index = args[2] as usize;
+            let prop_name = module
+                .used_obj_props
+                .get(prop)
+                .map(|(_, name)| name.clone())
+                .unwrap_or_else(|| format!("prop[{prop}]"));
+            let type_name = module
+                .used_type_ids
+                .get(type_index)
+                .map(dtype_brief)
+                .unwrap_or_else(|| format!("ut[{type_index}]"));
+            Some(format!("{prop_name} ; {type_name}"))
+        }
+        _ => None,
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PseudoDto {
+    pub text: String,
+}
+
+/// 伪代码：复刻 `uo_as_dec.py` 的表达式栈模拟，控制流保留 label+goto。
+pub fn pseudo_file(bytes: &[u8], function_index: Option<usize>) -> Result<PseudoDto, String> {
+    let mut reader = Reader::new(bytes);
+    let module = reader.read_module()?;
+    let total = module.functions.len() + module.global_funcs.len();
+    if total == 0 {
+        return Ok(PseudoDto { text: String::new() });
+    }
+    let selected = function_index.unwrap_or(0).min(total - 1);
+    let info = if selected < module.functions.len() {
+        &module.functions[selected]
+    } else {
+        &module.global_funcs[selected - module.functions.len()]
+    };
+    Ok(PseudoDto {
+        text: decompile(&module, info),
+    })
+}
+
+fn decompile(module: &Module, info: &FuncInfo) -> String {
+    let mut vars = std::collections::HashMap::new();
+    for (offset, name, _) in &info.var_list {
+        vars.insert(*offset, if name.is_empty() { format!("tmp{offset}") } else { name.clone() });
+    }
+    let mut params = Vec::new();
+    for index in 0..info.params {
+        params.push(
+            vars.get(&(-(index as i64)))
+                .cloned()
+                .or_else(|| info.param_list.get(index).cloned())
+                .unwrap_or_else(|| format!("arg{index}")),
+        );
+    }
+
+    let mut targets = std::collections::HashSet::new();
+    for (index, (op, args)) in info.ops.iter().enumerate() {
+        let name = op_name(*op);
+        if is_jump(name) {
+            if let Some(delta) = args.first() {
+                let target = index as i64 + 1 + delta;
+                if target >= 0 {
+                    targets.insert(target as usize);
+                }
+            }
+        }
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    let mut stack: Vec<(String, Option<i64>)> = Vec::new();
+    let mut retreg: Option<String> = None;
+    let mut pending_cmp: Option<(String, String)> = None;
+
+    for (index, (op, args)) in info.ops.iter().enumerate() {
+        if targets.contains(&index) {
+            out.push(format!("L{index}:"));
+        }
+        let name = op_name(*op);
+        let first = args.first().copied().unwrap_or(-1);
+        let var = |offset: i64| {
+            vars.get(&offset)
+                .cloned()
+                .unwrap_or_else(|| format!("v{offset}"))
+        };
+
+        match name {
+            "PshC4" => {
+                let raw = signed_i32(first);
+                stack.push((raw.to_string(), Some(raw as i64)));
+            }
+            "PshC8" => stack.push((first.to_string(), None)),
+            "PshV4" | "PshVPtr" | "PSF" | "PshV8" | "VAR" => {
+                stack.push((var(first), None));
+            }
+            "PGA" | "PshGPtr" | "PshG4" => {
+                stack.push((str_or_global(module, first), None));
+            }
+            "SetV4" if args.len() == 2 => {
+                out.push(format!("{} = {};", var(args[0]), signed_i32(args[1])));
+            }
+            "SetV8" if args.len() == 2 => {
+                out.push(format!("{} = {};", var(args[0]), args[1]));
+            }
+            "SetV1" if args.len() == 2 => {
+                out.push(format!("{} = {};", var(args[0]), args[1] & 0xFF));
+            }
+            "SetV2" if args.len() == 2 => {
+                out.push(format!("{} = {};", var(args[0]), args[1] & 0xFFFF));
+            }
+            "SetG4" if args.len() == 2 => {
+                out.push(format!(
+                    "{} = {};",
+                    str_or_global(module, args[0]),
+                    signed_i32(args[1])
+                ));
+            }
+            "CpyVtoV4" if args.len() == 2 => {
+                out.push(format!("{} = {};", var(args[0]), var(args[1])));
+            }
+            "CpyVtoR4" => retreg = Some(var(first)),
+            "CpyRtoV4" => {
+                out.push(format!("{} = {};", var(first), retreg.clone().unwrap_or_else(|| "ret".into())));
+            }
+            "CpyGtoV4" | "LdGRdR4" if args.len() == 2 => {
+                out.push(format!("{} = {};", var(args[0]), str_or_global(module, args[1])));
+            }
+            "CpyVtoG4" if args.len() == 2 => {
+                out.push(format!("{} = {};", str_or_global(module, args[1]), var(args[0])));
+            }
+            _ if is_bin_op(name) && args.len() == 3 => {
+                out.push(format!(
+                    "{} = {} {} {};",
+                    var(args[0]),
+                    var(args[1]),
+                    bin_op(name),
+                    var(args[2])
+                ));
+            }
+            _ if is_imm_op(name) && args.len() == 3 => {
+                let imm = if name.contains('f') {
+                    format_float(args[2])
+                } else {
+                    args[2].to_string()
+                };
+                out.push(format!(
+                    "{} = {} {} {};",
+                    var(args[0]),
+                    var(args[1]),
+                    bin_op(name),
+                    imm
+                ));
+            }
+            "INCi" | "INCf" | "INCi64" | "IncVi" | "INCu" => {
+                out.push(format!("++{};", var(first)));
+            }
+            "DECi" | "DECf" | "DECi64" | "DecVi" | "DECu" => {
+                out.push(format!("--{};", var(first)));
+            }
+            "CMPi" | "CMPu" | "CMPf" | "CMPd" | "CMPi64" | "CMPu64" if args.len() == 2 => {
+                pending_cmp = Some((var(args[0]), var(args[1])));
+            }
+            "CMPIi" | "CMPIu" | "CMPIf" | "CMPIi64" | "CMPIu64" if args.len() == 2 => {
+                let imm = if name == "CMPIf" {
+                    format_float(args[1])
+                } else {
+                    args[1].to_string()
+                };
+                pending_cmp = Some((var(args[0]), imm));
+            }
+            "NOT" | "BNOT" | "BNOT64" => {
+                out.push(format!("{} = !{};", var(first), var(first)));
+            }
+            _ if is_jump(name) && !args.is_empty() => {
+                let target = index as i64 + 1 + first;
+                if name == "JMP" {
+                    out.push(format!("goto L{target};"));
+                } else {
+                    let condition = match name {
+                        "JZ" | "JLowZ" => pending_cmp
+                            .take()
+                            .map(|(left, right)| format!("{left} == {right}"))
+                            .or_else(|| retreg.clone().map(|value| format!("!({value})")))
+                            .unwrap_or_else(|| "cond".into()),
+                        "JNZ" | "JLowNZ" => pending_cmp
+                            .take()
+                            .map(|(left, right)| format!("{left} != {right}"))
+                            .or_else(|| retreg.clone())
+                            .unwrap_or_else(|| "cond".into()),
+                        "JS" | "JNS" | "JP" | "JNP" => {
+                            let operator = match name {
+                                "JS" => "<",
+                                "JNS" => ">=",
+                                "JP" => ">",
+                                _ => "<=",
+                            };
+                            pending_cmp
+                                .take()
+                                .map(|(left, right)| format!("{left} {operator} {right}"))
+                                .unwrap_or_else(|| "cond".into())
+                        }
+                        _ => "cond".into(),
+                    };
+                    out.push(format!("if ({condition}) goto L{target};"));
+                }
+            }
+            "RET" => {
+                if !is_void(&info.ret) && retreg.is_some() {
+                    out.push(format!("return {};", retreg.clone().unwrap()));
+                } else {
+                    out.push("return;".into());
+                }
+            }
+            "CALL" | "CALLSYS" | "CALLINTF" | "Thiscall1" | "CALLBND" => {
+                let target = if name == "CALLBND" {
+                    module.bind_sigs.get(first as usize).map(|(sig, _)| sig)
+                } else {
+                    module
+                        .used_funcs
+                        .get(first as usize)
+                        .and_then(|entry| entry.as_ref())
+                };
+                let (call_name, param_count, ret) = match target {
+                    Some(sig) => (sig.name.clone(), sig.params, sig.ret.clone()),
+                    None => (format!("fn{first}?"), 0, String::new()),
+                };
+                let mut values = Vec::new();
+                for _ in 0..param_count {
+                    values.push(stack.pop().map(|(text, _)| text).unwrap_or_else(|| "??".into()));
+                }
+                values.reverse();
+                let call = format!("{call_name}({})", values.join(", "));
+                if is_void(&ret) {
+                    out.push(format!("{call};"));
+                } else {
+                    retreg = Some(call);
+                }
+            }
+            "ALLOC" => {
+                let type_name = module
+                    .used_types
+                    .get(first as usize)
+                    .and_then(|info| info.as_ref())
+                    .map(type_info_name)
+                    .unwrap_or_else(|| "obj".into());
+                out.push(format!("/* new {} */", if type_name.is_empty() { "<匿名>" } else { &type_name }));
+            }
+            "LoadRObjR" | "LoadVObjR" if args.len() >= 3 => {
+                let property = args[1] as usize;
+                if let Some((_, name)) = module.used_obj_props.get(property) {
+                    stack.push((name.clone(), None));
+                }
+            }
+            "STOREOBJ" => {
+                let value = stack.pop().map(|(text, _)| text).unwrap_or_else(|| "??".into());
+                out.push(format!("{} = {};", var(first), value));
+            }
+            "LOADOBJ" => stack.push((var(first), None)),
+            _ => {
+                if !is_noise(name) {
+                    out.push(format!("/* {name} {args:?} */"));
+                }
+            }
+        }
+    }
+
+    while let Some((value, _)) = stack.pop() {
+        out.push(format!("// [栈残留] {value}"));
+    }
+
+    let mut text = String::new();
+    let head_params = params.join(", ");
+    text.push_str(&format!("{} {}({head_params})\n", info.ret, info.name));
+    if !info.section.is_empty() {
+        text.push_str(&format!(
+            "    // {}:{}:{}\n",
+            info.section,
+            info.declared_at >> 20,
+            info.declared_at & 0xFFFFF
+        ));
+    }
+    for line in out {
+        text.push_str("    ");
+        text.push_str(&line);
+        text.push('\n');
+    }
+    text
+}
+
+fn op_name(op: u8) -> &'static str {
+    ASB_OPS
+        .get(op as usize)
+        .map(|(name, _)| *name)
+        .unwrap_or("???")
+}
+
+fn is_jump(name: &str) -> bool {
+    matches!(
+        name,
+        "JMP" | "JZ" | "JNZ" | "JS" | "JNS" | "JP" | "JNP" | "JLowZ" | "JLowNZ"
+    )
+}
+
+fn is_bin_op(name: &str) -> bool {
+    matches!(
+        name,
+        "ADDi" | "SUBi" | "MULi" | "DIVi" | "MODi" | "ADDi64" | "SUBi64" | "MULi64"
+            | "DIVi64" | "MODi64" | "ADDf" | "SUBf" | "MULf" | "DIVf" | "MODf" | "ADDd"
+            | "SUBd" | "MULd" | "DIVd" | "MODd" | "ADDu" | "SUBu" | "MULu" | "DIVu"
+            | "MODu" | "ADDu64" | "SUBu64" | "MULu64" | "DIVu64" | "MODu64" | "BAND"
+            | "BOR" | "BXOR" | "BSLL" | "BSRL" | "BSRA" | "BAND64" | "BOR64" | "BXOR64"
+            | "BSLL64" | "BSRL64" | "BSRA64"
+    )
+}
+
+fn is_imm_op(name: &str) -> bool {
+    matches!(
+        name,
+        "ADDIi" | "SUBIi" | "MULIi" | "ADDIf" | "SUBIf" | "MULIf" | "ADDIi64" | "SUBIi64"
+            | "MULIi64"
+    )
+}
+
+fn bin_op(name: &str) -> &'static str {
+    match name {
+        "ADDi" | "ADDi64" | "ADDf" | "ADDd" | "ADDu" | "ADDu64" | "ADDIf" | "ADDIi"
+        | "ADDIi64" => "+",
+        "SUBi" | "SUBi64" | "SUBf" | "SUBd" | "SUBu" | "SUBu64" | "SUBIf" | "SUBIi"
+        | "SUBIi64" => "-",
+        "MULi" | "MULi64" | "MULf" | "MULd" | "MULu" | "MULu64" | "MULIf" | "MULIi"
+        | "MULIi64" => "*",
+        "DIVi" | "DIVi64" | "DIVf" | "DIVd" | "DIVu" | "DIVu64" => "/",
+        "MODi" | "MODi64" | "MODf" | "MODd" | "MODu" | "MODu64" => "%",
+        "BAND" | "BAND64" => "&",
+        "BOR" | "BOR64" => "|",
+        "BXOR" | "BXOR64" => "^",
+        "BSLL" | "BSLL64" => "<<",
+        "BSRL" | "BSRL64" => ">>",
+        "BSRA" | "BSRA64" => ">>",
+        _ => "?",
+    }
+}
+
+fn is_noise(name: &str) -> bool {
+    matches!(
+        name,
+        "SUSPEND" | "ChkRefS" | "ChkNullV" | "CHKREF" | "ClrVPtr" | "SwapPtr" | "PopPtr"
+            | "PshNull" | "RDSPtr" | "PshRPtr" | "PopRPtr" | "GETOBJ" | "GETOBJREF"
+            | "GETREF" | "JitEntry" | "AllocMem" | "SetListSize" | "PshListElmnt"
+            | "SetListType" | "JMPP" | "ObjInfo" | "TYPEID" | "Cast" | "CmpPtr" | "LOADOBJ"
+            | "STOREOBJ" | "REFCPY" | "RefCpyV" | "FREE" | "COPY" | "WRTV1" | "WRTV2"
+            | "WRTV4" | "WRTV8" | "RDR1" | "RDR2" | "RDR4" | "RDR8" | "LDG" | "LDV"
+            | "PSF" | "VAR" | "PshV8" | "VARDECL"
+    )
+}
+
+fn str_or_global(module: &Module, value: i64) -> String {
+    if value & 1 != 0 {
+        let index = (value >> 1) as usize;
+        return module
+            .used_global_props
+            .get(index)
+            .map(|(name, namespace)| {
+                if namespace.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{namespace}::{name}")
+                }
+            })
+            .unwrap_or_else(|| format!("global{index}"));
+    }
+    let index = (value >> 1) as usize;
+    module
+        .strings
+        .get(index)
+        .map(|text| format!("\"{text}\""))
+        .unwrap_or_else(|| format!("str{index}"))
+}
+
+fn signed_i32(value: i64) -> i32 {
+    (value & 0xFFFF_FFFF) as u32 as i32
+}
+
+fn format_float(value: i64) -> String {
+    let raw = (value & 0xFFFF_FFFF) as u32;
+    format!("{:?}", f32::from_bits(raw))
+}
+
+fn is_void(ret: &str) -> bool {
+    let base = ret.split('@').next().unwrap_or(ret).trim();
+    base == "void" || base == "?"
+}
+
+fn tt_name(token: i64) -> &'static str {
+    match token {
+        65 => "bool",
+        68 => "int",
+        69 => "int8",
+        70 => "int16",
+        71 => "int64",
+        75 => "uint",
+        76 => "uint8",
+        77 => "uint16",
+        78 => "uint64",
+        79 => "float",
+        80 => "void",
+        92 => "double",
+        _ => "?",
+    }
+}
+
 fn dtype_brief(dtype: &DataType) -> String {
     let base = match &dtype.type_info {
         Some(TypeInfo::Object { name, .. })
@@ -735,7 +1344,7 @@ fn dtype_brief(dtype: &DataType) -> String {
         | Some(TypeInfo::Template { name, .. })
         | Some(TypeInfo::Funcdef { name, .. }) => name.clone(),
         Some(TypeInfo::List(_)) => "list".to_string(),
-        None => format!("tt{}", dtype.token),
+        None => tt_name(dtype.token).to_string(),
     };
     let mut text = base;
     if dtype.bits & 0x01 != 0 {
@@ -751,12 +1360,15 @@ fn dtype_brief(dtype: &DataType) -> String {
 }
 
 fn type_name(info: &Option<TypeInfo>) -> String {
+    info.as_ref().map(type_info_name).unwrap_or_default()
+}
+
+fn type_info_name(info: &TypeInfo) -> String {
     match info {
-        None => String::new(),
-        Some(TypeInfo::List(_)) => "list".into(),
-        Some(TypeInfo::Template { name, .. })
-        | Some(TypeInfo::Subtype(name))
-        | Some(TypeInfo::Object { name, .. })
-        | Some(TypeInfo::Funcdef { name, .. }) => name.clone(),
+        TypeInfo::List(_) => "list".into(),
+        TypeInfo::Template { name, .. }
+        | TypeInfo::Subtype(name)
+        | TypeInfo::Object { name, .. }
+        | TypeInfo::Funcdef { name, .. } => name.clone(),
     }
 }

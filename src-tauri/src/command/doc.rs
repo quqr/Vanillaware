@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::State;
 
-use vw_formats::doc::{DocOpenDto, DocPageDto, PAGE_LIMIT, PAGE_MAX};
+use vw_formats::doc::{AsmDto, DocOpenDto, DocPageDto, PseudoDto, PAGE_LIMIT, PAGE_MAX};
 
 use crate::state::AppState;
 
@@ -63,4 +63,26 @@ pub fn doc_children(
     cached
         .page(handle, node, offset.unwrap_or(0), limit)
         .ok_or_else(|| format!("节点 {node} 不存在"))
+}
+
+/// ASB 反汇编：返回函数列表与指定函数的指令行。
+#[tauri::command]
+pub async fn doc_asm(path: String, function: Option<u32>) -> Result<AsmDto, String> {
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        vw_formats::doc::asb::disassemble_file(&bytes, function.map(|value| value as usize))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+/// ASB 伪代码：表达式栈模拟 + label/goto。
+#[tauri::command]
+pub async fn doc_pseudo(path: String, function: Option<u32>) -> Result<PseudoDto, String> {
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        vw_formats::doc::asb::pseudo_file(&bytes, function.map(|value| value as usize))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
 }

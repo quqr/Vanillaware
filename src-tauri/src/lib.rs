@@ -36,6 +36,8 @@ pub fn run() {
             command::library::detect_profile,
             command::doc::open_doc,
             command::doc::doc_children,
+            command::doc::doc_asm,
+            command::doc::doc_pseudo,
             command::library::file_meta,
             command::library::file_thumb,
             command::library::read_file_head,

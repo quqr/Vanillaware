@@ -26,6 +26,7 @@ pub use arena::{
     DocArena, DocCheckDto, DocDto, DocMark, DocNodeDto, DocNodeKind, DocOpenDto, DocPageDto, Builder,
     MAX_DEPTH, MAX_NODES, MAX_STRING, PAGE_LIMIT, PAGE_MAX,
 };
+pub use asb::{AsmDto, PseudoDto};
 
 use crate::Result;
 

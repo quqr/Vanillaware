@@ -208,6 +208,34 @@ fn asb_corpus_parses_to_eof() {
 
 #[test]
 #[ignore = "需要本机 UO 语料"]
+fn asb_disasm_sample_matches_golden() {
+    let path = PathBuf::from(r"F:\Codes\UNICORN OVERLORD\extract\000\Script\CaptureCharacter.asb");
+    if !path.is_file() {
+        eprintln!("跳过：{} 不存在", path.display());
+        return;
+    }
+    let bytes = std::fs::read(path).unwrap();
+    let asm = doc::asb::disassemble_file(&bytes, Some(0)).expect("disasm");
+    let ops: Vec<&str> = asm.lines.iter().map(|line| line.op.as_str()).collect();
+    assert_eq!(
+        ops,
+        [
+            "SUSPEND", "SetV1", "CpyVtoR4", "JLowZ", "SUSPEND", "SUSPEND", "PshC4",
+            "CALLSYS", "JMP", "SUSPEND", "RET",
+        ]
+    );
+    assert!(asm
+        .lines
+        .iter()
+        .any(|line| line.note.as_deref().is_some_and(|note| note.contains("Wait"))));
+
+    let pseudo = doc::asb::pseudo_file(&bytes, Some(0)).expect("pseudo");
+    assert!(pseudo.text.contains("Wait(100)"));
+    assert!(pseudo.text.contains("goto L1"));
+}
+
+#[test]
+#[ignore = "需要本机 UO 语料"]
 fn bbs_corpus_is_closed() {
     let dir = corpus(
         "VW_CORPUS_BBS",

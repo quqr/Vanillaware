@@ -2,6 +2,7 @@ import { useLibraryStore } from "../../store/libraryStore";
 import { TAGS, useAppStore, type TagId } from "../../store/appStore";
 import { formatBytes } from "../../lib/format";
 import type { FileEntry } from "../../lib/ipc";
+import { AsmViewer } from "../viewers/AsmViewer";
 import { AtlasViewer } from "../viewers/AtlasViewer";
 import { AnimationViewer } from "../viewers/AnimationViewer";
 import { DocViewer } from "../viewers/DocViewer";
@@ -9,6 +10,7 @@ import { HexViewer } from "../viewers/HexViewer";
 
 /** 查看器 id → 组件。新增格式只需在这里加一条（后端负责声明有哪些 id）。 */
 const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: string) => React.ReactNode }> = {
+  asm: { label: "反汇编", render: (entry) => <AsmViewer entry={entry} /> },
   atlas: { label: "图集", render: (entry) => <AtlasViewer entry={entry} /> },
   animation: { label: "动画", render: (entry, tag) => <AnimationViewer entry={entry} tag={tag} /> },
   doc: { label: "结构", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
