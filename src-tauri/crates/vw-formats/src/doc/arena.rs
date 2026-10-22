@@ -121,6 +121,26 @@ impl DocArena {
         self.nodes.len() as u32
     }
 
+    /// 对所有 key 匹配的字段值求和（语料测试用）。
+    pub fn sum_field(&self, key: &str) -> u64 {
+        self.nodes
+            .iter()
+            .filter(|node| node.key.as_deref() == Some(key))
+            .filter_map(|node| node.value.as_deref())
+            .filter_map(|value| value.parse::<u64>().ok())
+            .sum()
+    }
+
+    /// 统计 key/value 完全匹配的节点数（语料测试用）。
+    pub fn count_field_value(&self, key: &str, value: &str) -> usize {
+        self.nodes
+            .iter()
+            .filter(|node| {
+                node.key.as_deref() == Some(key) && node.value.as_deref() == Some(value)
+            })
+            .count()
+    }
+
     pub fn approx_bytes(&self) -> usize {
         let payload: usize = self
             .nodes

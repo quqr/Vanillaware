@@ -6,7 +6,9 @@ pub mod arena;
 pub mod bbs;
 pub mod binary;
 pub mod ctb;
+pub mod fmd;
 pub mod fms;
+pub mod fsb;
 pub mod ftx;
 pub mod mbs;
 pub mod mpd;
@@ -50,6 +52,8 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
         "otm" => Ok(otm::build(bytes)),
         "mpd" => Ok(mpd::build(bytes)),
         "ctb" => Ok(ctb::build(bytes)),
+        "fmd" => Ok(fmd::build(bytes)),
+        "fsb" => Ok(fsb::build(bytes)),
         _ => Ok(binary::build(bytes, ext)),
     }
 }

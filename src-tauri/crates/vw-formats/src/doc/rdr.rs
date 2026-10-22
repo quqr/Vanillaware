@@ -21,6 +21,10 @@ pub fn i8_at(bytes: &[u8], at: usize) -> Option<i8> {
     bytes.get(at).map(|&byte| byte as i8)
 }
 
+pub fn i32_at(bytes: &[u8], at: usize) -> Option<i32> {
+    u32_at(bytes, at).map(|value| value as i32)
+}
+
 pub fn i16_at(bytes: &[u8], at: usize) -> Option<i16> {
     u16_at(bytes, at).map(|value| value as i16)
 }

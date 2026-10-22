@@ -119,6 +119,51 @@ fn ctb_corpus_is_closed() {
 }
 
 #[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn fmd_corpus_is_closed() {
+    assert_corpus("fmd", &["fmd.closed", "fmd.versionGate"]);
+}
+
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn fmd_mesh_count_matches_python() {
+    let root = corpus("VW_CORPUS_13", r"F:\Codes\13\13rim ex\EX DATA");
+    let mut files = Vec::new();
+    walk(&root, "fmd", &mut files);
+    if files.is_empty() {
+        eprintln!("跳过：{} 下没有 .fmd", root.display());
+        return;
+    }
+
+    let mut meshes = 0usize;
+    let mut declared = 0u64;
+    let mut parsed = 0usize;
+    for path in &files {
+        let arena = doc::parse_file(path, None).expect("fmd parse");
+        meshes += arena.count_field_value("nonEmpty", "true");
+        parsed += arena.count_field_value("nonEmpty", "true")
+            + arena.count_field_value("nonEmpty", "false");
+        declared += arena.sum_field("meshCount");
+    }
+    eprintln!(
+        ".fmd: {} 个文件，声明网格 {declared}，解析 {parsed}，非空 {meshes}",
+        files.len()
+    );
+
+    assert_eq!(declared, parsed as u64, "声明网格数与解析网格数不一致");
+    if let Ok(expected) = std::env::var("VW_FMD_MESHES") {
+        assert_eq!(meshes, expected.parse::<usize>().unwrap());
+    }
+    assert!(meshes > 0);
+}
+
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn fsb_corpus_is_closed() {
+    assert_corpus("fsb", &["fsb.closed", "fsb.sequence", "fsb.version"]);
+}
+
+#[test]
 #[ignore = "需要本机 UO 语料"]
 fn bbs_corpus_is_closed() {
     let dir = corpus(
