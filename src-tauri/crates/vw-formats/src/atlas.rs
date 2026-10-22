@@ -93,7 +93,9 @@ pub fn sibling_container(mbs_path: &Path) -> Result<Option<PathBuf>> {
         .flatten()
         .map(|entry| entry.path())
         .filter(|path| {
-            let Some(extension) = path.extension() else { return false };
+            let Some(extension) = path.extension() else {
+                return false;
+            };
             let extension = extension.to_string_lossy();
             if extension != "ftx" && extension != "ftp" {
                 return false;
@@ -101,7 +103,9 @@ pub fn sibling_container(mbs_path: &Path) -> Result<Option<PathBuf>> {
             path.file_stem()
                 .map(|other| other.to_string_lossy().into_owned())
                 .and_then(|other| other.strip_prefix(stem.as_ref()).map(str::to_string))
-                .is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()))
+                .is_some_and(|suffix| {
+                    !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
+                })
         })
         .collect();
     candidates.sort();
@@ -141,11 +145,17 @@ mod tests {
 
         let ftp = dir.join("Sample.ftp");
         std::fs::write(&ftp, b"").expect("写 ftp");
-        assert_eq!(sibling_container(&mbs).expect("解析").as_deref(), Some(ftp.as_path()));
+        assert_eq!(
+            sibling_container(&mbs).expect("解析").as_deref(),
+            Some(ftp.as_path())
+        );
 
         let ftx = dir.join("Sample.ftx");
         std::fs::write(&ftx, b"").expect("写 ftx");
-        assert_eq!(sibling_container(&mbs).expect("解析").as_deref(), Some(ftx.as_path()));
+        assert_eq!(
+            sibling_container(&mbs).expect("解析").as_deref(),
+            Some(ftx.as_path())
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

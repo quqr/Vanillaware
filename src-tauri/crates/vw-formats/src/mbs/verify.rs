@@ -32,7 +32,11 @@ pub struct Diff {
 
 impl std::fmt::Display for Diff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: 期望 {} 实际 {}", self.path, self.expected, self.actual)
+        write!(
+            f,
+            "{}: 期望 {} 实际 {}",
+            self.path, self.expected, self.actual
+        )
     }
 }
 
@@ -60,7 +64,13 @@ pub fn diff_values_with(
             for (key, expected_child) in expected_map {
                 match actual_map.get(key) {
                     Some(actual_child) => {
-                        diff_values_with(expected_child, actual_child, &child_path(path, key), tolerance, out);
+                        diff_values_with(
+                            expected_child,
+                            actual_child,
+                            &child_path(path, key),
+                            tolerance,
+                            out,
+                        );
                     }
                     None => out.push(Diff {
                         path: child_path(path, key),
@@ -153,7 +163,12 @@ mod tests {
     #[test]
     fn numbers_compare_within_tolerance() {
         let mut out = Vec::new();
-        diff_values(&json!({"a": 0.274658, "b": 20000}), &json!({"b": 20000.0, "a": 0.2746582}), "", &mut out);
+        diff_values(
+            &json!({"a": 0.274658, "b": 20000}),
+            &json!({"b": 20000.0, "a": 0.2746582}),
+            "",
+            &mut out,
+        );
         assert!(out.is_empty(), "{out:?}");
     }
 
@@ -161,7 +176,12 @@ mod tests {
     #[test]
     fn large_numbers_use_relative_tolerance() {
         let mut out = Vec::new();
-        diff_values(&json!([2218.0312, 1058.2188]), &json!([2218.03125, 1058.21875]), "", &mut out);
+        diff_values(
+            &json!([2218.0312, 1058.2188]),
+            &json!([2218.03125, 1058.21875]),
+            "",
+            &mut out,
+        );
         assert!(out.is_empty(), "{out:?}");
 
         // 真正的错位（远超 1 个 f32 ulp）仍要报出来。

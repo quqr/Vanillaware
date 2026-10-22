@@ -190,7 +190,13 @@ mod tests {
     #[test]
     fn scale_rotate_z_composes_like_php() {
         // 缩放 2 倍再绕 z 轴 90 度：sin=1、cos≈0。
-        let m = s7_matrix(&[0.0; 3], &[0.0, 0.0, std::f32::consts::FRAC_PI_2], &[2.0, 2.0], false, false);
+        let m = s7_matrix(
+            &[0.0; 3],
+            &[0.0, 0.0, std::f32::consts::FRAC_PI_2],
+            &[2.0, 2.0],
+            false,
+            false,
+        );
         assert!((m[0]).abs() < 1e-6);
         assert!((m[1] + 2.0).abs() < 1e-6);
         assert!((m[4] - 2.0).abs() < 1e-6);

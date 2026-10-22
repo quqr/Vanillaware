@@ -14,9 +14,7 @@ use kaitai::{BytesReader, KStruct};
 use vw_gen::gen::vw_mbs_v77::VwMbsV77;
 
 use super::profile::{self, Profile};
-use super::v55::{
-    FogQuad, S3Rec, S4Rec, S5Rec, S6Rec, S7Rec, S8Rec, S9Rec, SaRec, SbRec, V55,
-};
+use super::v55::{FogQuad, S3Rec, S4Rec, S5Rec, S6Rec, S7Rec, S8Rec, S9Rec, SaRec, SbRec, V55};
 use crate::{Error, Result};
 
 /// 从磁盘读一个 `.mbs` 并摊平成 [`V55`]。
@@ -42,8 +40,7 @@ pub fn parse_bytes(bytes: &[u8], tag: &str) -> Result<V55> {
         set_counts(root, &profile, counts);
         Ok(())
     };
-    let root =
-        <VwMbsV77 as KStruct>::read_into_with_init::<_, VwMbsV77>(&io, None, None, &init)?;
+    let root = <VwMbsV77 as KStruct>::read_into_with_init::<_, VwMbsV77>(&io, None, None, &init)?;
 
     let version = *root.version();
     if version != profile.version {
@@ -100,9 +97,7 @@ fn build(root: &VwMbsV77, profile: &Profile) -> Result<V55> {
     let out = V55 {
         s0: s0
             .iter()
-            .map(|rec| {
-                fog_quad([&rec.c0()[..], &rec.c1()[..], &rec.c2()[..], &rec.c3()[..]])
-            })
+            .map(|rec| fog_quad([&rec.c0()[..], &rec.c1()[..], &rec.c2()[..], &rec.c3()[..]]))
             .collect(),
         s1: s1.iter().map(|rec| quad8(&rec.floats()[..])).collect(),
         s2: s2.iter().map(|rec| quad8(&rec.floats()[..])).collect(),
@@ -181,13 +176,18 @@ fn build(root: &VwMbsV77, profile: &Profile) -> Result<V55> {
                 // PHP：起点已按 `st` 上移，条数相应下移（见 `FMBS_sa`）。
                 let set = i64::from(*rec.s8_set()) + i64::from(*rec.st());
                 let no = i64::from(*rec.s8_no()) - i64::from(*rec.st());
-                SaRec { i: index_label("sa", index), s8: vec![set, no, i64::from(*rec.s8_sum())] }
+                SaRec {
+                    i: index_label("sa", index),
+                    s8: vec![set, no, i64::from(*rec.s8_sum())],
+                }
             })
             .collect(),
         sb: sb
             .iter()
             .enumerate()
-            .map(|(index, _)| SbRec { i: index_label("sb", index) })
+            .map(|(index, _)| SbRec {
+                i: index_label("sb", index),
+            })
             .collect(),
         tag: profile.tag.to_string(),
         id3: profile.id3.to_string(),
@@ -321,10 +321,18 @@ mod tests {
     fn fog_quad_degrades_only_when_all_equal() {
         let same: Vec<u8> = vec![0xff, 0x00, 0x12, 0x34];
         let other: Vec<u8> = vec![0xff, 0x00, 0x12, 0x35];
-        assert_eq!(fog_quad([&same, &same, &same, &same]), FogQuad::One("#ff001234".into()));
+        assert_eq!(
+            fog_quad([&same, &same, &same, &same]),
+            FogQuad::One("#ff001234".into())
+        );
         assert_eq!(
             fog_quad([&same, &same, &same, &other]),
-            FogQuad::Four(["#ff001234".into(), "#ff001234".into(), "#ff001234".into(), "#ff001235".into()])
+            FogQuad::Four([
+                "#ff001234".into(),
+                "#ff001234".into(),
+                "#ff001234".into(),
+                "#ff001235".into()
+            ])
         );
     }
 

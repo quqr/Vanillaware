@@ -57,7 +57,10 @@ fn quad_matches_csharp_golden() {
         .expect("read golden dir")
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.file_name().is_some_and(|name| name.to_string_lossy().ends_with(".quad.json")))
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with(".quad.json"))
+        })
         .collect();
     goldens.sort();
 
@@ -65,7 +68,9 @@ fn quad_matches_csharp_golden() {
     let mut unpaired = Vec::new();
     let mut skipped_ambiguous = Vec::new();
     for golden_path in &goldens {
-        let Some(stem) = golden_stem(golden_path) else { continue };
+        let Some(stem) = golden_stem(golden_path) else {
+            continue;
+        };
         let Some(mbs_path) = mbs_by_stem.get(&stem) else {
             if ambiguous.contains(&stem) {
                 skipped_ambiguous.push(stem);
@@ -107,17 +112,31 @@ fn quad_matches_csharp_golden() {
 
         let issues = validate::self_check(&quad);
         if !issues.is_empty() {
-            lines.push(format!("{}: 自洽性检查 {} 条不成立", mbs_path.display(), issues.len()));
+            lines.push(format!(
+                "{}: 自洽性检查 {} 条不成立",
+                mbs_path.display(),
+                issues.len()
+            ));
             lines.extend(issues.iter().take(5).map(|issue| format!("    {issue}")));
         }
         if !report.is_pass() {
-            lines.push(format!("{}: {} 处差异", mbs_path.display(), report.diffs.len()));
+            lines.push(format!(
+                "{}: {} 处差异",
+                mbs_path.display(),
+                report.diffs.len()
+            ));
             for diff in &report.diffs {
                 let key = diff_category(&diff.path);
                 let entry = categories.entry(key).or_insert((0, diff.to_string()));
                 entry.0 += 1;
             }
-            lines.extend(report.diffs.iter().take(3).map(|diff| format!("    {diff}")));
+            lines.extend(
+                report
+                    .diffs
+                    .iter()
+                    .take(3)
+                    .map(|diff| format!("    {diff}")),
+            );
         }
     }
 
@@ -138,12 +157,19 @@ fn quad_matches_csharp_golden() {
         }
     }
     if !unpaired.is_empty() {
-        eprintln!("未配对的 golden（前 10）：{:?}", &unpaired[..unpaired.len().min(10)]);
+        eprintln!(
+            "未配对的 golden（前 10）：{:?}",
+            &unpaired[..unpaired.len().min(10)]
+        );
     }
     if !skipped_ambiguous.is_empty() {
         eprintln!("同 stem 有多个 .mbs、无法确定 golden 归属，已跳过：{skipped_ambiguous:?}");
     }
-    assert!(lines.is_empty(), "与 C# golden 不一致：\n{}", lines.join("\n"));
+    assert!(
+        lines.is_empty(),
+        "与 C# golden 不一致：\n{}",
+        lines.join("\n")
+    );
 }
 
 /// 一个待比的 `<mbs, golden>` 对，`group` 是它所在目录名（分层抽样的层）。
@@ -231,14 +257,19 @@ fn diff_category(path: &str) -> String {
 /// 同一个 stem 出现在多个目录时**不猜归属**：从索引里剔除并记进 `ambiguous`，
 /// 对应 golden 在报告里显式跳过（这类文件的 golden 无法确定是哪一个 `.mbs` 产出的）。
 fn collect_mbs(dir: &Path, index: &mut HashMap<String, PathBuf>, ambiguous: &mut HashSet<String>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut children: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
     children.sort();
     for path in children {
         if path.is_dir() {
             collect_mbs(&path, index, ambiguous);
         } else if path.extension().is_some_and(|ext| ext == "mbs") {
-            let Some(stem) = path.file_stem().map(|stem| stem.to_string_lossy().into_owned()) else {
+            let Some(stem) = path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+            else {
                 continue;
             };
             if ambiguous.contains(&stem) {

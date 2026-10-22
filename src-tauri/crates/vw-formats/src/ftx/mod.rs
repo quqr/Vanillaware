@@ -111,7 +111,9 @@ fn unwrap_fcmp(bytes: &[u8]) -> Result<std::borrow::Cow<'_, [u8]>> {
 
     let decoded = fcmp::decode(bytes)?;
     if decoded.is_empty() {
-        return Err(Error::BadData("FCMP header decoded to empty payload".into()));
+        return Err(Error::BadData(
+            "FCMP header decoded to empty payload".into(),
+        ));
     }
 
     Ok(std::borrow::Cow::Owned(decoded))

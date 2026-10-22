@@ -120,8 +120,10 @@ fn switch_ftx_matches_golden_pixels() {
             let expected = match read_gzip(&expected_path) {
                 Ok(b) => b,
                 Err(e) => {
-                    failures
-                        .push(format!("{label}: read {} failed: {e}", expected_path.display()));
+                    failures.push(format!(
+                        "{label}: read {} failed: {e}",
+                        expected_path.display()
+                    ));
                     continue;
                 }
             };

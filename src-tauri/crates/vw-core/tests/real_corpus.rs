@@ -39,7 +39,10 @@ fn listing_returns_only_native_resources() {
             "{} 的类别不在原生资源范围内",
             file.name
         );
-        assert!(!matches!(file.ext.as_str(), "png" | "json" | "txt" | "quad"));
+        assert!(!matches!(
+            file.ext.as_str(),
+            "png" | "json" | "txt" | "quad"
+        ));
     }
 }
 
@@ -53,8 +56,16 @@ fn content_directory_reports_textures_and_animations() {
     }
 
     let listing = list_dir(&dir).unwrap();
-    let textures = listing.files.iter().filter(|f| f.kind == Kind::Texture).count();
-    let animations = listing.files.iter().filter(|f| f.kind == Kind::Animation).count();
+    let textures = listing
+        .files
+        .iter()
+        .filter(|f| f.kind == Kind::Texture)
+        .count();
+    let animations = listing
+        .files
+        .iter()
+        .filter(|f| f.kind == Kind::Animation)
+        .count();
     eprintln!(
         "{}：纹理 {} / 动画 {} / 未收录 {}",
         dir.display(),

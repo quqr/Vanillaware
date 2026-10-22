@@ -67,16 +67,31 @@ pub fn compare_golden(ours: &Quad, golden: &Value) -> crate::Result<Report> {
 pub fn normalize_golden(golden: &Value) -> Value {
     let mut out = Map::new();
     out.insert("blend".to_string(), php_blend());
-    out.insert("mix".to_string(), serde_json::json!([0, "LINEAR", "LINEAR"]));
-    out.insert("keyframe".to_string(), padded_list(golden.get("keyframe"), norm_keyframe));
-    out.insert("hitbox".to_string(), padded_list(golden.get("hitbox"), norm_hitbox));
+    out.insert(
+        "mix".to_string(),
+        serde_json::json!([0, "LINEAR", "LINEAR"]),
+    );
+    out.insert(
+        "keyframe".to_string(),
+        padded_list(golden.get("keyframe"), norm_keyframe),
+    );
+    out.insert(
+        "hitbox".to_string(),
+        padded_list(golden.get("hitbox"), norm_hitbox),
+    );
     // C# 的挂载打包在 `{"attach":[…]}` 里，PHP 直接就是那对 `attach`，故取出内层。
     out.insert(
         "slot".to_string(),
         padded_list(golden.get("slot"), |item| field(item, "attach")),
     );
-    out.insert("animation".to_string(), padded_list(golden.get("animation"), norm_animation));
-    out.insert("skeleton".to_string(), padded_list(golden.get("skeleton"), norm_skeleton));
+    out.insert(
+        "animation".to_string(),
+        padded_list(golden.get("animation"), norm_animation),
+    );
+    out.insert(
+        "skeleton".to_string(),
+        padded_list(golden.get("skeleton"), norm_skeleton),
+    );
     Value::Object(out)
 }
 
@@ -100,7 +115,13 @@ fn padded_list(value: Option<&Value>, shape: fn(&Value) -> Value) -> Value {
     Value::Array(
         items
             .iter()
-            .map(|item| if item.is_null() { Value::from(0) } else { shape(item) })
+            .map(|item| {
+                if item.is_null() {
+                    Value::from(0)
+                } else {
+                    shape(item)
+                }
+            })
             .collect(),
     )
 }
@@ -138,7 +159,10 @@ fn norm_keyframe_layer(item: &Value) -> Value {
     if let Some(number) = item.get("attribute").and_then(Value::as_u64) {
         if number > 0 {
             let attribute = bitflag_attr(number, "keyattr");
-            layer.insert("attribute".to_string(), serde_json::to_value(attribute).unwrap_or(Value::Null));
+            layer.insert(
+                "attribute".to_string(),
+                serde_json::to_value(attribute).unwrap_or(Value::Null),
+            );
         }
     }
     if let Some(value) = item.get("colorize") {
@@ -163,7 +187,10 @@ fn norm_hitbox(item: &Value) -> Value {
 /// `animation` 一条：`loop_id` 恒有键，C#/PHP 都是整数。
 fn norm_animation(item: &Value) -> Value {
     let empty = Vec::new();
-    let timeline = item.get("timeline").and_then(Value::as_array).unwrap_or(&empty);
+    let timeline = item
+        .get("timeline")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
     serde_json::json!({
         "name": field(item, "name"),
         "timeline": timeline.iter().map(norm_timeline).collect::<Vec<_>>(),
@@ -247,13 +274,29 @@ fn matrix_block(entry: &Value) -> [f64; 9] {
 /// 逐帧比较 3×3 块。缩放、旋转、平移列都不在这里（平移列见 [`collect_translation_diffs`]）。
 fn collect_matrix_diffs(expected: &Value, actual: &Value, out: &mut Vec<Diff>) {
     let empty = Vec::new();
-    let expected_anims = expected.get("animation").and_then(Value::as_array).unwrap_or(&empty);
-    let actual_anims = actual.get("animation").and_then(Value::as_array).unwrap_or(&empty);
+    let expected_anims = expected
+        .get("animation")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
+    let actual_anims = actual
+        .get("animation")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
 
-    for (anim_index, (expected_anim, actual_anim)) in expected_anims.iter().zip(actual_anims).enumerate() {
-        let expected_tl = expected_anim.get("timeline").and_then(Value::as_array).unwrap_or(&empty);
-        let actual_tl = actual_anim.get("timeline").and_then(Value::as_array).unwrap_or(&empty);
-        for (time_index, (expected_entry, actual_entry)) in expected_tl.iter().zip(actual_tl).enumerate() {
+    for (anim_index, (expected_anim, actual_anim)) in
+        expected_anims.iter().zip(actual_anims).enumerate()
+    {
+        let expected_tl = expected_anim
+            .get("timeline")
+            .and_then(Value::as_array)
+            .unwrap_or(&empty);
+        let actual_tl = actual_anim
+            .get("timeline")
+            .and_then(Value::as_array)
+            .unwrap_or(&empty);
+        for (time_index, (expected_entry, actual_entry)) in
+            expected_tl.iter().zip(actual_tl).enumerate()
+        {
             let expected_block = matrix_block(expected_entry);
             let actual_block = matrix_block(actual_entry);
             let magnitude = expected_block
@@ -266,7 +309,9 @@ fn collect_matrix_diffs(expected: &Value, actual: &Value, out: &mut Vec<Diff>) {
             {
                 if (expected_value - actual_value).abs() > tolerance {
                     out.push(Diff {
-                        path: format!("animation[{anim_index}].timeline[{time_index}].matrix[{index}]"),
+                        path: format!(
+                            "animation[{anim_index}].timeline[{time_index}].matrix[{index}]"
+                        ),
                         expected: expected_value.to_string(),
                         actual: actual_value.to_string(),
                     });
@@ -296,18 +341,41 @@ fn strip_matrix(value: &mut Value) {
 /// 采集矩阵平移列（`3/7/11`）的差异，只登记不判失败。
 fn collect_translation_diffs(golden: &Value, ours: &Value, out: &mut Vec<Diff>) {
     let empty = Vec::new();
-    let expected_anims = golden.get("animation").and_then(Value::as_array).unwrap_or(&empty);
-    let actual_anims = ours.get("animation").and_then(Value::as_array).unwrap_or(&empty);
+    let expected_anims = golden
+        .get("animation")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
+    let actual_anims = ours
+        .get("animation")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
 
-    for (anim_index, (expected_anim, actual_anim)) in expected_anims.iter().zip(actual_anims).enumerate() {
-        let expected_tl = expected_anim.get("timeline").and_then(Value::as_array).unwrap_or(&empty);
-        let actual_tl = actual_anim.get("timeline").and_then(Value::as_array).unwrap_or(&empty);
-        for (time_index, (expected_entry, actual_entry)) in expected_tl.iter().zip(actual_tl).enumerate() {
+    for (anim_index, (expected_anim, actual_anim)) in
+        expected_anims.iter().zip(actual_anims).enumerate()
+    {
+        let expected_tl = expected_anim
+            .get("timeline")
+            .and_then(Value::as_array)
+            .unwrap_or(&empty);
+        let actual_tl = actual_anim
+            .get("timeline")
+            .and_then(Value::as_array)
+            .unwrap_or(&empty);
+        for (time_index, (expected_entry, actual_entry)) in
+            expected_tl.iter().zip(actual_tl).enumerate()
+        {
             for index in [3usize, 7, 11] {
-                let path = format!("animation[{anim_index}].timeline[{time_index}].matrix[{index}]");
+                let path =
+                    format!("animation[{anim_index}].timeline[{time_index}].matrix[{index}]");
                 let (Some(expected), Some(actual)) = (
-                    expected_entry.get("matrix").and_then(|m| m.get(index)).and_then(Value::as_f64),
-                    actual_entry.get("matrix").and_then(|m| m.get(index)).and_then(Value::as_f64),
+                    expected_entry
+                        .get("matrix")
+                        .and_then(|m| m.get(index))
+                        .and_then(Value::as_f64),
+                    actual_entry
+                        .get("matrix")
+                        .and_then(|m| m.get(index))
+                        .and_then(Value::as_f64),
                 ) else {
                     continue;
                 };
@@ -345,12 +413,16 @@ fn project_fogquad(value: &mut Value) {
             continue;
         };
         for layer in layer_items.iter_mut() {
-            let Some(object) = layer.as_object_mut() else { continue };
+            let Some(object) = layer.as_object_mut() else {
+                continue;
+            };
             let first = match object.get("fogquad") {
                 Some(Value::String(color)) => color.clone(),
-                Some(Value::Array(colors)) => {
-                    colors.first().and_then(Value::as_str).unwrap_or("").to_string()
-                }
+                Some(Value::Array(colors)) => colors
+                    .first()
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
                 _ => continue,
             };
             if first == "#ffffffff" {
@@ -377,12 +449,14 @@ fn project_attribute(value: &mut Value) {
             continue;
         };
         for layer in layer_items.iter_mut() {
-            let Some(object) = layer.as_object_mut() else { continue };
+            let Some(object) = layer.as_object_mut() else {
+                continue;
+            };
             let overflows = match object.get("attribute") {
                 Some(Value::String(name)) => name == "keyattr_80000000",
-                Some(Value::Array(names)) => {
-                    names.iter().any(|name| name.as_str() == Some("keyattr_80000000"))
-                }
+                Some(Value::Array(names)) => names
+                    .iter()
+                    .any(|name| name.as_str() == Some("keyattr_80000000")),
                 _ => false,
             };
             if overflows {
@@ -426,13 +500,23 @@ pub fn self_check(quad: &Quad) -> Vec<String> {
     let mut issues = Vec::new();
 
     for (index, cell) in quad.keyframe.iter().enumerate() {
-        let Some(keyframe) = filled(cell) else { continue };
-        expect_name(&mut issues, &keyframe.name, &format!("keyframe {index}"), "keyframe");
+        let Some(keyframe) = filled(cell) else {
+            continue;
+        };
+        expect_name(
+            &mut issues,
+            &keyframe.name,
+            &format!("keyframe {index}"),
+            "keyframe",
+        );
         for (layer_index, cell) in keyframe.layer.iter().enumerate() {
             let Some(layer) = filled(cell) else { continue };
             let path = format!("keyframe[{index}].layer[{layer_index}]");
             if layer.dstquad.len() != 8 {
-                issues.push(format!("{path}.dstquad 有 {} 个分量，应为 8", layer.dstquad.len()));
+                issues.push(format!(
+                    "{path}.dstquad 有 {} 个分量，应为 8",
+                    layer.dstquad.len()
+                ));
             }
             if let Some(src) = &layer.srcquad {
                 if src.len() != 8 {
@@ -452,7 +536,12 @@ pub fn self_check(quad: &Quad) -> Vec<String> {
 
     for (index, cell) in quad.hitbox.iter().enumerate() {
         let Some(hitbox) = filled(cell) else { continue };
-        expect_name(&mut issues, &hitbox.name, &format!("hitbox {index}"), "hitbox");
+        expect_name(
+            &mut issues,
+            &hitbox.name,
+            &format!("hitbox {index}"),
+            "hitbox",
+        );
         for (layer_index, cell) in hitbox.layer.iter().enumerate() {
             let Some(layer) = filled(cell) else { continue };
             if layer.hitquad.len() != 8 {
@@ -470,14 +559,24 @@ pub fn self_check(quad: &Quad) -> Vec<String> {
         for (slot_index, attach) in pair.iter().enumerate() {
             let path = format!("slot[{index}][{slot_index}]");
             if attach.kind != kinds[slot_index] || attach.id != index as i64 {
-                issues.push(format!("{path} 应为 {} id={index}，实际 {} id={}", kinds[slot_index], attach.kind, attach.id));
+                issues.push(format!(
+                    "{path} 应为 {} id={index}，实际 {} id={}",
+                    kinds[slot_index], attach.kind, attach.id
+                ));
             }
         }
     }
 
     for (index, cell) in quad.animation.iter().enumerate() {
-        let Some(animation) = filled(cell) else { continue };
-        expect_name(&mut issues, &animation.name, &format!("animation {index}"), "animation");
+        let Some(animation) = filled(cell) else {
+            continue;
+        };
+        expect_name(
+            &mut issues,
+            &animation.name,
+            &format!("animation {index}"),
+            "animation",
+        );
         if !animation.timeline.is_empty()
             && animation.loop_id >= 0
             && animation.loop_id as usize >= animation.timeline.len()
@@ -491,7 +590,10 @@ pub fn self_check(quad: &Quad) -> Vec<String> {
         for (time_index, entry) in animation.timeline.iter().enumerate() {
             let path = format!("animation[{index}].timeline[{time_index}]");
             if !matches!(entry.matrix.len(), 0 | 16) {
-                issues.push(format!("{path}.matrix 有 {} 项，应为 0 或 16", entry.matrix.len()));
+                issues.push(format!(
+                    "{path}.matrix 有 {} 项，应为 0 或 16",
+                    entry.matrix.len()
+                ));
             }
             if let Some(attach) = &entry.attach {
                 check_attach(&mut issues, quad, attach, &path);
@@ -500,7 +602,9 @@ pub fn self_check(quad: &Quad) -> Vec<String> {
     }
 
     for (index, cell) in quad.skeleton.iter().enumerate() {
-        let Some(skeleton) = filled(cell) else { continue };
+        let Some(skeleton) = filled(cell) else {
+            continue;
+        };
         for (bone_index, bone) in skeleton.bone.iter().enumerate() {
             let path = format!("skeleton[{index}].bone[{bone_index}]");
             if bone.attach.kind != "animation" {
@@ -523,14 +627,29 @@ fn expect_name(issues: &mut Vec<String>, name: &str, expected: &str, section: &s
 /// 挂载点必须落在对应数组的**实填**位上。
 fn check_attach(issues: &mut Vec<String>, quad: &Quad, attach: &Attach, path: &str) {
     let filled_at = match attach.kind.as_str() {
-        "slot" => quad.slot.get(attach.id.max(0) as usize).is_some_and(|cell| filled(cell).is_some()),
-        "keyframe" => quad.keyframe.get(attach.id.max(0) as usize).is_some_and(|cell| filled(cell).is_some()),
-        "hitbox" => quad.hitbox.get(attach.id.max(0) as usize).is_some_and(|cell| filled(cell).is_some()),
-        "animation" => quad.animation.get(attach.id.max(0) as usize).is_some_and(|cell| filled(cell).is_some()),
+        "slot" => quad
+            .slot
+            .get(attach.id.max(0) as usize)
+            .is_some_and(|cell| filled(cell).is_some()),
+        "keyframe" => quad
+            .keyframe
+            .get(attach.id.max(0) as usize)
+            .is_some_and(|cell| filled(cell).is_some()),
+        "hitbox" => quad
+            .hitbox
+            .get(attach.id.max(0) as usize)
+            .is_some_and(|cell| filled(cell).is_some()),
+        "animation" => quad
+            .animation
+            .get(attach.id.max(0) as usize)
+            .is_some_and(|cell| filled(cell).is_some()),
         _ => false,
     };
     if attach.id < 0 || !filled_at {
-        issues.push(format!("{path}.attach 指向 {}[{}]：不存在", attach.kind, attach.id));
+        issues.push(format!(
+            "{path}.attach 指向 {}[{}]：不存在",
+            attach.kind, attach.id
+        ));
     }
 }
 

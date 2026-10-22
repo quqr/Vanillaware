@@ -68,5 +68,9 @@ fn v55_matches_php_oracle() {
 
     assert!(checked > 0, "没有找到任何 <x>.mbs 与 <x>.mbs.v55 配对");
     eprintln!("比对 {checked} 个文件，{mismatched} 个有差异");
-    assert!(lines.is_empty(), "与 PHP 真值不一致：\n{}", lines.join("\n"));
+    assert!(
+        lines.is_empty(),
+        "与 PHP 真值不一致：\n{}",
+        lines.join("\n")
+    );
 }

@@ -36,7 +36,11 @@ fn decode_and_encode_cost() {
         eprintln!("跳过：目录里没有 .ftx");
         return;
     };
-    eprintln!("样本：{}（{:.1} MB）", path.display(), size as f64 / 1048576.0);
+    eprintln!(
+        "样本：{}（{:.1} MB）",
+        path.display(),
+        size as f64 / 1048576.0
+    );
 
     let t = Instant::now();
     let infos = vw_formats::ftx::probe_file(&path).unwrap();
@@ -52,9 +56,17 @@ fn decode_and_encode_cost() {
 
     let t = Instant::now();
     let thumb = render_thumb_png(&decoded).unwrap();
-    eprintln!("缩略图 PNG：{:?}，{:.0} KB", t.elapsed(), thumb.len() as f64 / 1024.0);
+    eprintln!(
+        "缩略图 PNG：{:?}，{:.0} KB",
+        t.elapsed(),
+        thumb.len() as f64 / 1024.0
+    );
 
     let t = Instant::now();
     let full = render_full_png(&decoded).unwrap();
-    eprintln!("原尺寸 PNG：{:?}，{:.1} MB", t.elapsed(), full.len() as f64 / 1048576.0);
+    eprintln!(
+        "原尺寸 PNG：{:?}，{:.1} MB",
+        t.elapsed(),
+        full.len() as f64 / 1048576.0
+    );
 }

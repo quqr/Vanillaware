@@ -29,7 +29,10 @@ fn probe_matches_decode_for_single_frame_file() {
 
     let all = vw_formats::ftx::decode_file(Path::new(SAMPLE)).expect("decode all");
     assert_eq!(all.len(), infos.len());
-    assert_eq!(all[0].data, frame.data, "decode_frame must equal decode_file()[0]");
+    assert_eq!(
+        all[0].data, frame.data,
+        "decode_frame must equal decode_file()[0]"
+    );
 }
 
 #[test]
@@ -80,7 +83,11 @@ fn probe_frame_count_matches_decode_for_many_files() {
     }
 
     assert!(checked > 0, "no samples checked");
-    assert!(mismatched.is_empty(), "mismatch:\n{}", mismatched.join("\n"));
+    assert!(
+        mismatched.is_empty(),
+        "mismatch:\n{}",
+        mismatched.join("\n")
+    );
 }
 
 /// 深优先序取前 `limit` 个文件，避免测试扫描整个语料。

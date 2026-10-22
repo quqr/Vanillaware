@@ -78,18 +78,78 @@ fn read_uint(bytes: &[u8], big_endian: bool) -> u32 {
 
 /// v72 家族（ps3_odin / ps4_odin / ps4_drag）的分节表。
 const VER72: [Section; 12] = [
-    Section { sp_at: 0x0b0, count_at: 0x54, count_bytes: 2, stride: 0x18 }, // s0
-    Section { sp_at: 0x0b8, count_at: 0x56, count_bytes: 2, stride: 0x30 }, // s1
-    Section { sp_at: 0x0c0, count_at: 0x58, count_bytes: 2, stride: 0x30 }, // s2
-    Section { sp_at: 0x0c8, count_at: 0x5a, count_bytes: 2, stride: 0x50 }, // s3
-    Section { sp_at: 0x0d0, count_at: 0x50, count_bytes: 4, stride: 0x10 }, // s4
-    Section { sp_at: 0x0d8, count_at: 0x5c, count_bytes: 2, stride: 0x08 }, // s5
-    Section { sp_at: 0x0e0, count_at: 0x62, count_bytes: 2, stride: 0x1c }, // s6
-    Section { sp_at: 0x0e8, count_at: 0x5e, count_bytes: 2, stride: 0x24 }, // s7
-    Section { sp_at: 0x0f0, count_at: 0x60, count_bytes: 2, stride: 0x20 }, // s8
-    Section { sp_at: 0x0f8, count_at: 0x64, count_bytes: 2, stride: 0x30 }, // s9
-    Section { sp_at: 0x100, count_at: 0x66, count_bytes: 2, stride: 0x18 }, // sa
-    Section { sp_at: 0x108, count_at: 0x6a, count_bytes: 2, stride: 0x14 }, // sb
+    Section {
+        sp_at: 0x0b0,
+        count_at: 0x54,
+        count_bytes: 2,
+        stride: 0x18,
+    }, // s0
+    Section {
+        sp_at: 0x0b8,
+        count_at: 0x56,
+        count_bytes: 2,
+        stride: 0x30,
+    }, // s1
+    Section {
+        sp_at: 0x0c0,
+        count_at: 0x58,
+        count_bytes: 2,
+        stride: 0x30,
+    }, // s2
+    Section {
+        sp_at: 0x0c8,
+        count_at: 0x5a,
+        count_bytes: 2,
+        stride: 0x50,
+    }, // s3
+    Section {
+        sp_at: 0x0d0,
+        count_at: 0x50,
+        count_bytes: 4,
+        stride: 0x10,
+    }, // s4
+    Section {
+        sp_at: 0x0d8,
+        count_at: 0x5c,
+        count_bytes: 2,
+        stride: 0x08,
+    }, // s5
+    Section {
+        sp_at: 0x0e0,
+        count_at: 0x62,
+        count_bytes: 2,
+        stride: 0x1c,
+    }, // s6
+    Section {
+        sp_at: 0x0e8,
+        count_at: 0x5e,
+        count_bytes: 2,
+        stride: 0x24,
+    }, // s7
+    Section {
+        sp_at: 0x0f0,
+        count_at: 0x60,
+        count_bytes: 2,
+        stride: 0x20,
+    }, // s8
+    Section {
+        sp_at: 0x0f8,
+        count_at: 0x64,
+        count_bytes: 2,
+        stride: 0x30,
+    }, // s9
+    Section {
+        sp_at: 0x100,
+        count_at: 0x66,
+        count_bytes: 2,
+        stride: 0x18,
+    }, // sa
+    Section {
+        sp_at: 0x108,
+        count_at: 0x6a,
+        count_bytes: 2,
+        stride: 0x14,
+    }, // sb
 ];
 
 /// v76 家族（ps4_sent）的分节表。
@@ -97,18 +157,78 @@ const VER72: [Section; 12] = [
 /// 与 [`VER72`] **仅差 s4 的步长**：v72 为 `0x10`，v76 为 `0x14`
 /// （PHP 注释：`ver72 -> ver76: s4 *10 -> *14`）。
 const VER76: [Section; 12] = [
-    Section { sp_at: 0x0b0, count_at: 0x54, count_bytes: 2, stride: 0x18 }, // s0
-    Section { sp_at: 0x0b8, count_at: 0x56, count_bytes: 2, stride: 0x30 }, // s1
-    Section { sp_at: 0x0c0, count_at: 0x58, count_bytes: 2, stride: 0x30 }, // s2
-    Section { sp_at: 0x0c8, count_at: 0x5a, count_bytes: 2, stride: 0x50 }, // s3
-    Section { sp_at: 0x0d0, count_at: 0x50, count_bytes: 4, stride: 0x14 }, // s4
-    Section { sp_at: 0x0d8, count_at: 0x5c, count_bytes: 2, stride: 0x08 }, // s5
-    Section { sp_at: 0x0e0, count_at: 0x62, count_bytes: 2, stride: 0x1c }, // s6
-    Section { sp_at: 0x0e8, count_at: 0x5e, count_bytes: 2, stride: 0x24 }, // s7
-    Section { sp_at: 0x0f0, count_at: 0x60, count_bytes: 2, stride: 0x20 }, // s8
-    Section { sp_at: 0x0f8, count_at: 0x64, count_bytes: 2, stride: 0x30 }, // s9
-    Section { sp_at: 0x100, count_at: 0x66, count_bytes: 2, stride: 0x18 }, // sa
-    Section { sp_at: 0x108, count_at: 0x6a, count_bytes: 2, stride: 0x14 }, // sb
+    Section {
+        sp_at: 0x0b0,
+        count_at: 0x54,
+        count_bytes: 2,
+        stride: 0x18,
+    }, // s0
+    Section {
+        sp_at: 0x0b8,
+        count_at: 0x56,
+        count_bytes: 2,
+        stride: 0x30,
+    }, // s1
+    Section {
+        sp_at: 0x0c0,
+        count_at: 0x58,
+        count_bytes: 2,
+        stride: 0x30,
+    }, // s2
+    Section {
+        sp_at: 0x0c8,
+        count_at: 0x5a,
+        count_bytes: 2,
+        stride: 0x50,
+    }, // s3
+    Section {
+        sp_at: 0x0d0,
+        count_at: 0x50,
+        count_bytes: 4,
+        stride: 0x14,
+    }, // s4
+    Section {
+        sp_at: 0x0d8,
+        count_at: 0x5c,
+        count_bytes: 2,
+        stride: 0x08,
+    }, // s5
+    Section {
+        sp_at: 0x0e0,
+        count_at: 0x62,
+        count_bytes: 2,
+        stride: 0x1c,
+    }, // s6
+    Section {
+        sp_at: 0x0e8,
+        count_at: 0x5e,
+        count_bytes: 2,
+        stride: 0x24,
+    }, // s7
+    Section {
+        sp_at: 0x0f0,
+        count_at: 0x60,
+        count_bytes: 2,
+        stride: 0x20,
+    }, // s8
+    Section {
+        sp_at: 0x0f8,
+        count_at: 0x64,
+        count_bytes: 2,
+        stride: 0x30,
+    }, // s9
+    Section {
+        sp_at: 0x100,
+        count_at: 0x66,
+        count_bytes: 2,
+        stride: 0x18,
+    }, // sa
+    Section {
+        sp_at: 0x108,
+        count_at: 0x6a,
+        count_bytes: 2,
+        stride: 0x14,
+    }, // sb
 ];
 
 /// v77 家族（swi/ps4/ps5/xbx 的 unic、sent、grim）的分节表。
@@ -116,18 +236,78 @@ const VER76: [Section; 12] = [
 /// 与 v76 的差别：s0..s4 的 `count` 加宽为 4 字节，且各 `count_at` 整体后移
 /// （PHP 注释：`ver76 -> ver77: head 0 1 2 3 -> 0+ 1+ 2+ 3+`）。
 const VER77: [Section; 12] = [
-    Section { sp_at: 0x0b0, count_at: 0x54, count_bytes: 4, stride: 0x18 }, // s0
-    Section { sp_at: 0x0b8, count_at: 0x58, count_bytes: 4, stride: 0x30 }, // s1
-    Section { sp_at: 0x0c0, count_at: 0x5c, count_bytes: 4, stride: 0x30 }, // s2
-    Section { sp_at: 0x0c8, count_at: 0x60, count_bytes: 4, stride: 0x50 }, // s3
-    Section { sp_at: 0x0d0, count_at: 0x50, count_bytes: 4, stride: 0x14 }, // s4
-    Section { sp_at: 0x0d8, count_at: 0x64, count_bytes: 2, stride: 0x08 }, // s5
-    Section { sp_at: 0x0e0, count_at: 0x6a, count_bytes: 2, stride: 0x1c }, // s6
-    Section { sp_at: 0x0e8, count_at: 0x66, count_bytes: 2, stride: 0x24 }, // s7
-    Section { sp_at: 0x0f0, count_at: 0x68, count_bytes: 2, stride: 0x20 }, // s8
-    Section { sp_at: 0x0f8, count_at: 0x6c, count_bytes: 2, stride: 0x30 }, // s9
-    Section { sp_at: 0x100, count_at: 0x6e, count_bytes: 2, stride: 0x18 }, // sa
-    Section { sp_at: 0x108, count_at: 0x72, count_bytes: 2, stride: 0x14 }, // sb
+    Section {
+        sp_at: 0x0b0,
+        count_at: 0x54,
+        count_bytes: 4,
+        stride: 0x18,
+    }, // s0
+    Section {
+        sp_at: 0x0b8,
+        count_at: 0x58,
+        count_bytes: 4,
+        stride: 0x30,
+    }, // s1
+    Section {
+        sp_at: 0x0c0,
+        count_at: 0x5c,
+        count_bytes: 4,
+        stride: 0x30,
+    }, // s2
+    Section {
+        sp_at: 0x0c8,
+        count_at: 0x60,
+        count_bytes: 4,
+        stride: 0x50,
+    }, // s3
+    Section {
+        sp_at: 0x0d0,
+        count_at: 0x50,
+        count_bytes: 4,
+        stride: 0x14,
+    }, // s4
+    Section {
+        sp_at: 0x0d8,
+        count_at: 0x64,
+        count_bytes: 2,
+        stride: 0x08,
+    }, // s5
+    Section {
+        sp_at: 0x0e0,
+        count_at: 0x6a,
+        count_bytes: 2,
+        stride: 0x1c,
+    }, // s6
+    Section {
+        sp_at: 0x0e8,
+        count_at: 0x66,
+        count_bytes: 2,
+        stride: 0x24,
+    }, // s7
+    Section {
+        sp_at: 0x0f0,
+        count_at: 0x68,
+        count_bytes: 2,
+        stride: 0x20,
+    }, // s8
+    Section {
+        sp_at: 0x0f8,
+        count_at: 0x6c,
+        count_bytes: 2,
+        stride: 0x30,
+    }, // s9
+    Section {
+        sp_at: 0x100,
+        count_at: 0x6e,
+        count_bytes: 2,
+        stride: 0x18,
+    }, // sa
+    Section {
+        sp_at: 0x108,
+        count_at: 0x72,
+        count_bytes: 2,
+        stride: 0x14,
+    }, // sb
 ];
 
 /// 按平台标签取出档案；不在本轮范围内返回 `None`。
@@ -150,7 +330,14 @@ pub fn lookup(tag: &str) -> Option<Profile> {
         "xbx_unic" => ("xbx_unic", "xbsx unicorn overlord", 2, 0x77, false, VER77),
         _ => return None,
     };
-    Some(Profile { tag: name, id3, kind, version, big_endian, sections })
+    Some(Profile {
+        tag: name,
+        id3,
+        kind,
+        version,
+        big_endian,
+        sections,
+    })
 }
 
 #[cfg(test)]

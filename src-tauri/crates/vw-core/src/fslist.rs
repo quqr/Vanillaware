@@ -64,7 +64,10 @@ pub fn list_dir(dir: &Path) -> Result<DirListingDto, FsError> {
         let file_type = match entry.file_type() {
             Ok(t) => t,
             Err(e) => {
-                push_warning(&mut warnings, format!("读取类型失败 {}: {e}", path.display()));
+                push_warning(
+                    &mut warnings,
+                    format!("读取类型失败 {}: {e}", path.display()),
+                );
                 continue;
             }
         };
@@ -88,7 +91,10 @@ pub fn list_dir(dir: &Path) -> Result<DirListingDto, FsError> {
 
         match entry.metadata() {
             Ok(metadata) => files.push(file_entry(&path, &metadata, format)),
-            Err(e) => push_warning(&mut warnings, format!("读取元信息失败 {}: {e}", path.display())),
+            Err(e) => push_warning(
+                &mut warnings,
+                format!("读取元信息失败 {}: {e}", path.display()),
+            ),
         }
     }
 

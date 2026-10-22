@@ -79,7 +79,10 @@ fn collect_ftx(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             dirs.push(path);
-        } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ftx")) {
+        } else if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("ftx"))
+        {
             out.push(path);
             if out.len() >= 200 {
                 return;

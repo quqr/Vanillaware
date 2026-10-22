@@ -46,7 +46,10 @@ fn png_is_bounded_by_max_edge_and_never_upscales() {
 
     let odd = render_thumb_png(&texture(960, 540, 4)).unwrap();
     let decoded = image::load_from_memory(&odd).unwrap();
-    assert_eq!((decoded.width(), decoded.height()), (edge, edge * 540 / 960));
+    assert_eq!(
+        (decoded.width(), decoded.height()),
+        (edge, edge * 540 / 960)
+    );
 }
 
 #[test]
@@ -109,7 +112,9 @@ fn clear_empties_cache_but_keeps_other_files() {
 
     let source = dir.path().join("A.ftx");
     std::fs::write(&source, [1u8; 8]).unwrap();
-    cache.ensure_png(&source, 0, || Ok(texture(64, 64, 4))).unwrap();
+    cache
+        .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
+        .unwrap();
 
     let settings = dir.path().join("settings.json");
     std::fs::write(&settings, b"{}").unwrap();
@@ -120,5 +125,7 @@ fn clear_empties_cache_but_keeps_other_files() {
     assert!(settings.exists(), "不能误删 app 目录下其他内容");
 
     // 清掉后可重建
-    cache.ensure_png(&source, 0, || Ok(texture(64, 64, 4))).unwrap();
+    cache
+        .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
+        .unwrap();
 }

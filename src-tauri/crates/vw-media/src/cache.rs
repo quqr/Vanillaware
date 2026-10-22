@@ -189,7 +189,12 @@ impl ThumbCache {
     ///
     /// 与 [`Self::ensure_png`] 共用 meta 失效判定，但落在 `full/{index}.png`，
     /// 避免把查看器请求的图也压成缩略图。
-    pub fn ensure_png_full<F>(&self, source: &Path, index: usize, decode_frame: F) -> Result<Vec<u8>>
+    pub fn ensure_png_full<F>(
+        &self,
+        source: &Path,
+        index: usize,
+        decode_frame: F,
+    ) -> Result<Vec<u8>>
     where
         F: FnOnce() -> Result<DecodedTexture>,
     {
@@ -338,4 +343,3 @@ fn walk_stats(root: &Path) -> (u64, u64) {
 
     (entries, bytes)
 }
-

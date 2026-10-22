@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{idtag, matrix};
 use super::v55::{FogQuad, S8Rec, V55};
+use super::{idtag, matrix};
 use crate::{Error, Result};
 
 /// `quadfile::list_add` 的空位：PHP 用整数 `0` 填充，故存的是「占位数字」。
@@ -656,10 +656,10 @@ mod tests {
 
     #[test]
     fn bitflags_turn_into_names() {
-        assert_eq!(bitflag_attr(0x5, "keyattr"), Attribute::Many(vec![
-            "keyattr_1".to_string(),
-            "keyattr_4".to_string(),
-        ]));
+        assert_eq!(
+            bitflag_attr(0x5, "keyattr"),
+            Attribute::Many(vec!["keyattr_1".to_string(), "keyattr_4".to_string(),])
+        );
         assert_eq!(
             bitflag_attr(0x2, "keyattr"),
             Attribute::One("keyattr_2".to_string())

@@ -20,12 +20,13 @@ pub fn render_full_png(texture: &DecodedTexture) -> Result<Vec<u8>> {
         texture.rgba()
     };
 
-    let image_buffer = RgbaImage::from_raw(texture.width, texture.height, buffer).ok_or_else(|| {
-        Error::BadData(format!(
-            "pixel buffer size mismatch: expected {}x{}x4",
-            texture.width, texture.height
-        ))
-    })?;
+    let image_buffer =
+        RgbaImage::from_raw(texture.width, texture.height, buffer).ok_or_else(|| {
+            Error::BadData(format!(
+                "pixel buffer size mismatch: expected {}x{}x4",
+                texture.width, texture.height
+            ))
+        })?;
 
     let mut out = Vec::new();
     DynamicImage::ImageRgba8(image_buffer)
@@ -64,16 +65,17 @@ pub fn render_thumb_png(texture: &DecodedTexture) -> Result<Vec<u8>> {
         let scale = THUMBNAIL_MAX_EDGE as f32 / width.max(height) as f32;
         let target_w = ((width as f32 * scale).round() as u32).max(1);
         let target_h = ((height as f32 * scale).round() as u32).max(1);
-        DynamicImage::ImageRgba8(image::imageops::thumbnail(&image_buffer, target_w, target_h))
+        DynamicImage::ImageRgba8(image::imageops::thumbnail(
+            &image_buffer,
+            target_w,
+            target_h,
+        ))
     };
 
     // 缩略图是滚动时的高频产物：用快速压缩档换编码速度，体积变大无所谓（本地缓存）。
     let mut cursor = std::io::Cursor::new(Vec::new());
-    let encoder = PngEncoder::new_with_quality(
-        &mut cursor,
-        CompressionType::Fast,
-        PngFilterType::NoFilter,
-    );
+    let encoder =
+        PngEncoder::new_with_quality(&mut cursor, CompressionType::Fast, PngFilterType::NoFilter);
     encoder
         .write_image(
             thumb.as_bytes(),

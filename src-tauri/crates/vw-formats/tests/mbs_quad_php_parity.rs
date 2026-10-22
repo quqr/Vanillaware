@@ -71,5 +71,9 @@ fn quad_matches_php_oracle() {
         return;
     }
     eprintln!("比对 {checked} 个文件，{mismatched} 个有差异");
-    assert!(lines.is_empty(), "与 PHP 真值不一致：\n{}", lines.join("\n"));
+    assert!(
+        lines.is_empty(),
+        "与 PHP 真值不一致：\n{}",
+        lines.join("\n")
+    );
 }

@@ -89,7 +89,11 @@ fn atlas_frame_count_matches_png_numbering() {
             eprintln!("  {line}");
         }
     }
-    assert!(lines.is_empty(), "图集下标口径不一致：\n{}", lines.join("\n"));
+    assert!(
+        lines.is_empty(),
+        "图集下标口径不一致：\n{}",
+        lines.join("\n")
+    );
 }
 
 /// `<stem>.<i>.png` → `stem → 个数`。
@@ -99,11 +103,18 @@ fn png_counts(dir: &Path) -> HashMap<String, usize> {
     };
     let mut counts: HashMap<String, usize> = HashMap::new();
     for path in entries.flatten().map(|entry| entry.path()) {
-        let Some(name) = path.file_name().map(|name| name.to_string_lossy().into_owned()) else {
+        let Some(name) = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+        else {
             continue;
         };
-        let Some(rest) = name.strip_suffix(".png") else { continue };
-        let Some((stem, index)) = rest.rsplit_once('.') else { continue };
+        let Some(rest) = name.strip_suffix(".png") else {
+            continue;
+        };
+        let Some((stem, index)) = rest.rsplit_once('.') else {
+            continue;
+        };
         if index.parse::<usize>().is_ok() {
             *counts.entry(stem.to_string()).or_insert(0) += 1;
         }
@@ -112,7 +123,9 @@ fn png_counts(dir: &Path) -> HashMap<String, usize> {
 }
 
 fn collect_mbs(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for path in entries.flatten().map(|entry| entry.path()) {
         if path.is_dir() {
             collect_mbs(&path, out);

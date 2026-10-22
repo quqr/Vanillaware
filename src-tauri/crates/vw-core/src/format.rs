@@ -59,25 +59,97 @@ pub struct Format {
 
 /// 注册表。扩展名小写、不含点。
 pub const FORMATS: &[Format] = &[
-    Format { ext: "ftx", kind: Kind::Texture, label: "FTEX" },
-    Format { ext: "ftp", kind: Kind::Texture, label: "FTEX" },
-    Format { ext: "mbs", kind: Kind::Animation, label: "MBS" },
-    Format { ext: "mbp", kind: Kind::Animation, label: "MBS" },
+    Format {
+        ext: "ftx",
+        kind: Kind::Texture,
+        label: "FTEX",
+    },
+    Format {
+        ext: "ftp",
+        kind: Kind::Texture,
+        label: "FTEX",
+    },
+    Format {
+        ext: "mbs",
+        kind: Kind::Animation,
+        label: "MBS",
+    },
+    Format {
+        ext: "mbp",
+        kind: Kind::Animation,
+        label: "MBS",
+    },
     // 已确认是原生资源、解析器尚未进场的族。
-    Format { ext: "asb", kind: Kind::Binary, label: "ASB" },
-    Format { ext: "nnd", kind: Kind::Binary, label: "NND" },
-    Format { ext: "bbs", kind: Kind::Binary, label: "BBS" },
-    Format { ext: "fms", kind: Kind::Binary, label: "FMS" },
-    Format { ext: "mpd", kind: Kind::Binary, label: "MPD" },
-    Format { ext: "inc", kind: Kind::Binary, label: "INC" },
-    Format { ext: "acb", kind: Kind::Binary, label: "ACB" },
-    Format { ext: "awb", kind: Kind::Binary, label: "AWB" },
-    Format { ext: "cpk", kind: Kind::Binary, label: "CPK" },
-    Format { ext: "drg", kind: Kind::Binary, label: "DRG" },
-    Format { ext: "ufb", kind: Kind::Binary, label: "UFB" },
-    Format { ext: "ucb", kind: Kind::Binary, label: "UCB" },
-    Format { ext: "acf", kind: Kind::Binary, label: "ACF" },
-    Format { ext: "vs2", kind: Kind::Binary, label: "VS2" },
+    Format {
+        ext: "asb",
+        kind: Kind::Binary,
+        label: "ASB",
+    },
+    Format {
+        ext: "nnd",
+        kind: Kind::Binary,
+        label: "NND",
+    },
+    Format {
+        ext: "bbs",
+        kind: Kind::Binary,
+        label: "BBS",
+    },
+    Format {
+        ext: "fms",
+        kind: Kind::Binary,
+        label: "FMS",
+    },
+    Format {
+        ext: "mpd",
+        kind: Kind::Binary,
+        label: "MPD",
+    },
+    Format {
+        ext: "inc",
+        kind: Kind::Binary,
+        label: "INC",
+    },
+    Format {
+        ext: "acb",
+        kind: Kind::Binary,
+        label: "ACB",
+    },
+    Format {
+        ext: "awb",
+        kind: Kind::Binary,
+        label: "AWB",
+    },
+    Format {
+        ext: "cpk",
+        kind: Kind::Binary,
+        label: "CPK",
+    },
+    Format {
+        ext: "drg",
+        kind: Kind::Binary,
+        label: "DRG",
+    },
+    Format {
+        ext: "ufb",
+        kind: Kind::Binary,
+        label: "UFB",
+    },
+    Format {
+        ext: "ucb",
+        kind: Kind::Binary,
+        label: "UCB",
+    },
+    Format {
+        ext: "acf",
+        kind: Kind::Binary,
+        label: "ACF",
+    },
+    Format {
+        ext: "vs2",
+        kind: Kind::Binary,
+        label: "VS2",
+    },
 ];
 
 /// 按扩展名查表；`ext` 大小写不敏感、不含点。
