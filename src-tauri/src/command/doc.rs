@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use tauri::State;
 
-use vw_formats::doc::{AsmDto, DocOpenDto, DocPageDto, PseudoDto, PAGE_LIMIT, PAGE_MAX};
+use vw_formats::doc::{
+    AsmDto, BbsLayoutDto, DocOpenDto, DocPageDto, FmsTextDto, PseudoDto, PAGE_LIMIT, PAGE_MAX,
+};
 
 use crate::state::AppState;
 
@@ -71,6 +73,28 @@ pub async fn doc_asm(path: String, function: Option<u32>) -> Result<AsmDto, Stri
     tokio::task::spawn_blocking(move || {
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
         vw_formats::doc::asb::disassemble_file(&bytes, function.map(|value| value as usize))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+/// BBS 布局：bbox + 物件 + 雾区四边形 + 相机轨迹锚点。
+#[tauri::command]
+pub async fn doc_layout(path: String) -> Result<BbsLayoutDto, String> {
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        Ok(vw_formats::doc::bbs::layout(&bytes))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+/// FMS 文本表：全部字符串 + 编码。
+#[tauri::command]
+pub async fn doc_text(path: String) -> Result<FmsTextDto, String> {
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        Ok(vw_formats::doc::fms::text_table(&bytes))
     })
     .await
     .map_err(|e| format!("join error: {e}"))?

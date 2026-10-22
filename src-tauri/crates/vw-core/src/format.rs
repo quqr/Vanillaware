@@ -127,7 +127,7 @@ pub const FORMATS: &[Format] = &[
         ext: "bbs",
         kind: Kind::Scene,
         label: "BBS",
-        viewers: DOC_HEX,
+        viewers: &["layout", "doc", "hex"],
         has_thumb: false,
     },
     Format {
@@ -155,7 +155,7 @@ pub const FORMATS: &[Format] = &[
         ext: "fms",
         kind: Kind::Text,
         label: "FMS",
-        viewers: DOC_HEX,
+        viewers: &["text", "doc", "hex"],
         has_thumb: false,
     },
     Format {

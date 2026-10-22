@@ -2,6 +2,8 @@
 //!
 //! 入口表在文件内恒为 0（运行期被覆写为指针），所以文档树按字符串池顺序走。
 
+use serde::Serialize;
+
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 use super::text;
@@ -9,6 +11,61 @@ use super::text;
 const HEADER: usize = 0x20;
 const TRAILER: usize = 0x10;
 const MAX_STRINGS: u32 = 4096;
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FmsTextDto {
+    pub encoding: u8,
+    pub count: u32,
+    pub strings: Vec<String>,
+}
+
+/// 文本表：按入口顺序解出全部字符串（供文本查看器搜索/虚拟列表）。
+pub fn text_table(bytes: &[u8]) -> FmsTextDto {
+    if bytes.len() < HEADER {
+        return FmsTextDto {
+            encoding: 0,
+            count: 0,
+            strings: Vec::new(),
+        };
+    }
+    let count = rdr::u32_at(bytes, 0x14).unwrap_or(0);
+    let encoding = bytes[0x18];
+    let mut cursor = HEADER + count as usize * 8;
+    let mut strings = Vec::new();
+
+    for _ in 0..count {
+        if cursor >= bytes.len() {
+            break;
+        }
+        if encoding == 1 {
+            let mut probe = cursor;
+            while probe + 1 < bytes.len() {
+                if bytes[probe] == 0 && bytes[probe + 1] == 0 {
+                    break;
+                }
+                probe += 2;
+            }
+            let end = probe.min(bytes.len());
+            strings.push(text::utf16le(&bytes[cursor..end]));
+            cursor = (end + 2).min(bytes.len());
+        } else {
+            let end = bytes[cursor..]
+                .iter()
+                .position(|&byte| byte == 0)
+                .map(|offset| cursor + offset)
+                .unwrap_or(bytes.len());
+            strings.push(text::utf8_or_sjis(&bytes[cursor..end]));
+            cursor = (end + 1).min(bytes.len());
+        }
+    }
+
+    FmsTextDto {
+        encoding,
+        count,
+        strings,
+    }
+}
 
 pub fn build(bytes: &[u8]) -> DocArena {
     let mut builder = Builder::new();

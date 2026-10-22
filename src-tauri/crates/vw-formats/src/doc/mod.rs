@@ -27,6 +27,8 @@ pub use arena::{
     MAX_DEPTH, MAX_NODES, MAX_STRING, PAGE_LIMIT, PAGE_MAX,
 };
 pub use asb::{AsmDto, PseudoDto};
+pub use bbs::BbsLayoutDto;
+pub use fms::FmsTextDto;
 
 use crate::Result;
 

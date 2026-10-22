@@ -167,6 +167,52 @@ export interface Pseudo {
   text: string;
 }
 
+// ─── BBS 布局 ───────────────────────────────────────
+
+export interface BbsObject {
+  mbs: number;
+  ftx: number;
+  kind: number;
+  group: number;
+  pos: [number, number, number];
+  rot: number;
+  scale: [number, number];
+  color: number;
+  id: number;
+}
+
+export interface BbsZone {
+  id: number;
+  quad: [[number, number], [number, number], [number, number], [number, number]];
+  dist: number;
+}
+
+export interface BbsRoute {
+  slot: number;
+  local: number;
+  pos: [number, number, number];
+  kind: number;
+  next: number;
+}
+
+export interface BbsLayout {
+  bbox: [number, number, number, number];
+  counts: number[];
+  mbsNames: string[];
+  ftxNames: string[];
+  objects: BbsObject[];
+  zones: BbsZone[];
+  routes: BbsRoute[];
+}
+
+// ─── FMS 文本表 ─────────────────────────────────────
+
+export interface FmsText {
+  encoding: number;
+  count: number;
+  strings: string[];
+}
+
 // ─── 索引 ───────────────────────────────────────────
 
 export interface IndexedFile {
@@ -306,6 +352,8 @@ export const api = {
   docAsm: (path: string, fn?: number) => invoke<Asm>("doc_asm", { path, function: fn }),
   docPseudo: (path: string, fn?: number) =>
     invoke<Pseudo>("doc_pseudo", { path, function: fn }),
+  docLayout: (path: string) => invoke<BbsLayout>("doc_layout", { path }),
+  docText: (path: string) => invoke<FmsText>("doc_text", { path }),
   fileMeta: (path: string) => invoke<FileMeta>("file_meta", { path }),
   fileThumb: (path: string) => invoke<ArrayBuffer>("file_thumb", { path }),
   readFileHead: (path: string, maxBytes: number) =>

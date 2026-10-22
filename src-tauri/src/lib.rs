@@ -38,6 +38,8 @@ pub fn run() {
             command::doc::doc_children,
             command::doc::doc_asm,
             command::doc::doc_pseudo,
+            command::doc::doc_layout,
+            command::doc::doc_text,
             command::library::file_meta,
             command::library::file_thumb,
             command::library::read_file_head,

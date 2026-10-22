@@ -2,12 +2,140 @@
 //!
 //! 依据 `uo_bbs.py`：头 0x338 + 9 个段偏移 + 名表/档位/物件/rec4..7/尾部表。
 
+use serde::Serialize;
+
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 
 const OFFSETS_AT: usize = 0x338;
 const SEGMENTS_AT: usize = 0x380;
 const MAX_RECORDS: u32 = 4096;
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BbsObjectDto {
+    pub mbs: u32,
+    pub ftx: u32,
+    pub kind: u32,
+    pub group: u32,
+    pub pos: [f32; 3],
+    pub rot: f32,
+    pub scale: [f32; 2],
+    pub color: u32,
+    pub id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BbsZoneDto {
+    pub id: u32,
+    pub quad: [[f32; 2]; 4],
+    pub dist: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BbsRouteDto {
+    pub slot: u16,
+    pub local: u16,
+    pub pos: [f32; 3],
+    pub kind: u32,
+    pub next: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BbsLayoutDto {
+    pub bbox: [f32; 4],
+    pub counts: [u32; 8],
+    pub mbs_names: Vec<String>,
+    pub ftx_names: Vec<String>,
+    pub objects: Vec<BbsObjectDto>,
+    pub zones: Vec<BbsZoneDto>,
+    pub routes: Vec<BbsRouteDto>,
+}
+
+/// 布局查看器的类型化投影（不做文档树的节点开销）。
+pub fn layout(bytes: &[u8]) -> BbsLayoutDto {
+    let counts = if bytes.len() >= SEGMENTS_AT {
+        read_counts(bytes)
+    } else {
+        [0; 8]
+    };
+    let offsets = if bytes.len() >= SEGMENTS_AT {
+        read_offsets(bytes)
+    } else {
+        [0; 9]
+    };
+    let bbox = std::array::from_fn(|index| raw_f32(bytes, 0x40 + index * 4));
+
+    let mbs_names = names(bytes, offsets[0], counts[0]);
+    let ftx_names = names(bytes, offsets[1], counts[1]);
+
+    let mut objects = Vec::new();
+    for index in 0..counts[3].min(MAX_RECORDS) {
+        let at = offsets[3] as usize + index as usize * 0x48;
+        if at + 0x48 > bytes.len() {
+            break;
+        }
+        objects.push(BbsObjectDto {
+            mbs: rdr::u16_at(bytes, at).unwrap_or(0) as u32,
+            ftx: rdr::u16_at(bytes, at + 2).unwrap_or(0) as u32,
+            kind: rdr::u16_at(bytes, at + 4).unwrap_or(0) as u32,
+            group: rdr::u16_at(bytes, at + 6).unwrap_or(0) as u32,
+            pos: [raw_f32(bytes, at + 8), raw_f32(bytes, at + 12), raw_f32(bytes, at + 16)],
+            rot: raw_f32(bytes, at + 0x1c),
+            scale: [raw_f32(bytes, at + 0x20), raw_f32(bytes, at + 0x24)],
+            color: rdr::u32_at(bytes, at + 0x2c).unwrap_or(0),
+            id: rdr::u32_at(bytes, at + 0x44).unwrap_or(0),
+        });
+    }
+
+    let mut zones = Vec::new();
+    for index in 0..counts[4].min(MAX_RECORDS) {
+        let at = offsets[4] as usize + index as usize * 0x6c;
+        if at + 0x6c > bytes.len() {
+            break;
+        }
+        let mut quad = [[0.0f32; 2]; 4];
+        for (corner, point) in quad.iter_mut().enumerate() {
+            *point = [
+                raw_f32(bytes, at + 4 + corner * 8),
+                raw_f32(bytes, at + 8 + corner * 8),
+            ];
+        }
+        zones.push(BbsZoneDto {
+            id: rdr::u32_at(bytes, at).unwrap_or(0),
+            quad,
+            dist: raw_f32(bytes, at + 0x68),
+        });
+    }
+
+    let mut routes = Vec::new();
+    for index in 0..counts[6].min(MAX_RECORDS) {
+        let at = offsets[6] as usize + index as usize * 0x18;
+        if at + 0x18 > bytes.len() {
+            break;
+        }
+        routes.push(BbsRouteDto {
+            slot: rdr::u16_at(bytes, at).unwrap_or(0),
+            local: rdr::u16_at(bytes, at + 2).unwrap_or(0),
+            pos: [raw_f32(bytes, at + 4), raw_f32(bytes, at + 8), raw_f32(bytes, at + 12)],
+            kind: rdr::u32_at(bytes, at + 0x10).unwrap_or(0),
+            next: rdr::u32_at(bytes, at + 0x14).unwrap_or(0),
+        });
+    }
+
+    BbsLayoutDto {
+        bbox,
+        counts,
+        mbs_names,
+        ftx_names,
+        objects,
+        zones,
+        routes,
+    }
+}
 
 pub fn build(bytes: &[u8]) -> DocArena {
     let mut builder = Builder::new();
@@ -298,6 +426,20 @@ fn build_rec7(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     if count > MAX_RECORDS {
         builder.truncate();
     }
+}
+
+fn names(bytes: &[u8], offset: u64, count: u32) -> Vec<String> {
+    let mut out = Vec::new();
+    for index in 0..count.min(MAX_RECORDS) {
+        let at = offset as usize + index as usize * 32;
+        let Some(raw) = bytes.get(at..at + 32) else { break };
+        out.push(slot_utf8(raw));
+    }
+    out
+}
+
+fn raw_f32(bytes: &[u8], at: usize) -> f32 {
+    rdr::f32_at(bytes, at).unwrap_or(0.0)
 }
 
 fn slot_utf8(raw: &[u8]) -> String {
