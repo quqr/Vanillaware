@@ -1,4 +1,4 @@
-# ksc 生成器：把 spec/ksy/*.ksy 全部生成到 crates/vw-gen/src/gen/，并重写 gen/mod.rs。
+# ksc 生成器：把 spec/ksy/*.ksy 全部生成到 src-tauri/crates/vw-gen/src/gen/，并重写 gen/mod.rs。
 # 用法：python tools/ksc_gen.py（仓库根目录下运行）
 # 生成物禁止手改，要改解析行为请改 .ksy。
 import subprocess
@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KSC = ROOT / "kaitai-struct-compiler-0.11" / "bin" / "kaitai-struct-compiler.bat"
 KSY_DIR = ROOT / "spec" / "ksy"
-OUT_DIR = ROOT / "crates" / "vw-gen" / "src" / "gen"
+OUT_DIR = ROOT / "src-tauri" / "crates" / "vw-gen" / "src" / "gen"
 HEADER = "// 由 ksc 生成，禁止手改。新增 .ksy 后运行 `python tools/ksc_gen.py` 重新生成本文件。\n"
 
 

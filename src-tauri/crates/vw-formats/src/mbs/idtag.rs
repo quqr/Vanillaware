@@ -21,16 +21,25 @@ use serde_json::Value;
 /// 内嵌的 idtag 原文（抄自 `rip-vanillaware/idtag/`，逐字节一致）：`(文件名, 内容)`。
 /// 文件名带年份前缀，按 PHP 的 `.*<游戏名>.*\.txt$`（大小写不敏感）做子串匹配。
 const FILES: [(&str, &str); 5] = [
-    ("2007 odin sphere.txt", include_str!("../../../../spec/idtag/2007 odin sphere.txt")),
+    (
+        "2007 odin sphere.txt",
+        include_str!("../../../../../spec/idtag/2007 odin sphere.txt"),
+    ),
     (
         "2007 grim grimoire.txt",
-        include_str!("../../../../spec/idtag/2007 grim grimoire.txt"),
+        include_str!("../../../../../spec/idtag/2007 grim grimoire.txt"),
     ),
-    ("2013 dragon crown.txt", include_str!("../../../../spec/idtag/2013 dragon crown.txt")),
-    ("2019 13 sentinels.txt", include_str!("../../../../spec/idtag/2019 13 sentinels.txt")),
+    (
+        "2013 dragon crown.txt",
+        include_str!("../../../../../spec/idtag/2013 dragon crown.txt"),
+    ),
+    (
+        "2019 13 sentinels.txt",
+        include_str!("../../../../../spec/idtag/2019 13 sentinels.txt"),
+    ),
     (
         "2024 unicorn overlord.txt",
-        include_str!("../../../../spec/idtag/2024 unicorn overlord.txt"),
+        include_str!("../../../../../spec/idtag/2024 unicorn overlord.txt"),
     ),
 ];
 
@@ -175,7 +184,10 @@ mod tests {
             root["Copyright"],
             json!(["2007 VANILLAWARE Ltd.", "NIPPON ICHI SOFTWARE INC."])
         );
-        assert_eq!(root["Credit"]["Character Designers"], json!(["Kouichi Maenou", "George Kamitani"]));
+        assert_eq!(
+            root["Credit"]["Character Designers"],
+            json!(["Kouichi Maenou", "George Kamitani"])
+        );
         assert_eq!(root["comment"], json!([]));
     }
 
@@ -183,10 +195,7 @@ mod tests {
     #[test]
     fn punctuation_inside_values() {
         let tag = lookup("13 sentinels").expect("13 sentinels");
-        assert_eq!(
-            tag["tag"]["Game"]["ps4"],
-            json!("13 Sentinels: Aegis Rim")
-        );
+        assert_eq!(tag["tag"]["Game"]["ps4"], json!("13 Sentinels: Aegis Rim"));
         let dragon = lookup("dragon crown").expect("dragon crown");
         assert_eq!(dragon["tag"]["Game"]["vita"], json!("Dragon's Crown"));
     }

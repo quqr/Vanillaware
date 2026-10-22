@@ -1,12 +1,12 @@
 # ADR-0012：库重构为「目录树 + 文件条目 + 查看器」，配对降为派生关联
 
 - **状态**：已接受（2026-10-21）
-- **影响范围**：`crates/vw-core`（扫描层）、`src-tauri`（命令层与状态）、`src/views`、`src/components`、`src/store`
+- **影响范围**：`src-tauri/crates/vw-core`（扫描层）、`src-tauri`（命令层与状态）、`src/views`、`src/components`、`src/store`
 - **取代**：ADR-0001（资产单元配对）全部；ADR-0008（三视图）中「库视图沿用资产网格」与「全局三视图路由」部分
 
 ## 背景
 
-库当前的主对象是**资产单元**：`crates/vw-core/src/scan.rs` 的 `side_of()` 只认 `.ftx/.ftp` 与 `.mbs/.mbp`，
+库当前的主对象是**资产单元**：`src-tauri/crates/vw-core/src/scan.rs` 的 `side_of()` 只认 `.ftx/.ftp` 与 `.mbs/.mbp`，
 其他文件在扫描阶段直接丢弃；命中项再按 `(目录, 基础名)` 归并成 `AssetUnit`，前端「一个单元一张卡」。
 
 真实语料（`UNICORN OVERLORD\extract`，10,234 文件 / 63 目录 / 41GB）里还有 `.nnd`(302)、`.bbs`(152)、

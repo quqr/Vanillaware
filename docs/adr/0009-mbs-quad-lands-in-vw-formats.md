@@ -1,7 +1,7 @@
 # ADR-0009：MBS / V55 / Quad 代码并入 `vw-formats` 的 `mbs` 模块
 
 - **状态**：已接受（2026-10-20）
-- **影响范围**：`crates/vw-formats`、`crates/vw-core`、Tauri 命令层
+- **影响范围**：`src-tauri/crates/vw-formats`、`src-tauri/crates/vw-core`、Tauri 命令层
 
 ## 背景
 

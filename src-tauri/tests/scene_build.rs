@@ -12,7 +12,7 @@
 
 use std::path::PathBuf;
 
-use vanillaware_lib::scene;
+use vanillaware_lib::service::scene;
 
 #[test]
 fn scene_references_are_closed() {
@@ -37,10 +37,18 @@ fn scene_references_are_closed() {
     for animation in &dto.animations {
         for frame in &animation.frames {
             frames += 1;
-            let Some(attach) = &frame.attach else { continue };
+            let Some(attach) = &frame.attach else {
+                continue;
+            };
             let filled = match attach.kind.as_str() {
-                "keyframe" | "slot" => dto.keyframe.get(attach.id as usize).is_some_and(Option::is_some),
-                "hitbox" => dto.hitbox.get(attach.id as usize).is_some_and(Option::is_some),
+                "keyframe" | "slot" => dto
+                    .keyframe
+                    .get(attach.id as usize)
+                    .is_some_and(Option::is_some),
+                "hitbox" => dto
+                    .hitbox
+                    .get(attach.id as usize)
+                    .is_some_and(Option::is_some),
                 other => panic!("未知的 attach 类型：{other}"),
             };
             assert!(filled, "{} 指向不存在的帧", attach.kind);

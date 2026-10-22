@@ -1,8 +1,17 @@
-//! Tauri 入口：注册插件、命令，并把缩略图缓存指向 app cache 目录。
+//! Tauri 入口：装配插件、命令与共享状态。
+//!
+//! 分层约定：
+//! - [`command`]：命令薄层（参数 → 阻塞任务 → DTO）；
+//! - [`service`]：业务逻辑（解析、索引、缓存句柄），不依赖命令宏；
+//! - [`model`]：跨进程数据结构；
+//! - [`config`]：路径与可调参数；
+//! - [`state`]：把上述服务装进 Tauri 托管的 `AppState`。
 
-mod commands;
-pub mod scene;
-mod state;
+pub mod command;
+pub mod config;
+pub mod model;
+pub mod service;
+pub mod state;
 
 use tauri::Manager;
 
@@ -14,7 +23,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let cache_root = app.path().app_cache_dir()?.join("thumbs").join("v1");
+            let cache_root = config::cache_root(app.handle())?;
             std::fs::create_dir_all(&cache_root)?;
             eprintln!("[vanillaware] thumbnail cache: {}", cache_root.display());
 
@@ -22,22 +31,22 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::list_dir,
-            commands::file_meta,
-            commands::file_thumb,
-            commands::read_file_head,
-            commands::start_index,
-            commands::index_status,
-            commands::search_files,
-            commands::list_frames,
-            commands::get_thumb_png,
-            commands::get_frame_png,
-            commands::preview_scene,
-            commands::get_atlas_png,
-            commands::convert_mbs,
-            commands::export_quad,
-            commands::get_cache_info,
-            commands::clear_thumb_cache,
+            command::library::list_dir,
+            command::library::file_meta,
+            command::library::file_thumb,
+            command::library::read_file_head,
+            command::index::start_index,
+            command::index::index_status,
+            command::index::search_files,
+            command::texture::list_frames,
+            command::texture::get_thumb_png,
+            command::texture::get_frame_png,
+            command::texture::get_atlas_png,
+            command::animation::preview_scene,
+            command::animation::convert_mbs,
+            command::animation::export_quad,
+            command::cache::get_cache_info,
+            command::cache::clear_thumb_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

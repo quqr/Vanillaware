@@ -1,7 +1,7 @@
 # ADR-0005：`vw_mbs_v77.ksy` 用 instances + params 表驱动建模分节表
 
 - **状态**：已接受（2026-10-20）
-- **影响范围**：`spec/ksy/vw_mbs_v77.ksy`、`crates/vw-gen` 生成物、`crates/vw-formats/src/mbs` 解析层
+- **影响范围**：`spec/ksy/vw_mbs_v77.ksy`、`src-tauri/crates/vw-gen` 生成物、`src-tauri/crates/vw-formats/src/mbs` 解析层
 
 ## 背景
 

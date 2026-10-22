@@ -1,7 +1,7 @@
 # ADR-0013：格式能力由后端注册表声明，前端只按查看器 id 路由
 
 - **状态**：已接受（2026-10-21）
-- **影响范围**：`crates/vw-core`（新 `format` 模块）、`src-tauri`（DTO 增字段）、`src/lib/ipc.ts`、`src/components/viewers`
+- **影响范围**：`src-tauri/crates/vw-core`（新 `format` 模块）、`src-tauri`（DTO 增字段）、`src/lib/ipc.ts`、`src/components/viewers`
 
 ## 背景
 

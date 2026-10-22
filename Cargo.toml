@@ -2,10 +2,10 @@
 resolver = "2"
 members = [
   "src-tauri",
-  "crates/vw-gen",
-  "crates/vw-formats",
-  "crates/vw-core",
-  "crates/vw-media",
+  "src-tauri/crates/vw-gen",
+  "src-tauri/crates/vw-formats",
+  "src-tauri/crates/vw-core",
+  "src-tauri/crates/vw-media",
 ]
 # 不是 crate：ksc 预编译分发包 / kaitai runtime 作为 path 依赖（非成员）
 exclude = ["kaitai-struct-compiler-0.11", "vendor/kaitai"]

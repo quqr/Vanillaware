@@ -1,7 +1,7 @@
 # ADR-0015：预览与浏览的性能预算与三级缓存
 
 - **状态**：已接受（2026-10-22）
-- **影响范围**：`Cargo.toml`（profile）、`crates/vw-media`、`crates/vw-core`、`src-tauri/src/{state,commands}.rs`、`src/lib/{thumbCache,pixiScene}.ts`、`src/components/{viewers,library}`
+- **影响范围**：`Cargo.toml`（profile）、`src-tauri/crates/vw-media`、`src-tauri/crates/vw-core`、`src-tauri/src/{state,config}.rs`、`src-tauri/src/command/*`、`src-tauri/src/service/*`、`src/lib/{thumbCache,pixiScene}.ts`、`src/components/{viewers,library}`
 
 ## 背景
 

@@ -1,7 +1,7 @@
 # ADR-0014：目录读取懒加载，全局搜索走纯内存索引
 
 - **状态**：已接受（2026-10-21）
-- **影响范围**：`crates/vw-core`（新 `fslist` / `index`）、`src-tauri`（后台线程与状态）、`src/store/libraryStore.ts`
+- **影响范围**：`src-tauri/crates/vw-core`（新 `fslist` / `index`）、`src-tauri`（后台线程与状态）、`src/store/libraryStore.ts`
 
 ## 背景
 
