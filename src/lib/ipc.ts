@@ -4,8 +4,41 @@ import { invoke } from "@tauri-apps/api/core";
 
 // ─── 库：目录与文件 ─────────────────────────────────
 
-/** 资源类别。只列原生游戏二进制资源的类别。 */
-export type Kind = "texture" | "animation" | "binary";
+/** 资源类别（粗分类，只用于图标与分组）。 */
+export type Kind =
+  | "texture"
+  | "animation"
+  | "scene"
+  | "model"
+  | "script"
+  | "text"
+  | "list"
+  | "grid"
+  | "binary";
+
+/** 已知游戏档案。 */
+export type GameId = "unicorn_overlord" | "thirteen_sentinels" | "unknown";
+
+/** 游戏档案嗅探结果。 */
+export interface GameProfile {
+  id: GameId;
+  label: string;
+  /** 默认 mbs 平台标签；null 表示不改动当前选择。 */
+  mbsTag: string | null;
+  confidence: number;
+  evidence: string[];
+}
+
+/** 注册表里的一条格式声明。 */
+export interface FormatInfo {
+  ext: string;
+  kind: Kind;
+  kindLabel: string;
+  label: string;
+  icon: string;
+  viewers: string[];
+  hasThumb: boolean;
+}
 
 /** 一个子目录。 */
 export interface DirEntry {
@@ -54,13 +87,68 @@ export interface FileMeta {
   related: RelatedFile[];
 }
 
+// ─── 文档树 ─────────────────────────────────────────
+
+export type DocNodeKind = "root" | "struct" | "array" | "field" | "bytes" | "text" | "opaque";
+export type DocMark = "note" | "warn" | "error";
+
+export interface DocNode {
+  id: number;
+  parent: number | null;
+  key: string | null;
+  name: string;
+  kind: DocNodeKind;
+  value: string | null;
+  offset: number | null;
+  len: number | null;
+  mark: DocMark | null;
+  childCount: number;
+}
+
+export interface DocCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  detail: string | null;
+}
+
+export interface Doc {
+  handle: number;
+  path: string;
+  ext: string;
+  label: string;
+  size: number;
+  totalNodes: number;
+  buildMs: number;
+  complete: boolean;
+  truncated: boolean;
+  checks: DocCheck[];
+  warnings: string[];
+  root: number;
+}
+
+export interface DocPage {
+  handle: number;
+  node: number;
+  offset: number;
+  total: number;
+  items: DocNode[];
+}
+
+export interface DocOpen {
+  doc: Doc;
+  page: DocPage;
+}
+
 // ─── 索引 ───────────────────────────────────────────
 
 export interface IndexedFile {
   path: string;
   name: string;
+  ext: string;
   kind: Kind;
   label: string;
+  icon: string;
   viewers: string[];
 }
 
@@ -183,6 +271,11 @@ export interface ConvertResult {
 
 export const api = {
   listDir: (path: string) => invoke<DirListing>("list_dir", { path }),
+  listFormats: () => invoke<FormatInfo[]>("list_formats"),
+  detectProfile: (root: string) => invoke<GameProfile>("detect_profile", { root }),
+  openDoc: (path: string, tag?: string) => invoke<DocOpen>("open_doc", { path, tag }),
+  docChildren: (handle: number, node: number, offset?: number, limit?: number) =>
+    invoke<DocPage>("doc_children", { handle, node, offset, limit }),
   fileMeta: (path: string) => invoke<FileMeta>("file_meta", { path }),
   fileThumb: (path: string) => invoke<ArrayBuffer>("file_thumb", { path }),
   readFileHead: (path: string, maxBytes: number) =>

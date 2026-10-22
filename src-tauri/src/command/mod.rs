@@ -5,6 +5,7 @@
 
 pub mod animation;
 pub mod cache;
+pub mod doc;
 pub mod index;
 pub mod library;
 pub mod texture;

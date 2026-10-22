@@ -16,8 +16,9 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | **文件条目 / File Entry** | 库里的最小展示单位：磁盘上的一个真实文件。以绝对路径为键。 | The smallest unit shown in the library: one real file on disk, keyed by absolute path. |
 | **目录列表 / Directory Listing** | 某个目录的即时读取结果，含子目录与文件条目。列表以此为准，索引不能替代它。 | The live read of one directory: child dirs plus file entries. Listings are authoritative; the index never replaces them. |
 | **格式描述符 / Format Descriptor** | 一种文件格式的能力声明：类别、图标、可用查看器、有无缩略图。后端是唯一真值。 | Capability declaration for a file format: kind, icon, available viewers, thumbnail support. Backend is the single source of truth. |
-| **类别 / Kind** | 格式的粗分类，**只含原生游戏二进制资源**：纹理、动画、二进制（已确认是原生资源但尚无解析器）。图片与文本不属于本工具的收录范围。 | Coarse class of **native game binary resources only**: texture, animation, binary (native but no parser yet). Images and text are out of scope. |
-| **查看器 / Viewer** | 针对某类别打开的呈现组件。同一文件可挂多个查看器（如动画的「播放」与「结构」）。 | A presentation component opened for a kind. One file may have several viewers. |
+| **类别 / Kind** | 格式的粗分类，**只含原生游戏二进制资源**：纹理、动画、场景、模型、脚本、文本、列表、网格、二进制。图片与文本文件不属于本工具的收录范围；扩展名级差异由「格式」声明。 | Coarse class of **native game binary resources only**: texture, animation, scene, model, script, text, list, grid, binary. Image and text files are out of scope; extension-level differences live in Format. |
+| **格式 / Format** | 扩展名级的能力声明：`ext / kind / label / viewers / has_thumb`。查看器与缩略图能力跟随格式，不跟随类别。见 ADR-0018。 | Extension-level capability declaration: `ext / kind / label / viewers / has_thumb`. Viewer and thumbnail capabilities follow the format, not the kind. See ADR-0018. |
+| **查看器 / Viewer** | 针对某格式打开的呈现组件。同一文件可挂多个查看器（如动画的「播放」「结构」与「十六进制」）。 | A presentation component opened for a format. One file may have several viewers (e.g. animation playback, structure, hex). |
 | **关联文件 / Related Files** | 同目录下同基础名的其他文件（如 `.mbs` 与 `.ftx`）。派生关系，不决定列表分组，也不决定可见性。 | Other files in the same directory sharing a base name. A derived relation — it neither groups the list nor decides visibility. |
 | **目录索引 / Directory Index** | 打开根目录后由后台建立的元信息快照，只服务全局搜索；不做缩略图、不做解码。 | A metadata snapshot built in the background after opening a root. Serves global search only: no thumbnails, no decoding. |
 | **缩略图 / Thumbnail** | 列表与网格用的降采样图（最长边 128px），只为「认出是哪一个」服务，不用于采样。 | Downscaled image for list/grid (128px longest edge). For recognition only, never sampled. |
@@ -76,6 +77,9 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | **真值 / Golden** | 由 PHP 权威工具跑出的产物，用作逐字段比对基准。 | Artifacts produced by the authoritative PHP tool, used as byte/field comparison baselines. |
 | **结构等价 / Structural equivalence** | JSON 校验判据：递归比较键值，忽略键序与空白，容忍缺省键差异。见 ADR-0006。 | The JSON verification predicate: recursive key/value comparison ignoring key order and whitespace. |
 | **自洽性检查 / Consistency check** | 无 golden 平台（v76/v72）的校验强度：解析不崩 + 索引/尺寸/引用不变量成立。见 ADR-0006。 | Verification strength for platforms without golden: parse must not fail, and index/size/reference invariants must hold. |
+| **文档树 / Document Tree** | 把任意格式投影成同一套扁平 arena 节点；前端按节点 id 分页展开，不一次性传输整棵树。见 ADR-0018。 | A flat arena projection of any format; the front end expands nodes by id in pages instead of receiving the whole tree at once. See ADR-0018. |
+| **文档句柄 / Doc Handle** | 文档缓存的 `u64` 标识；缓存淘汰后失效，调用方必须重新打开。 | A `u64` identifier for a cached document; invalid after eviction, so callers must reopen. |
+| **游戏档案 / Game Profile** | 由目录名嗅探得到的游戏身份，只决定默认 mbs tag 与优先查看器，不参与可见性。 | Game identity inferred from directory names; only supplies a default mbs tag and preferred viewers, never visibility. |
 
 ## 界面层 / UI layer
 

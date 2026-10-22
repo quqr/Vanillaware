@@ -61,11 +61,11 @@ fn kind_and_viewers_come_from_the_registry() {
     let mbs = listing.files.iter().find(|f| f.ext == "mbs").unwrap();
 
     assert_eq!(ftx.kind, Kind::Texture);
-    assert_eq!(ftx.viewers, ["atlas"]);
+    assert_eq!(ftx.viewers, ["atlas", "doc", "hex"]);
     assert!(ftx.has_thumb);
 
     assert_eq!(mbs.kind, Kind::Animation);
-    assert_eq!(mbs.viewers, ["animation"]);
+    assert_eq!(mbs.viewers, ["animation", "doc", "hex"]);
     assert!(!mbs.has_thumb);
 }
 

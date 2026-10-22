@@ -12,7 +12,7 @@ use vw_core::{IndexEntry, IndexStatusDto};
 use vw_media::ThumbCache;
 
 use crate::config;
-use crate::service::{IndexService, ParseCache};
+use crate::service::{DocCache, IndexService, ParseCache};
 
 pub struct AppState {
     /// 缩略图与帧图的磁盘缓存。
@@ -21,8 +21,11 @@ pub struct AppState {
     pub decode_sem: Arc<Semaphore>,
     /// 同一文件的并发请求合并（probe 与解码共用同一把锁，避免写坏 meta）。
     pub inflight: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
+    /// 文档树构建的并发闸门（与像素解码隔离）。
+    pub doc_sem: Arc<Semaphore>,
     index: IndexService,
     parse: ParseCache,
+    doc: DocCache,
 }
 
 impl AppState {
@@ -30,15 +33,22 @@ impl AppState {
         Self {
             cache: Arc::new(ThumbCache::new(cache_root)),
             decode_sem: Arc::new(Semaphore::new(config::DECODE_PERMITS)),
+            doc_sem: Arc::new(Semaphore::new(config::DOC_PERMITS)),
             inflight: Arc::new(Mutex::new(HashMap::new())),
             index: IndexService::new(),
             parse: ParseCache::new(),
+            doc: DocCache::new(),
         }
     }
 
     /// 解析缓存句柄（可移进阻塞线程）。
     pub fn parse_cache(&self) -> ParseCache {
         self.parse.clone()
+    }
+
+    /// 文档树缓存句柄。
+    pub fn doc_cache(&self) -> DocCache {
+        self.doc.clone()
     }
 
     pub fn index_status(&self) -> IndexStatusDto {

@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLibraryStore } from "../store/libraryStore";
+import { PROFILE_PRESETS, useAppStore } from "../store/appStore";
+import { api } from "../lib/ipc";
 import { Toolbar } from "../components/library/Toolbar";
 import { DirectoryTree } from "../components/library/DirectoryTree";
 import { FileList } from "../components/library/FileList";
@@ -14,6 +16,34 @@ const VIEWER_MAX = 900;
 /** 库视图：目录树 | 文件列表/网格 | 查看器，三栏可拖拽（ADR-0012）。 */
 export function LibraryView() {
   const viewMode = useLibraryStore((s) => s.viewMode);
+  const root = useLibraryStore((s) => s.root);
+  const loadFormats = useLibraryStore((s) => s.loadFormats);
+  const profileMode = useAppStore((s) => s.profileMode);
+  const setProfile = useAppStore((s) => s.setProfile);
+
+  useEffect(() => {
+    void loadFormats();
+  }, [loadFormats]);
+
+  useEffect(() => {
+    if (!root) return;
+    let alive = true;
+
+    if (profileMode === "auto") {
+      void api
+        .detectProfile(root)
+        .then((profile) => {
+          if (alive) setProfile(profile);
+        })
+        .catch(() => undefined);
+    } else {
+      setProfile(PROFILE_PRESETS[profileMode]);
+    }
+
+    return () => {
+      alive = false;
+    };
+  }, [root, profileMode, setProfile]);
 
   const [treeOpen, setTreeOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(true);

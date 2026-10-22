@@ -5,7 +5,34 @@
 
 use serde::Serialize;
 
-use crate::format::Kind;
+use crate::format::{Format, Kind};
+
+/// 注册表里的一条格式声明（工具栏过滤项的唯一真值）。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatDto {
+    pub ext: &'static str,
+    pub kind: Kind,
+    pub kind_label: &'static str,
+    pub label: &'static str,
+    pub icon: &'static str,
+    pub viewers: &'static [&'static str],
+    pub has_thumb: bool,
+}
+
+impl From<&Format> for FormatDto {
+    fn from(format: &Format) -> Self {
+        Self {
+            ext: format.ext,
+            kind: format.kind,
+            kind_label: format.kind.label(),
+            label: format.label,
+            icon: format.kind.icon(),
+            viewers: format.viewers,
+            has_thumb: format.has_thumb,
+        }
+    }
+}
 
 /// 一个子目录。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -81,9 +108,12 @@ pub struct RelatedFileDto {
 pub struct IndexedFileDto {
     pub path: String,
     pub name: String,
+    /// 小写、不含点。
+    pub ext: String,
     pub kind: Kind,
     pub label: &'static str,
-    /// 可用查看器 id（由类别决定，索引期就能确定）。
+    pub icon: &'static str,
+    /// 可用查看器 id（由格式决定，索引期就能确定）。
     pub viewers: &'static [&'static str],
 }
 

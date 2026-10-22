@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use walkdir::WalkDir;
 
 use crate::dto::{IndexedFileDto, SearchResultDto};
-use crate::format::{self, Kind};
+use crate::format::{self, Format};
 use crate::fslist::{self, FsError};
 
 /// 搜索结果的默认上限。
@@ -24,8 +24,7 @@ pub struct IndexEntry {
     pub path: String,
     pub name: String,
     needle: String,
-    pub kind: Kind,
-    pub label: &'static str,
+    pub format: &'static Format,
 }
 
 impl IndexEntry {
@@ -33,9 +32,11 @@ impl IndexEntry {
         IndexedFileDto {
             path: self.path.clone(),
             name: self.name.clone(),
-            kind: self.kind,
-            label: self.label,
-            viewers: self.kind.viewers(),
+            ext: self.format.ext.to_string(),
+            kind: self.format.kind,
+            label: self.format.label,
+            icon: self.format.kind.icon(),
+            viewers: self.format.viewers,
         }
     }
 }
@@ -79,8 +80,7 @@ pub fn build(
             path: fslist::normalize(path),
             needle: name.to_lowercase(),
             name,
-            kind: format.kind,
-            label: format.label,
+            format,
         });
 
         since_report += 1;
@@ -136,8 +136,8 @@ mod tests {
             path: format!("C:\\x\\{name}"),
             name: name.to_string(),
             needle: name.to_lowercase(),
-            kind: Kind::Binary,
-            label: "ASB",
+            format: format::lookup(name.rsplit('.').next().unwrap_or_default())
+                .unwrap_or(&format::FORMATS[0]),
         }
     }
 

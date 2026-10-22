@@ -12,6 +12,9 @@ const CACHE_SUBDIR: [&str; 2] = ["thumbs", "v1"];
 /// 同时解码的帧数上限：列表滚动时避免 CPU 与内存峰值。
 pub const DECODE_PERMITS: usize = 3;
 
+/// 同时构建文档树的并发上限（与像素解码隔离）。
+pub const DOC_PERMITS: usize = 2;
+
 /// 缓存根目录（绝对路径）。
 pub fn cache_root(app: &tauri::AppHandle) -> tauri::Result<PathBuf> {
     let mut path = app.path().app_cache_dir()?;

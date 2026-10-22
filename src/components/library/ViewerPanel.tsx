@@ -4,18 +4,26 @@ import { formatBytes } from "../../lib/format";
 import type { FileEntry } from "../../lib/ipc";
 import { AtlasViewer } from "../viewers/AtlasViewer";
 import { AnimationViewer } from "../viewers/AnimationViewer";
+import { DocViewer } from "../viewers/DocViewer";
 import { HexViewer } from "../viewers/HexViewer";
 
 /** 查看器 id → 组件。新增格式只需在这里加一条（后端负责声明有哪些 id）。 */
 const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: string) => React.ReactNode }> = {
   atlas: { label: "图集", render: (entry) => <AtlasViewer entry={entry} /> },
   animation: { label: "动画", render: (entry, tag) => <AnimationViewer entry={entry} tag={tag} /> },
+  doc: { label: "结构", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
   hex: { label: "十六进制", render: (entry) => <HexViewer entry={entry} /> },
 };
 
 const KIND_LABEL: Record<string, string> = {
   texture: "纹理",
   animation: "动画",
+  scene: "场景",
+  model: "模型",
+  script: "脚本",
+  text: "文本",
+  list: "列表",
+  grid: "网格",
   binary: "二进制",
 };
 
@@ -59,7 +67,7 @@ export function ViewerPanel() {
           </div>
         )}
 
-        {entry?.kind === "animation" && (
+        {(entry?.ext === "mbs" || entry?.ext === "mbp") && (
           <select
             className="select select-sm"
             value={tag}

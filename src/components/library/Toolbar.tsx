@@ -1,13 +1,6 @@
 import { useLibraryStore } from "../../store/libraryStore";
-import { THEMES, useAppStore } from "../../store/appStore";
-import type { Kind } from "../../lib/ipc";
+import { PROFILE_PRESETS, THEMES, useAppStore, type ProfileMode } from "../../store/appStore";
 import { Breadcrumbs } from "./Breadcrumbs";
-
-const KINDS: { id: Kind; label: string }[] = [
-  { id: "texture", label: "纹理" },
-  { id: "animation", label: "动画" },
-  { id: "binary", label: "二进制" },
-];
 
 const BAR = "flex flex-wrap items-center gap-2 border-b border-base-300 bg-base-200 px-2 py-1.5";
 
@@ -37,8 +30,10 @@ export function Toolbar({
   const setQuery = useLibraryStore((s) => s.setQuery);
   const scope = useLibraryStore((s) => s.scope);
   const setScope = useLibraryStore((s) => s.setScope);
-  const kinds = useLibraryStore((s) => s.kinds);
-  const toggleKind = useLibraryStore((s) => s.toggleKind);
+  const availableFormats = useLibraryStore((s) => s.availableFormats);
+  const formatFilter = useLibraryStore((s) => s.formatFilter);
+  const toggleFormat = useLibraryStore((s) => s.toggleFormat);
+  const clearFormats = useLibraryStore((s) => s.clearFormats);
   const viewMode = useLibraryStore((s) => s.viewMode);
   const setViewMode = useLibraryStore((s) => s.setViewMode);
 
@@ -49,6 +44,9 @@ export function Toolbar({
 
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const profile = useAppStore((s) => s.profile);
+  const profileMode = useAppStore((s) => s.profileMode);
+  const setProfileMode = useAppStore((s) => s.setProfileMode);
 
   const searching = scope === "all" && query.trim().length > 0;
 
@@ -72,6 +70,27 @@ export function Toolbar({
         <Breadcrumbs />
 
         <div className="flex-1" />
+
+        <details className="dropdown dropdown-end">
+          <summary className="btn btn-sm btn-ghost gap-1.5" title="游戏档案">
+            档案{" "}
+            {profileMode === "auto"
+              ? profile?.label ?? "自动"
+              : PROFILE_PRESETS[profileMode].label}
+          </summary>
+          <ul className="dropdown-content menu menu-sm z-50 mt-2 w-44 rounded-box bg-base-100 p-1 shadow">
+            {(["auto", "unicorn_overlord", "thirteen_sentinels"] as ProfileMode[]).map((mode) => (
+              <li key={mode}>
+                <button
+                  className={profileMode === mode ? "menu-active" : ""}
+                  onClick={() => setProfileMode(mode)}
+                >
+                  {mode === "auto" ? "自动嗅探" : PROFILE_PRESETS[mode].label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
 
         <details className="dropdown dropdown-end">
           <summary className="btn btn-sm btn-ghost gap-1.5" title="切换主题">
@@ -153,17 +172,35 @@ export function Toolbar({
           <option value="all">全部目录</option>
         </select>
 
-        <div className="flex gap-1">
-          {KINDS.map((kind) => (
-            <button
-              key={kind.id}
-              className={`btn btn-xs ${kinds.includes(kind.id) ? "btn-active" : ""}`}
-              onClick={() => toggleKind(kind.id)}
-            >
-              {kind.label}
-            </button>
-          ))}
-        </div>
+        <details className="dropdown">
+          <summary className="btn btn-xs">
+            格式{" "}
+            {formatFilter.length === 0
+              ? "全部"
+              : `${formatFilter.length}/${availableFormats.length}`}
+          </summary>
+          <ul className="dropdown-content menu menu-xs z-50 mt-2 max-h-80 w-64 overflow-auto rounded-box bg-base-100 p-1 shadow">
+            <li>
+              <button onClick={clearFormats}>全部格式</button>
+            </li>
+            {availableFormats.map((format) => (
+              <li key={format.ext}>
+                <label className="justify-between">
+                  <span>
+                    {format.label}
+                    <span className="ml-1 font-mono text-base-content/50">.{format.ext}</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={formatFilter.includes(format.ext)}
+                    onChange={() => toggleFormat(format.ext)}
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+        </details>
 
         <div className="flex-1" />
 

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use tauri::State;
 use tauri::ipc::Response;
 
-use vw_core::{DirListingDto, FileMetaDto, Kind};
+use vw_core::{DirListingDto, FileMetaDto, FormatDto, GameProfileDto};
 
 use super::{decode_frame_png, err_string};
 use crate::state::AppState;
@@ -30,13 +30,29 @@ pub async fn file_meta(path: String) -> Result<FileMetaDto, String> {
         .map_err(err_string)
 }
 
-/// 列表/网格用的缩略图：按格式注册表分派，目前只有纹理有缩略图。
+/// 注册表快照：工具栏过滤项与图标语义的唯一真值。
+#[tauri::command]
+pub fn list_formats() -> Vec<FormatDto> {
+    vw_core::FORMATS.iter().map(FormatDto::from).collect()
+}
+
+/// 游戏档案嗅探：有界目录扫描，不读文件内容。
+#[tauri::command]
+pub async fn detect_profile(root: String) -> Result<GameProfileDto, String> {
+    tokio::task::spawn_blocking(move || {
+        vw_core::detect_game(std::path::Path::new(&root))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))
+}
+
+/// 列表/网格用的缩略图：能力来自格式声明。
 #[tauri::command]
 pub async fn file_thumb(state: State<'_, AppState>, path: String) -> Result<Response, String> {
     let format = vw_core::format::lookup(&vw_core::fslist::extension(std::path::Path::new(&path)))
         .ok_or_else(|| "该扩展名不在格式注册表里".to_string())?;
 
-    if format.kind != Kind::Texture {
+    if !format.has_thumb {
         return Err(format!("{} 没有缩略图", format.label));
     }
 

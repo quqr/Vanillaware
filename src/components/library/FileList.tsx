@@ -87,7 +87,7 @@ export function FileList() {
               onDoubleClick={() => open(row.path)}
             >
               <span className="flex items-center justify-center">
-                <Thumb path={row.path} kind={row.kind} size={20} hasThumb={row.hasThumb} deferred />
+                <Thumb path={row.path} icon={row.icon} size={20} hasThumb={row.hasThumb} deferred />
               </span>
               <span className="truncate">{row.name}</span>
               <span className="font-mono text-[10px] text-base-content/50">{row.label}</span>

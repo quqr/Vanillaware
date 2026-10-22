@@ -91,7 +91,7 @@ export function FileGrid() {
                   onDoubleClick={() => open(row.path)}
                 >
                   <span className="flex h-28 items-center justify-center bg-base-200">
-                    <Thumb path={row.path} kind={row.kind} size={112} hasThumb={row.hasThumb} />
+                    <Thumb path={row.path} icon={row.icon} size={112} hasThumb={row.hasThumb} />
                   </span>
                   <span className="w-full truncate px-1 text-[11px]">{row.name}</span>
                   <span className="font-mono text-[10px] text-base-content/50">{row.label}</span>

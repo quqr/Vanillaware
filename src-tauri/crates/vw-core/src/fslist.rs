@@ -149,8 +149,8 @@ fn file_entry(
         kind: format.kind,
         label: format.label,
         icon: format.kind.icon(),
-        viewers: format.kind.viewers(),
-        has_thumb: format.kind == format::Kind::Texture,
+        viewers: format.viewers,
+        has_thumb: format.has_thumb,
     }
 }
 

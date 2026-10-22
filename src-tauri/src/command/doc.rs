@@ -1,0 +1,66 @@
+//! 文档树命令：打开文档、按节点分页取子树。
+
+use std::path::{Path, PathBuf};
+
+use tauri::State;
+
+use vw_formats::doc::{DocOpenDto, DocPageDto, PAGE_LIMIT, PAGE_MAX};
+
+use crate::state::AppState;
+
+/// 打开文档树；返回根页，后续用 `doc_children` 分页展开。
+#[tauri::command]
+pub async fn open_doc(
+    state: State<'_, AppState>,
+    path: String,
+    tag: Option<String>,
+) -> Result<DocOpenDto, String> {
+    let ext = vw_core::fslist::extension(Path::new(&path));
+    let format = vw_core::format::lookup(&ext)
+        .ok_or_else(|| format!("该扩展名不在格式注册表里: {ext}"))?;
+    if !format.viewers.contains(&"doc") {
+        return Err(format!("{} 没有文档查看器", format.label));
+    }
+
+    let permit = state
+        .doc_sem
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|e| format!("semaphore closed: {e}"))?;
+
+    let cache = state.doc_cache();
+    let target = PathBuf::from(&path);
+
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let (handle, cached) = cache.open(&target, tag.as_deref())?;
+        let doc = cached.doc(handle);
+        let page = cached
+            .page(handle, doc.root, 0, PAGE_LIMIT)
+            .ok_or_else(|| "根节点不存在".to_string())?;
+        Ok(DocOpenDto { doc, page })
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+/// 取某节点的子节点页；句柄被淘汰时返回 `HANDLE_EXPIRED`。
+#[tauri::command]
+pub fn doc_children(
+    state: State<'_, AppState>,
+    handle: u64,
+    node: u32,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> Result<DocPageDto, String> {
+    let cached = state
+        .doc_cache()
+        .get(handle)
+        .ok_or_else(|| "HANDLE_EXPIRED: 文档缓存已淘汰，请重新打开".to_string())?;
+
+    let limit = limit.unwrap_or(PAGE_LIMIT).min(PAGE_MAX);
+    cached
+        .page(handle, node, offset.unwrap_or(0), limit)
+        .ok_or_else(|| format!("节点 {node} 不存在"))
+}

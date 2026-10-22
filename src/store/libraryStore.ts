@@ -10,8 +10,8 @@ import {
   type DirEntry,
   type FileEntry,
   type FileMeta,
+  type FormatInfo,
   type IndexStatus,
-  type Kind,
   type SearchResult,
 } from "../lib/ipc";
 import { clearThumbUrls } from "../lib/thumbCache";
@@ -51,7 +51,10 @@ interface State {
   openedViewer: string | null;
 
   viewMode: ViewMode;
-  kinds: Kind[];
+  /** 注册表快照（工具栏过滤项）。 */
+  availableFormats: FormatInfo[];
+  /** 选中的格式扩展名；空数组 = 全部。 */
+  formatFilter: string[];
   query: string;
   scope: SearchScope;
   search: SearchResult | null;
@@ -77,7 +80,9 @@ interface Actions {
   setViewerTab(id: string): void;
 
   setViewMode(mode: ViewMode): void;
-  toggleKind(kind: Kind): void;
+  loadFormats(): Promise<void>;
+  toggleFormat(ext: string): void;
+  clearFormats(): void;
   setQuery(query: string): void;
   setScope(scope: SearchScope): void;
   refreshIndex(): void;
@@ -116,7 +121,8 @@ const initialState: State = {
   openedPath: null,
   openedViewer: null,
   viewMode: "list",
-  kinds: [],
+  availableFormats: [],
+  formatFilter: [],
   query: "",
   scope: "dir",
   search: null,
@@ -297,7 +303,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         root: picked,
         // 保留显示偏好与缓存纪元。
         viewMode: previous.viewMode,
-        kinds: previous.kinds,
+        availableFormats: previous.availableFormats,
+        formatFilter: previous.formatFilter,
         cacheEpoch: previous.cacheEpoch,
       });
 
@@ -367,8 +374,15 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       }
 
       // 同一文件的 meta 已经取过：只改选中，不再触发一次往返（避免查看器闪一下）。
+      // 打开态必须一起写：`close()` / `navigate()` 之后重选同一文件也要能渲染内容。
       if (!additive && get().meta?.entry.path === path && get().metaPhase === "ready") {
-        set({ selectedPath: path, selectedPaths: [path] });
+        const entry = get().meta?.entry;
+        set({
+          selectedPath: path,
+          selectedPaths: [path],
+          openedPath: path,
+          openedViewer: entry?.viewers[0] ?? get().openedViewer,
+        });
         return;
       }
 
@@ -417,11 +431,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({ viewMode });
     },
 
-    toggleKind(kind) {
-      const kinds = get().kinds.includes(kind)
-        ? get().kinds.filter((k) => k !== kind)
-        : [...get().kinds, kind];
-      set({ kinds });
+    async loadFormats() {
+      if (get().availableFormats.length > 0) return;
+      try {
+        set({ availableFormats: await api.listFormats() });
+      } catch {
+        // 注册表加载失败时保持空列表，过滤退化为「全部」。
+      }
+    },
+
+    toggleFormat(ext) {
+      const formatFilter = get().formatFilter.includes(ext)
+        ? get().formatFilter.filter((item) => item !== ext)
+        : [...get().formatFilter, ext];
+      set({ formatFilter });
+    },
+
+    clearFormats() {
+      set({ formatFilter: [] });
     },
 
     setQuery(query) {

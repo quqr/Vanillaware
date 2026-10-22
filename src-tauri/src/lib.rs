@@ -32,6 +32,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             command::library::list_dir,
+            command::library::list_formats,
+            command::library::detect_profile,
+            command::doc::open_doc,
+            command::doc::doc_children,
             command::library::file_meta,
             command::library::file_thumb,
             command::library::read_file_head,
