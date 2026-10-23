@@ -9,6 +9,7 @@ pub mod codec;
 pub mod doc;
 pub mod ftx;
 pub mod mbs;
+pub mod viz;
 
 /// 统一的错误类型（不引入 thiserror，保持依赖面最小）。
 #[derive(Debug)]

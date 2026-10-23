@@ -141,7 +141,7 @@ pub const FORMATS: &[Format] = &[
         ext: "fmd",
         kind: Kind::Model,
         label: "FMD",
-        viewers: DOC_HEX,
+        viewers: &["mesh", "doc", "hex"],
         has_thumb: false,
     },
     Format {

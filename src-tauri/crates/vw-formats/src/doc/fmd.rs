@@ -6,6 +6,7 @@
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 use super::text;
+use crate::viz::{identity, VizMeshDto, VizNodeDto, VizSceneDto, VizSubRangeDto};
 
 const HEAD_VERSION: u32 = 0x19;
 const MAX_ITEMS: u32 = 4096;
@@ -219,6 +220,234 @@ fn parse_txtr(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     }
 }
 
+/// 可视化首版：提取所有非空网格的 positions + 按 sub 生成的顺序 indices。
+///
+/// 不做材质/UV/贴图；只验证几何、包围盒与三角拓扑。
+pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
+    let mut nodes = vec![VizNodeDto {
+        id: 0,
+        parent: None,
+        name: "FMD".into(),
+        kind: "group".into(),
+        transform: identity(),
+        mesh: None,
+        reference: None,
+    }];
+    let mut scene_bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+    let mut truncated = false;
+
+    let mut pos = 0usize;
+    while pos + 8 <= bytes.len() {
+        let tag = &bytes[pos..pos + 4];
+        let size = rdr::u32_at(bytes, pos + 4).unwrap_or(0) as usize;
+        if size < 8 || pos + size > bytes.len() {
+            break;
+        }
+        if tag == b"MESH" {
+            collect_meshes(bytes, pos + 8, pos + size, &mut nodes, &mut scene_bounds, &mut truncated)?;
+        }
+        pos += size;
+    }
+
+    let bounds = if nodes.len() > 1 && scene_bounds[0].is_finite() {
+        scene_bounds
+    } else {
+        [0.0; 6]
+    };
+    Ok(VizSceneDto {
+        bounds,
+        nodes,
+        references: Vec::new(),
+        truncated,
+    })
+}
+
+fn collect_meshes(
+    bytes: &[u8],
+    start: usize,
+    end: usize,
+    nodes: &mut Vec<VizNodeDto>,
+    scene_bounds: &mut [f32; 6],
+    truncated: &mut bool,
+) -> Result<(), String> {
+    let mut cur = Cursor::new(bytes, start, end);
+    let Some(mesh_count) = cur.u32() else {
+        return Ok(());
+    };
+
+    for index in 0..mesh_count.min(MAX_ITEMS) {
+        if !probe_header(bytes, cur.pos, end) {
+            let Some(next) = resync(bytes, cur.pos, end) else {
+                break;
+            };
+            cur.pos = next;
+        }
+
+        let Some(name_len) = cur.u32() else { break };
+        if name_len == 0 || name_len > 0x400 {
+            break;
+        }
+        let Some(name_raw) = cur.take(name_len as usize) else {
+            break;
+        };
+        let (Some(_a), Some(_parent), Some(_skinned), Some(sub_count), Some(vtx_total)) =
+            (cur.i32(), cur.i32(), cur.i32(), cur.i32(), cur.i32())
+        else {
+            break;
+        };
+        if cur.f32s(11).is_none() || !(1..=0x400).contains(&sub_count) {
+            break;
+        }
+
+        let Some((after_subs, ranges)) = skip_subs(bytes, cur.pos, end, sub_count) else {
+            let Some(next) = resync(bytes, cur.pos, end) else {
+                break;
+            };
+            cur.pos = next;
+            continue;
+        };
+        cur.pos = after_subs;
+        let tri_total: u64 = ranges.iter().map(|range| range.tri as u64).sum();
+
+        let mut positions = Vec::new();
+        let mut vtx_count = 0u32;
+        if vtx_total != 0 || tri_total != 0 {
+            if cur.align16().is_none() {
+                break;
+            }
+            let Some(count) = cur.u32() else { break };
+            vtx_count = count;
+            let byte_len = count as usize * 12;
+            let Some(raw) = bytes.get(cur.pos..cur.pos + byte_len) else {
+                break;
+            };
+            positions = raw
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+            if cur.skip(byte_len).is_none() {
+                break;
+            }
+
+            let mut stream_ok = true;
+            for (stride, rule) in [
+                (12usize, AttrRule::Fixed),
+                (12, AttrRule::Fixed),
+                (12, AttrRule::Fixed),
+                (4, AttrRule::Fixed),
+                (8, AttrRule::Fixed),
+                (2, AttrRule::U16),
+                (4, AttrRule::U32I),
+            ]
+            .iter()
+            .skip(1)
+            {
+                if !stream_ok || cur.align16().is_none() {
+                    stream_ok = false;
+                    break;
+                }
+                let Some(n) = cur.u32() else {
+                    stream_ok = false;
+                    break;
+                };
+                let payload = match rule {
+                    AttrRule::Fixed => n as usize * stride,
+                    AttrRule::U16 => {
+                        if n == 0 {
+                            0
+                        } else {
+                            ((n as usize * 2 - 2) & !7) + 8
+                        }
+                    }
+                    AttrRule::U32I => {
+                        if n == 0 {
+                            0
+                        } else {
+                            ((n as usize - 1) & !3) + 4
+                        }
+                    }
+                };
+                if cur.skip(payload).is_none() {
+                    stream_ok = false;
+                    break;
+                }
+            }
+            if !stream_ok || cur.align16().is_none() {
+                break;
+            }
+        }
+
+        if positions.is_empty() {
+            continue;
+        }
+
+        let mut indices = Vec::new();
+        let mut sub_ranges = Vec::new();
+        for range in ranges {
+            let count = range.tri * 3;
+            if count == 0 || range.start + count > vtx_count {
+                continue;
+            }
+            sub_ranges.push(VizSubRangeDto {
+                start: range.start,
+                count,
+                material: range.material,
+            });
+            for vertex in range.start..range.start + count {
+                indices.push(vertex);
+            }
+        }
+        if indices.is_empty() {
+            continue;
+        }
+
+        let mut bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+        for point in positions.chunks_exact(3) {
+            bounds[0] = bounds[0].min(point[0]);
+            bounds[1] = bounds[1].min(point[1]);
+            bounds[2] = bounds[2].min(point[2]);
+            bounds[3] = bounds[3].max(point[0]);
+            bounds[4] = bounds[4].max(point[1]);
+            bounds[5] = bounds[5].max(point[2]);
+        }
+        if bounds[0].is_finite() {
+            scene_bounds[0] = scene_bounds[0].min(bounds[0]);
+            scene_bounds[1] = scene_bounds[1].min(bounds[1]);
+            scene_bounds[2] = scene_bounds[2].min(bounds[2]);
+            scene_bounds[3] = scene_bounds[3].max(bounds[3]);
+            scene_bounds[4] = scene_bounds[4].max(bounds[4]);
+            scene_bounds[5] = scene_bounds[5].max(bounds[5]);
+        }
+
+        let name = text::utf8_or_sjis(name_raw);
+        nodes.push(VizNodeDto {
+            id: nodes.len() as u32,
+            parent: Some(0),
+            name: if name.is_empty() { format!("mesh[{index}]") } else { name },
+            kind: "mesh".into(),
+            transform: identity(),
+            mesh: Some(VizMeshDto {
+                positions,
+                indices,
+                bounds,
+                sub_ranges,
+            }),
+            reference: None,
+        });
+
+        // 首版 IPC 上限：超过后停止继续提取，前端明确显示「已截断」。
+        const MAX_VERTICES: usize = 600_000;
+        const MAX_INDICES: usize = 2_000_000;
+        let vertices: usize = nodes.iter().filter_map(|node| node.mesh.as_ref()).map(|mesh| mesh.positions.len() / 3).sum();
+        let indices: usize = nodes.iter().filter_map(|node| node.mesh.as_ref()).map(|mesh| mesh.indices.len()).sum();
+        if vertices > MAX_VERTICES || indices > MAX_INDICES {
+            *truncated = true;
+            break;
+        }
+    }
+    Ok(())
+}
+
 fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, end: usize) {
     let mut cur = Cursor::new(bytes, start, end);
     let Some(mesh_count) = cur.u32() else { return };
@@ -254,7 +483,7 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
             break;
         }
 
-        let Some((after_subs, tri_total)) = skip_subs(bytes, cur.pos, end, sub_count) else {
+        let Some((after_subs, ranges)) = skip_subs(bytes, cur.pos, end, sub_count) else {
             match resync(bytes, cur.pos, end) {
                 Some(next) => {
                     builder.warn(format!("mesh[{index}] 子段/叶越界，重同步到 {next:#x}"));
@@ -268,6 +497,7 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
             }
         };
         cur.pos = after_subs;
+        let tri_total: u64 = ranges.iter().map(|range| range.tri as u64).sum();
 
         let mut vertex_ok = true;
         let mut vtx_count = 0u32;
@@ -356,16 +586,25 @@ fn align16(pos: usize) -> usize {
     }
 }
 
-/// 顺序跳过 `sub_count` 条子段及其叶，返回落点与累计三角数。
-fn skip_subs(bytes: &[u8], mut pos: usize, end: usize, sub_count: i32) -> Option<(usize, u64)> {
+/// 一个绘制段：顶点起始、三角数、材质下标。
+#[derive(Clone, Copy, Debug)]
+struct SubRange {
+    start: u32,
+    tri: u32,
+    material: i32,
+}
+
+/// 顺序读取 `sub_count` 条子段及其叶，返回落点与每个绘制段。
+fn skip_subs(bytes: &[u8], mut pos: usize, end: usize, sub_count: i32) -> Option<(usize, Vec<SubRange>)> {
     if sub_count < 0 {
         return None;
     }
-    let mut tri_total = 0u64;
+    let mut ranges = Vec::new();
     for _ in 0..sub_count {
         if pos + 52 > end {
             return None;
         }
+        let material = rdr::i32_at(bytes, pos)?;
         let leaf_count = rdr::u32_at(bytes, pos + 48)?;
         pos += 52;
         if leaf_count > 0x4000 {
@@ -385,11 +624,15 @@ fn skip_subs(bytes: &[u8], mut pos: usize, end: usize, sub_count: i32) -> Option
             if pos + leaf_size > end {
                 return None;
             }
-            tri_total += rdr::u32_at(bytes, pos + leaf_size - 12)? as u64 & 0xffff;
+            let tri = rdr::u32_at(bytes, pos + leaf_size - 12)? & 0xffff;
+            let start = rdr::u32_at(bytes, pos + leaf_size - 8)?;
+            if tri > 0 {
+                ranges.push(SubRange { start, tri, material });
+            }
             pos += leaf_size;
         }
     }
-    Some((pos, tri_total))
+    Some((pos, ranges))
 }
 
 /// 网格头预检：名字合法 + 五个 i32 合理 + 子段/叶可顺序读出。

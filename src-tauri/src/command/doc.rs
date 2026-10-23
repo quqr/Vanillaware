@@ -7,6 +7,7 @@ use tauri::State;
 use vw_formats::doc::{
     AsmDto, BbsLayoutDto, DocOpenDto, DocPageDto, FmsTextDto, PseudoDto, PAGE_LIMIT, PAGE_MAX,
 };
+use vw_formats::viz::VizSceneDto;
 
 use crate::state::AppState;
 
@@ -73,6 +74,17 @@ pub async fn doc_asm(path: String, function: Option<u32>) -> Result<AsmDto, Stri
     tokio::task::spawn_blocking(move || {
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
         vw_formats::doc::asb::disassemble_file(&bytes, function.map(|value| value as usize))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+/// FMD 可视化首版：非空网格的 positions + 顺序 indices。
+#[tauri::command]
+pub async fn doc_mesh(path: String) -> Result<VizSceneDto, String> {
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        vw_formats::doc::fmd::mesh_scene(&bytes)
     })
     .await
     .map_err(|e| format!("join error: {e}"))?

@@ -83,6 +83,9 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | **反汇编 / Disassembly** | ASB 字节码 → 助记符 + 操作数 + 跨表注记（调用目标、全局、跳转标签）。 | ASB bytecode → mnemonics plus operands and cross-table notes (call targets, globals, jump labels). |
 | **伪代码 / Pseudo-code** | 对表达式栈做模拟得到的可读语句；控制流保留 label + goto，不追求可编译。 | Readable statements from simulating the expression stack; control flow stays as label + goto, not compilable. |
 | **布局示意图 / Layout schematic** | BBS 的 bbox、物件、雾区四边形与相机轨迹的 SVG 示意，不是真实渲染。 | An SVG schematic of a BBS bbox, objects, fog quads and camera routes — not a real render. |
+| **图元层 / Primitive Layer** | 与格式无关的可视化 DTO：场景 → 节点 → 网格/引用；FMD/OSB/RSC 各自投影进来。见 ADR-0019。 | Format-agnostic visualization DTOs: scene → nodes → mesh/reference; FMD, OSB and RSC each project into it. See ADR-0019. |
+| **资源引用 / Resource Reference** | 场景节点指向另一个资源文件的关系（模型/纹理/动画/音频/脚本），带 `role` 与 `resolved/missing` 状态。 | A scene node pointing at another resource file (model/texture/animation/audio/script), with a role and resolved/missing status. |
+| **网格范围 / Sub Range** | FMD 一个绘制段的顶点区间与三角数；首版用它生成顺序索引，按段着色/线框。 | A draw segment's vertex range and triangle count in FMD; the first slice derives sequential indices and colors/wires by range. |
 
 ## 界面层 / UI layer
 

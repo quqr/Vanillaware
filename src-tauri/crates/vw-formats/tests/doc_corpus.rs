@@ -120,6 +120,33 @@ fn ctb_corpus_is_closed() {
 
 #[test]
 #[ignore = "需要本机 13 Sentinels 语料"]
+fn fmd_mesh_scene_has_geometry() {
+    let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\BattleStageModel\BT_STAGE00.fmd");
+    if !path.is_file() {
+        eprintln!("跳过：{} 不存在", path.display());
+        return;
+    }
+    let bytes = std::fs::read(path).unwrap();
+    let scene = doc::fmd::mesh_scene(&bytes).expect("mesh scene");
+
+    let meshes: Vec<_> = scene.nodes.iter().filter_map(|node| node.mesh.as_ref()).collect();
+    let triangles: usize = meshes.iter().map(|mesh| mesh.indices.len() / 3).sum();
+    eprintln!(
+        "fmd mesh: {} 个网格，{} 三角，bounds {:?}，truncated {}",
+        meshes.len(),
+        triangles,
+        scene.bounds,
+        scene.truncated
+    );
+
+    assert!(!meshes.is_empty());
+    assert!(triangles > 0);
+    assert!(scene.bounds.iter().all(|value| value.is_finite()));
+    assert!(meshes.iter().all(|mesh| mesh.positions.len() % 3 == 0));
+}
+
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
 fn fmd_corpus_is_closed() {
     assert_corpus("fmd", &["fmd.closed", "fmd.versionGate"]);
 }

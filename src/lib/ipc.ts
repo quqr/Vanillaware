@@ -205,6 +205,45 @@ export interface BbsLayout {
   routes: BbsRoute[];
 }
 
+// ─── 可视化图元层 ───────────────────────────────────
+
+export interface VizReference {
+  path: string;
+  ext: string;
+  role: string;
+  status: string;
+}
+
+export interface VizSubRange {
+  start: number;
+  count: number;
+  material: number;
+}
+
+export interface VizMesh {
+  positions: number[];
+  indices: number[];
+  bounds: [number, number, number, number, number, number];
+  subRanges: VizSubRange[];
+}
+
+export interface VizNode {
+  id: number;
+  parent: number | null;
+  name: string;
+  kind: string;
+  transform: number[];
+  mesh: VizMesh | null;
+  reference: VizReference | null;
+}
+
+export interface VizScene {
+  bounds: [number, number, number, number, number, number];
+  nodes: VizNode[];
+  references: VizReference[];
+  truncated: boolean;
+}
+
 // ─── FMS 文本表 ─────────────────────────────────────
 
 export interface FmsText {
@@ -354,6 +393,7 @@ export const api = {
     invoke<Pseudo>("doc_pseudo", { path, function: fn }),
   docLayout: (path: string) => invoke<BbsLayout>("doc_layout", { path }),
   docText: (path: string) => invoke<FmsText>("doc_text", { path }),
+  docMesh: (path: string) => invoke<VizScene>("doc_mesh", { path }),
   fileMeta: (path: string) => invoke<FileMeta>("file_meta", { path }),
   fileThumb: (path: string) => invoke<ArrayBuffer>("file_thumb", { path }),
   readFileHead: (path: string, maxBytes: number) =>

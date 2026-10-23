@@ -7,6 +7,7 @@ import { AtlasViewer } from "../viewers/AtlasViewer";
 import { BbsLayoutViewer } from "../viewers/BbsLayoutViewer";
 import { AnimationViewer } from "../viewers/AnimationViewer";
 import { DocViewer } from "../viewers/DocViewer";
+import { FmdMeshViewer } from "../viewers/FmdMeshViewer";
 import { FmsTableViewer } from "../viewers/FmsTableViewer";
 import { HexViewer } from "../viewers/HexViewer";
 
@@ -17,6 +18,7 @@ const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: s
   animation: { label: "动画", render: (entry, tag) => <AnimationViewer entry={entry} tag={tag} /> },
   doc: { label: "结构", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
   layout: { label: "布局", render: (entry) => <BbsLayoutViewer entry={entry} /> },
+  mesh: { label: "模型", render: (entry) => <FmdMeshViewer entry={entry} /> },
   text: { label: "文本", render: (entry) => <FmsTableViewer entry={entry} /> },
   hex: { label: "十六进制", render: (entry) => <HexViewer entry={entry} /> },
 };
