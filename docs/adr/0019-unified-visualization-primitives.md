@@ -30,6 +30,7 @@ VizNodeDto {
   id, parent, name, kind: group | mesh | sprite | light | camera | reference,
   transform: 16 floats,          // 列主序，尚未使用时为单位矩阵
   mesh: VizMeshDto | null,
+  meshRef: nodeId | null,        // 复用另一节点的网格（同一 FMD 被多个 model 引用）
   reference: VizReferenceDto | null,
 }
 
@@ -52,7 +53,9 @@ VizReferenceDto {
   材质、UV、FTX 贴图留到后续；先验证坐标、包围盒、三角拓扑与尺度。
 - **OSB 复用已有 MBS/FTX 查看器**：`scene` 查看器把 OSB 节点树摊平成图元 + 引用，
   静态摆位先落地，动画/相机事件后接。
-- **RSC 先做引用图**：`graph` 查看器展示 RSC 条目 → FMSB/字符串/脚本的依赖，不做 3D。
+- **RSC 先做引用图**：`graph` 查看器展示「文件 → 条目 → 字节码载荷」
+  （`kind` 为 file / entry / script），不做 3D。RSC 载荷不是 FMSB 魔数文件，
+  而是 FMSB VM 字节码，因此按 `entry.offset` 到下一个更大 offset 切段展示。
 - **前端 3D 使用 Three.js**：FMD 网格数据量大，CPU 投影或 SVG 会在十万三角级别卡死；
   Three.js 直接上传 buffer，相机/线框/后续材质都有现成实现。
 
