@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type FileEntry, type GraphNode, type RscGraph } from "../../lib/ipc";
+import { useLibraryStore } from "../../store/libraryStore";
 
 const WIDTH = 760;
 const ROW = 30;
 
-/** RSC 引用图：文件 → 条目 → 字节码载荷（ADR-0019）。 */
+/** 外部引用边标签 → 中文。 */
+const EXTERNAL_LABEL: Record<string, string> = {
+  text: "文本表",
+  loads: "资源",
+};
+
+/** RSC 引用图：文件 → 条目 → 字节码载荷 + 跨文件引用（ADR-0019）。 */
 export function RscGraphViewer({ entry }: { entry: FileEntry }) {
   const [data, setData] = useState<RscGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
+  const select = useLibraryStore((s) => s.select);
 
   useEffect(() => {
     let alive = true;
@@ -27,6 +35,21 @@ export function RscGraphViewer({ entry }: { entry: FileEntry }) {
       alive = false;
     };
   }, [entry.path]);
+
+  // 外部引用（配对 .fms 与载荷内联资源串）：按边标签分组并统计引用次数。
+  const externals = useMemo(() => {
+    if (!data) return [];
+    const byNode = new Map<number, { label: string; count: number }>();
+    for (const edge of data.edges) {
+      const target = data.nodes.find((node) => node.id === edge.to);
+      if (!target || target.kind !== "external") continue;
+      const current = byNode.get(edge.to);
+      byNode.set(edge.to, { label: edge.label, count: (current?.count ?? 0) + 1 });
+    }
+    return data.nodes
+      .filter((node) => node.kind === "external")
+      .map((node) => ({ node, ...(byNode.get(node.id) ?? { label: "", count: 1 }) }));
+  }, [data]);
 
   if (error) {
     return <div className="flex flex-1 items-center justify-center p-4 text-sm text-error">{error}</div>;
@@ -71,8 +94,31 @@ export function RscGraphViewer({ entry }: { entry: FileEntry }) {
         <span className="badge badge-xs">entry {entries.length}</span>
         <span className="badge badge-xs">script {scripts}</span>
         <span className="badge badge-xs">edge {data.edges.length}</span>
+        {externals.length > 0 && <span className="badge badge-xs">ref {externals.length}</span>}
         {data.truncated && <span className="badge badge-xs badge-warning">已截断</span>}
       </div>
+
+      {externals.length > 0 && (
+        <div className="flex flex-none flex-wrap items-center gap-1 border-b border-base-300 bg-base-100 px-1.5 py-1 font-mono text-[10px]">
+          <span className="text-base-content/50">跨文件</span>
+          {externals.map(({ node, label, count }) => {
+            const resolved = node.status === "resolved";
+            return (
+              <button
+                key={node.id}
+                className={`btn btn-xs ${resolved ? "btn-outline" : "btn-disabled"}`}
+                title={resolved ? node.path ?? node.label : `缺失：${node.path ?? node.label}`}
+                disabled={!resolved}
+                onClick={() => node.path && select(node.path)}
+              >
+                <span className="text-base-content/50">{EXTERNAL_LABEL[label] ?? label}</span>
+                <span className="max-w-48 truncate">{node.label}</span>
+                {count > 1 && <span className="opacity-60">×{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {selected && (
         <div className="flex flex-none items-center gap-2 border-b border-base-300 bg-base-100 px-2 py-1 font-mono text-[10px]">

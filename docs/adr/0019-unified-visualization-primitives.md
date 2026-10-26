@@ -65,6 +65,12 @@ VizReferenceDto {
 - **RSC 先做引用图**：`graph` 查看器展示「文件 → 条目 → 字节码载荷」
   （`kind` 为 file / entry / script），不做 3D。RSC 载荷不是 FMSB 魔数文件，
   而是 FMSB VM 字节码，因此按 `entry.offset` 到下一个更大 offset 切段展示。
+- **RSC 的跨文件引用也是图节点**（`kind: external`，`status: resolved | missing`）：
+  一是同名 `.fms` 文本表（引擎按 `RoundScript/%s.rsc` + `%s.fms` 成对加载，语料 480/480
+  存在），边记 `text`；二是 FMSB 载荷里 tag 1 内联的资源串（如
+  `GUI/WARPCIRCLE_MONE.MBS`），边记 `loads`，解析时从 RSC 目录逐级上跳最多 3 层
+  （`RoundScript/` → `EX DATA/`）。RSC 内的路径为全大写，依赖 Windows 大小写不敏感
+  命中实际混合大小写目录，因此 `status` 必须如实回填而不能假定存在。
 - **前端 3D 使用 Three.js**：FMD 网格数据量大，CPU 投影或 SVG 会在十万三角级别卡死；
   Three.js 直接上传 buffer，相机/线框/后续材质都有现成实现。
 
@@ -95,5 +101,8 @@ cutout, ADD/SUB additive/subtractive with no depth write), and zero-alpha collis
 are dropped. Skeletal skinning, animation and OSB camera events are still pending. OSB projects its
 node tree into primitives plus first-class references
 (model/texture/animation/audio) so the existing MBS/FTX viewers can be reused. RSC starts as a resource
-reference graph rather than a 3D view. Three.js is used for FMD because CPU projection/SVG does not
+reference graph rather than a 3D view; its cross-file links are external nodes with
+`resolved`/`missing` status — the paired `.fms` text sheet (`text` edge) and the tag-1 inline resource
+strings inside FMSB payloads (`loads` edge, resolved by walking up to three parent directories).
+Three.js is used for FMD because CPU projection/SVG does not
 scale to six-figure triangle counts.
