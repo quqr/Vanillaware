@@ -412,32 +412,63 @@ fn osb_scene_sample_has_geometry() {
 #[test]
 #[ignore = "需要本机 13 Sentinels 语料"]
 fn rsc_graph_sample_has_entries() {
-    let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\BattleScript\area1_wave1.rsc");
-    if !path.is_file() {
-        eprintln!("跳过：{} 不存在", path.display());
-        return;
+    // BattleScript 只有配对文本表；RoundScript 的载荷里还会内联外部资源串。
+    let samples = [
+        r"F:\Codes\13\13rim ex\EX DATA\BattleScript\area1_wave1.rsc",
+        r"F:\Codes\13\13rim ex\EX DATA\RoundScript\Amiguchi00_30.rsc",
+    ];
+    for sample in samples {
+        let path = PathBuf::from(sample);
+        if !path.is_file() {
+            eprintln!("跳过：{} 不存在", path.display());
+            continue;
+        }
+        let bytes = std::fs::read(&path).unwrap();
+        let graph = doc::rsc::graph(&bytes, &path);
+
+        let entries = graph.nodes.iter().filter(|node| node.kind == "entry").count();
+        let scripts = graph.nodes.iter().filter(|node| node.kind == "script").count();
+        let externals = graph.nodes.iter().filter(|node| node.kind == "external").count();
+        let loads = graph.edges.iter().filter(|edge| edge.label == "loads").count();
+        eprintln!(
+            "{}: {} 节点（entry {entries}，script {scripts}，external {externals}），{} 边（loads {loads}），truncated {}",
+            path.file_name().unwrap().to_string_lossy(),
+            graph.nodes.len(),
+            graph.edges.len(),
+            graph.truncated
+        );
+
+        assert_eq!(graph.nodes[0].kind, "file");
+        assert!(graph.nodes[0].status.is_none());
+        assert!(entries > 0);
+        assert!(scripts > 0);
+        // 1 条配对文本表边 + 每个条目 1 条 contains + 每个载荷 1 条 payload + 每条 loads。
+        assert_eq!(graph.edges.len(), entries + scripts + externals);
+        assert_eq!(externals, 1 + loads, "external = 配对 .fms + 载荷资源");
+        assert!(graph
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "external")
+            .all(|node| node.status.is_some()));
+        assert!(graph.edges.iter().all(|edge| (edge.from as usize) < graph.nodes.len()));
+        assert!(graph
+            .edges
+            .iter()
+            .all(|edge| (edge.to as usize) < graph.nodes.len()));
+
+        if loads > 0 {
+            let resolved = graph
+                .nodes
+                .iter()
+                .filter(|node| node.kind == "external" && node.status.as_deref() == Some("resolved"))
+                .count();
+            assert_eq!(resolved, 1 + loads, "全部引用应能在语料中解析");
+            assert!(graph
+                .nodes
+                .iter()
+                .any(|node| node.label.eq_ignore_ascii_case("GUI/WARPCIRCLE_MONE.MBS")));
+        }
     }
-    let bytes = std::fs::read(&path).unwrap();
-    let graph = doc::rsc::graph(&bytes, &path);
-
-    let entries = graph.nodes.iter().filter(|node| node.kind == "entry").count();
-    let scripts = graph.nodes.iter().filter(|node| node.kind == "script").count();
-    eprintln!(
-        "rsc graph: {} 节点（entry {entries}，script {scripts}），{} 边，truncated {}",
-        graph.nodes.len(),
-        graph.edges.len(),
-        graph.truncated
-    );
-
-    assert_eq!(graph.nodes[0].kind, "file");
-    assert!(entries > 0);
-    assert!(scripts > 0);
-    assert_eq!(graph.edges.len(), entries + scripts);
-    assert!(graph.edges.iter().all(|edge| (edge.from as usize) < graph.nodes.len()));
-    assert!(graph
-        .edges
-        .iter()
-        .all(|edge| (edge.to as usize) < graph.nodes.len()));
 }
 
 #[test]

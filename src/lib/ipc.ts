@@ -261,6 +261,8 @@ export interface GraphNode {
   detail: string | null;
   path: string | null;
   offset: number | null;
+  /** resolved / missing；只有 external 节点有值。 */
+  status: string | null;
 }
 
 export interface GraphEdge {

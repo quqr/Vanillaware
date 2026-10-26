@@ -78,6 +78,8 @@ pub struct GraphNodeDto {
     pub detail: Option<String>,
     pub path: Option<String>,
     pub offset: Option<u64>,
+    /// resolved / missing；只有 external 节点有值。
+    pub status: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
