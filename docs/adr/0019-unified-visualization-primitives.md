@@ -39,7 +39,9 @@ VizMeshDto {
   indices: [u32],                // 三角列表；FMD 由 sub 的 start/triCount 生成
   uvs: [f32],                    // 每顶点 2 个 f32；空数组表示没有 UV 流
   bounds: [6 f32],
-  subRanges: [{ start, count, material, page }],  // page: FTX 页下标，-1 表示无贴图
+  subRanges: [{ start, count, material, page, rgba, texRef }],
+                                 // page: FTX 页下标，-1 表示无贴图
+                                 // rgba: 材质 tint；texRef: -1/0/1/2/3 = default/NML/ADD/SUB/OPA
 }
 
 VizReferenceDto {
@@ -54,7 +56,9 @@ VizReferenceDto {
   先验证坐标、包围盒与三角拓扑；UV 取 MESH 的 UV 属性流（V 轴不翻转，glTF 顶左原点，
   Three.js 需 `flipY = false`）。材质通过 `MTRL[K].t2 → FTX 页下标` 映射到
   `subRanges[].page`，前端按页分组建材质并异步解码贴图；缺页或无贴图的段退回纯色。
-  `tex_ref`（NML/ADD/SUB/OPA）与 alpha 混合、OSB 动画/相机事件留到后续。
+  `texRef` 决定混合：0 NML 用 `alphaTest` 镂空，1 ADD / 2 SUB 用加/减混合且不写深度，
+  3 OPA 与 -1 走不透明；`rgba` 作为 tint 乘到贴图上。无贴图且 alpha 为 0 的碰撞材质
+  （BT_STAGE 的 `HIT`）不生成绘制段。OSB 动画/相机事件、骨骼蒙皮留到后续。
 - **OSB 复用已有 MBS/FTX 查看器**：`scene` 查看器把 OSB 节点树摊平成图元 + 引用，
   静态摆位先落地，动画/相机事件后接。model/anime 的 `origin/scale/rotate` 取自
   common88；`rotate` 以度存储，按 RotZ → RotY → RotX 组合成节点矩阵。
@@ -68,8 +72,8 @@ VizReferenceDto {
 
 - 新增 `three` 前端依赖与一个 WebGL 上下文；
 - `VizSceneDto` 需要同时服务 3D、2D 与图结构，字段会比单一查看器更通用；
-- 贴图只按 `MTRL.t2` 页下标绑定，尚未处理 `tex_ref` 的混合模式（NML/ADD/SUB/OPA）
-  与材质 alpha，视觉上仍不是最终渲染。
+- 贴图按 `MTRL.t2` 页下标绑定、按 `tex_ref` 近似混合，但仍是静态姿态（未做骨骼蒙皮
+  与动画驱动），视觉上不是最终渲染。
 
 ## 备选方案
 
@@ -84,10 +88,12 @@ VizReferenceDto {
 Define one format-agnostic visualization layer (`VizSceneDto` / `VizNodeDto` / `VizMeshDto` /
 `VizReferenceDto`) before adding format-specific renderers. FMD projects mesh positions, sequential
 triangle indices and UVs from its sub ranges into a **textured/solid + wireframe + orbit camera** view;
-each sub range carries the FTX page index resolved from `MTRL[K].t2`, and the frontend groups materials
-by page and decodes pages asynchronously, falling back to a solid colour when a page is missing.
-`tex_ref` blend modes (NML/ADD/SUB/OPA) and alpha are still pending. OSB projects its node tree into
-primitives plus first-class references
+each sub range carries the FTX page index resolved from `MTRL[K].t2` plus the material tint and
+render path; the frontend groups materials by page/tint/blend, decodes pages asynchronously, and
+falls back to a solid colour when a page is missing. `texRef` drives blending (NML alpha-tested
+cutout, ADD/SUB additive/subtractive with no depth write), and zero-alpha collision-only materials
+are dropped. Skeletal skinning, animation and OSB camera events are still pending. OSB projects its
+node tree into primitives plus first-class references
 (model/texture/animation/audio) so the existing MBS/FTX viewers can be reused. RSC starts as a resource
 reference graph rather than a 3D view. Three.js is used for FMD because CPU projection/SVG does not
 scale to six-figure triangle counts.
