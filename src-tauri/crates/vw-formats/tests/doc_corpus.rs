@@ -138,12 +138,23 @@ fn fmd_mesh_scene_has_geometry() {
         .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), value| {
             (lo.min(*value), hi.max(*value))
         });
+    let ranges: Vec<_> = meshes.iter().flat_map(|mesh| mesh.sub_ranges.iter()).collect();
+    let textured = ranges.iter().filter(|range| range.page >= 0).count();
+    let collision = ranges
+        .iter()
+        .filter(|range| range.page < 0 && range.rgba[3] == 0)
+        .count();
+    let untextured = ranges.len() - textured - collision;
     eprintln!(
-        "fmd mesh: {} 个网格，{} 三角，{} 带 UV，UV 范围 {:?}，bounds {:?}，truncated {}",
+        "fmd mesh: {} 个网格，{} 三角，{} 带 UV，UV 范围 {:?}，{} 段（贴图 {} / 无贴图 {} / 碰撞 {}），bounds {:?}，truncated {}",
         meshes.len(),
         triangles,
         with_uv,
         uv_range,
+        ranges.len(),
+        textured,
+        untextured,
+        collision,
         scene.bounds,
         scene.truncated
     );
@@ -155,6 +166,11 @@ fn fmd_mesh_scene_has_geometry() {
     assert!(scene.bounds.iter().all(|value| value.is_finite()));
     assert!(meshes.iter().all(|mesh| mesh.positions.len() % 3 == 0));
     assert!(meshes.iter().all(|mesh| mesh.uvs.len() % 2 == 0));
+    assert!(textured > 0, "样例 FMD 应有带贴图的绘制段");
+    assert_eq!(collision, 0, "碰撞材质不应进入绘制段");
+    assert!(ranges
+        .iter()
+        .all(|range| (-1..=3).contains(&range.tex_ref)));
 }
 
 #[test]

@@ -24,6 +24,10 @@ pub struct VizSubRangeDto {
     pub material: i32,
     /// 材质指向的纹理页（MTRL[K].t2）；-1 表示无贴图。
     pub page: i32,
+    /// 材质 tint，内存序 R,G,B,A；碰撞材质的 alpha 为 0。
+    pub rgba: [u8; 4],
+    /// 渲染路径：-1 default / 0 NML / 1 ADD / 2 SUB / 3 OPA。
+    pub tex_ref: i32,
 }
 
 #[derive(Clone, Debug, Serialize)]

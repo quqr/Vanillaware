@@ -220,9 +220,26 @@ fn parse_txtr(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     }
 }
 
-/// MTRL 的 t2：每个材质指向的纹理页（`-1` 表示无贴图，如碰撞材质）。
-fn material_pages(bytes: &[u8]) -> Vec<i32> {
-    let mut pages = Vec::new();
+/// MTRL 中与预览渲染相关的字段。
+#[derive(Clone, Copy)]
+struct Material {
+    /// t2：纹理页下标；-1 表示无贴图（如碰撞材质）。
+    page: i32,
+    /// tint，内存序 R,G,B,A。
+    rgba: [u8; 4],
+    /// 渲染路径：-1 default / 0 NML / 1 ADD / 2 SUB / 3 OPA。
+    tex_ref: i32,
+}
+
+/// 材质越界时的占位：无贴图、白色、默认渲染路径。
+const NO_MATERIAL: Material = Material {
+    page: -1,
+    rgba: [0xff; 4],
+    tex_ref: -1,
+};
+
+fn material_table(bytes: &[u8]) -> Vec<Material> {
+    let mut materials = Vec::new();
     let mut pos = 0usize;
     while pos + 8 <= bytes.len() {
         let tag = &bytes[pos..pos + 4];
@@ -231,44 +248,52 @@ fn material_pages(bytes: &[u8]) -> Vec<i32> {
             break;
         }
         if tag == b"MTRL" {
-            collect_pages(bytes, pos + 8, pos + size, &mut pages);
+            collect_materials(bytes, pos + 8, pos + size, &mut materials);
         }
         pos += size;
     }
-    pages
+    materials
 }
 
-fn collect_pages(bytes: &[u8], start: usize, end: usize, pages: &mut Vec<i32>) {
+fn collect_materials(bytes: &[u8], start: usize, end: usize, out: &mut Vec<Material>) {
     let mut cur = Cursor::new(bytes, start, end);
     let Some(count) = cur.u32() else { return };
     for _ in 0..count.min(MAX_ITEMS) {
         let Some(name_len) = cur.u32() else { break };
-        // name + tex_ref(4) + rgba(4) + a_flag(4)
-        if cur.skip(name_len as usize).is_none() || cur.skip(0x0c).is_none() {
+        if cur.skip(name_len as usize).is_none() {
             break;
         }
+        let Some(tex_ref) = cur.i32() else { break };
+        let Some(rgba) = cur.take(4) else { break };
+        let Some(_a_flag) = cur.u32() else { break };
         let Some(int_count) = cur.u32() else { break };
         if int_count > 0x400 || cur.skip(int_count as usize * 4).is_none() {
             break;
         }
         let Some(skip_count) = cur.i32() else { break };
-        if skip_count <= 0 {
-            pages.push(-1);
-            continue;
+
+        let mut material = Material {
+            page: -1,
+            rgba: [rgba[0], rgba[1], rgba[2], rgba[3]],
+            tex_ref,
+        };
+        if skip_count > 0 {
+            let Some(page) = rdr::u32_at(bytes, cur.pos) else { break };
+            material.page = page as i32;
+            if cur.skip(skip_count as usize * 4).is_none() {
+                break;
+            }
         }
-        let Some(page) = rdr::u32_at(bytes, cur.pos) else { break };
-        pages.push(page as i32);
-        if cur.skip(skip_count as usize * 4).is_none() {
-            break;
-        }
+        out.push(material);
     }
 }
 
-/// 可视化首版：提取所有非空网格的 positions / uv + 按 sub 生成的顺序 indices。
+/// 可视化：提取所有非空网格的 positions / uv + 按 sub 生成的顺序 indices。
 ///
-/// 同时给出每个绘制段指向的纹理页（`MTRL[K].t2`）；材质其余参数与贴图解码留给前端。
+/// 每个绘制段带上材质指向的纹理页（`MTRL[K].t2`）、tint 与渲染路径；
+/// 无贴图且 alpha 为 0 的碰撞材质（BT_STAGE 的 HIT）不参与渲染。
 pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
-    let pages = material_pages(bytes);
+    let materials = material_table(bytes);
     let mut nodes = vec![VizNodeDto {
         id: 0,
         parent: None,
@@ -294,7 +319,7 @@ pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
                 bytes,
                 pos + 8,
                 pos + size,
-                &pages,
+                &materials,
                 &mut nodes,
                 &mut scene_bounds,
                 &mut truncated,
@@ -320,7 +345,7 @@ fn collect_meshes(
     bytes: &[u8],
     start: usize,
     end: usize,
-    pages: &[i32],
+    materials: &[Material],
     nodes: &mut Vec<VizNodeDto>,
     scene_bounds: &mut [f32; 6],
     truncated: &mut bool,
@@ -445,16 +470,22 @@ fn collect_meshes(
             if count == 0 || range.start + count > vtx_count {
                 continue;
             }
-            let page = usize::try_from(range.material)
+            let material = usize::try_from(range.material)
                 .ok()
-                .and_then(|index| pages.get(index))
+                .and_then(|index| materials.get(index))
                 .copied()
-                .unwrap_or(-1);
+                .unwrap_or(NO_MATERIAL);
+            // 碰撞壳：无贴图且 alpha 为 0，引擎里不可见。
+            if material.page < 0 && material.rgba[3] == 0 {
+                continue;
+            }
             sub_ranges.push(VizSubRangeDto {
                 start: range.start,
                 count,
                 material: range.material,
-                page,
+                page: material.page,
+                rgba: material.rgba,
+                tex_ref: material.tex_ref,
             });
             for vertex in range.start..range.start + count {
                 indices.push(vertex);

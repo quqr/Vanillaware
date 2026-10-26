@@ -220,6 +220,10 @@ export interface VizSubRange {
   material: number;
   /** 材质指向的纹理页（MTRL[K].t2）；-1 表示无贴图。 */
   page: number;
+  /** 材质 tint，内存序 R,G,B,A。 */
+  rgba: [number, number, number, number];
+  /** 渲染路径：-1 default / 0 NML / 1 ADD / 2 SUB / 3 OPA。 */
+  texRef: number;
 }
 
 export interface VizMesh {
