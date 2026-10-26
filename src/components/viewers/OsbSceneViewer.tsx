@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BufferGeometry, MeshStandardMaterial, Object3D } from "three";
-import { api, type FileEntry, type VizScene } from "../../lib/ipc";
+import { api, type FileEntry, type VizReference, type VizScene } from "../../lib/ipc";
+import { useLibraryStore } from "../../store/libraryStore";
+
+const ROLE_LABEL: Record<string, string> = {
+  model: "模型",
+  texture: "纹理",
+  animation: "动画",
+  audio: "音频",
+  script: "脚本",
+  text: "文本",
+};
 
 /** OSB 场景组装：节点树 + 引用 FMD 灰模；Three.js 动态加载。 */
 export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
@@ -9,6 +19,7 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
   const [wireframe, setWireframe] = useState(false);
   const [stats, setStats] = useState({ meshes: 0, triangles: 0, refs: 0 });
   const [epoch, setEpoch] = useState(0);
+  const select = useLibraryStore((s) => s.select);
 
   const mountRef = useRef<HTMLDivElement>(null);
   const materialsRef = useRef<MeshStandardMaterial[]>([]);
@@ -190,6 +201,18 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
     }
   }, [wireframe]);
 
+  // 同一资源会被多个节点引用，按 role + path 去重后展示，点击跳到对应文件。
+  const references = useMemo(() => {
+    if (!data) return [];
+    const grouped = new Map<string, { reference: VizReference; count: number }>();
+    for (const reference of data.references) {
+      const key = `${reference.role}|${reference.path}`;
+      const existing = grouped.get(key);
+      grouped.set(key, { reference, count: (existing?.count ?? 0) + 1 });
+    }
+    return [...grouped.values()];
+  }, [data]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex flex-none flex-wrap items-center gap-1.5 border-b border-base-300 bg-base-200 p-1.5 font-mono text-[10px]">
@@ -215,6 +238,25 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
         </button>
       </div>
 
+      {references.length > 0 && (
+        <div className="flex flex-none flex-wrap items-center gap-1 border-b border-base-300 bg-base-100 px-1.5 py-1 font-mono text-[10px]">
+          <span className="text-base-content/50">引用</span>
+          {references.map(({ reference, count }) => (
+            <button
+              key={`${reference.role}|${reference.path}`}
+              className={`btn btn-xs ${reference.status === "resolved" ? "btn-outline" : "btn-disabled"}`}
+              title={reference.status === "resolved" ? reference.path : `缺失：${reference.path}`}
+              disabled={reference.status !== "resolved"}
+              onClick={() => select(reference.path)}
+            >
+              <span>{ROLE_LABEL[reference.role] ?? reference.role}</span>
+              <span className="max-w-40 truncate">{fileLabel(reference.path)}</span>
+              {count > 1 && <span className="opacity-60">×{count}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="relative min-h-0 flex-1 overflow-hidden bg-base-100" ref={mountRef}>
         {!data && !error && (
           <div className="absolute inset-0 flex items-center justify-center font-mono text-sm text-base-content/50">
@@ -234,4 +276,9 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
       </div>
     </div>
   );
+}
+
+/** 引用面板只显示文件名，完整路径放在 title 里。 */
+function fileLabel(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
 }
