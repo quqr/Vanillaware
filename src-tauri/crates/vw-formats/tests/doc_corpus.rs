@@ -375,6 +375,10 @@ fn osb_scene_sample_has_geometry() {
     assert!(triangles > 0);
     assert!(scene.bounds.iter().all(|value| value.is_finite()));
     assert!(meshes.iter().all(|mesh| mesh.positions.len() % 3 == 0));
+    assert!(scene
+        .nodes
+        .iter()
+        .all(|node| node.transform.iter().all(|value| value.is_finite())));
 }
 
 #[test]

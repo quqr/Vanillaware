@@ -28,7 +28,7 @@ VizSceneDto {
 
 VizNodeDto {
   id, parent, name, kind: group | mesh | sprite | light | camera | reference,
-  transform: 16 floats,          // 列主序，尚未使用时为单位矩阵
+  transform: 16 floats,          // 列主序；OSB 的 model/anime 填入 common88 的 TRS
   mesh: VizMeshDto | null,
   meshRef: nodeId | null,        // 复用另一节点的网格（同一 FMD 被多个 model 引用）
   reference: VizReferenceDto | null,
@@ -52,7 +52,8 @@ VizReferenceDto {
 - **FMD 首版只做纯色/线框 + 轨道相机**：使用 positions 与按 sub 生成的 indices，
   材质、UV、FTX 贴图留到后续；先验证坐标、包围盒、三角拓扑与尺度。
 - **OSB 复用已有 MBS/FTX 查看器**：`scene` 查看器把 OSB 节点树摊平成图元 + 引用，
-  静态摆位先落地，动画/相机事件后接。
+  静态摆位先落地，动画/相机事件后接。model/anime 的 `origin/scale/rotate` 取自
+  common88；`rotate` 以度存储，按 RotZ → RotY → RotX 组合成节点矩阵。
 - **RSC 先做引用图**：`graph` 查看器展示「文件 → 条目 → 字节码载荷」
   （`kind` 为 file / entry / script），不做 3D。RSC 载荷不是 FMSB 魔数文件，
   而是 FMSB VM 字节码，因此按 `entry.offset` 到下一个更大 offset 切段展示。

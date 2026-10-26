@@ -82,7 +82,8 @@ struct FmdInstance {
 
 /// OSB 场景组装：节点树 + 资源引用；model 节点尝试把同目录 FMD 的网格挂进来。
 ///
-/// 首版只做平移/缩放（不做旋转），FMD 灰模，纹理与动画引用只作为可跳转节点。
+/// model / anime 应用 common88 的平移、缩放与旋转；FMD 灰模，
+/// 纹理与动画引用只作为可跳转节点。
 pub fn scene(bytes: &[u8], osb_path: &Path) -> VizSceneDto {
     let resources = resources(bytes);
     let base = osb_path.parent().unwrap_or_else(|| Path::new("."));
@@ -203,32 +204,8 @@ fn collect_scene(
     };
 
     let (transform, placement) = match type_id {
-        9 => {
-            let origin = [
-                raw_f32(body, MODEL_COMMON + 0x12),
-                raw_f32(body, MODEL_COMMON + 0x16),
-                raw_f32(body, MODEL_COMMON + 0x1a),
-            ];
-            let scale = [
-                raw_f32(body, MODEL_COMMON + 0x2e),
-                raw_f32(body, MODEL_COMMON + 0x32),
-                raw_f32(body, MODEL_COMMON + 0x36),
-            ];
-            (trs(origin, scale), Some((origin, scale)))
-        }
-        11 => {
-            let origin = [
-                raw_f32(body, ANIME_COMMON + 0x12),
-                raw_f32(body, ANIME_COMMON + 0x16),
-                raw_f32(body, ANIME_COMMON + 0x1a),
-            ];
-            let scale = [
-                raw_f32(body, ANIME_COMMON + 0x2e),
-                raw_f32(body, ANIME_COMMON + 0x32),
-                raw_f32(body, ANIME_COMMON + 0x36),
-            ];
-            (trs(origin, scale), Some((origin, scale)))
-        }
+        9 => node_placement(body, MODEL_COMMON),
+        11 => node_placement(body, ANIME_COMMON),
         _ => (identity(), None),
     };
 
@@ -244,8 +221,8 @@ fn collect_scene(
         reference: None,
     });
 
-    if let Some((origin, _scale)) = placement {
-        expand_point(bounds, origin);
+    if let Some(matrix) = placement {
+        expand_point(bounds, [matrix[12], matrix[13], matrix[14]]);
     }
 
     if type_id == 9 {
@@ -284,7 +261,7 @@ fn collect_scene(
 #[allow(clippy::too_many_arguments)]
 fn attach_model_meshes(
     path: &Path,
-    placement: Option<([f32; 3], [f32; 3])>,
+    placement: Option<[f32; 16]>,
     parent: u32,
     fmd_cache: &mut HashMap<PathBuf, FmdInstance>,
     nodes: &mut Vec<VizNodeDto>,
@@ -297,8 +274,8 @@ fn attach_model_meshes(
                 .get(*source_id as usize)
                 .and_then(|node| node.mesh.as_ref())
                 .map(|mesh| mesh.bounds);
-            if let (Some((origin, scale)), Some(mesh_bounds)) = (placement, mesh_bounds) {
-                expand_mesh(bounds, &mesh_bounds, origin, scale);
+            if let (Some(matrix), Some(mesh_bounds)) = (placement, mesh_bounds) {
+                expand_mesh(bounds, &mesh_bounds, matrix);
             }
             nodes.push(VizNodeDto {
                 id: nodes.len() as u32,
@@ -340,8 +317,8 @@ fn attach_model_meshes(
         }
         budget.vertices += mesh.positions.len() / 3;
         budget.indices += mesh.indices.len();
-        if let Some((origin, scale)) = placement {
-            expand_mesh(bounds, &mesh.bounds, origin, scale);
+        if let Some(matrix) = placement {
+            expand_mesh(bounds, &mesh.bounds, matrix);
         }
         let id = nodes.len() as u32;
         instance.mesh_ids.push(id);
@@ -391,12 +368,54 @@ fn add_reference(
     });
 }
 
-fn trs(origin: [f32; 3], scale: [f32; 3]) -> [f32; 16] {
+/// 从 common88 读 origin / scale / rotate，生成节点变换矩阵。
+///
+/// `rotate` 以度为单位，按 RotZ → RotY → RotX 组合（列主序，平移在 12..15）。
+/// body 不足时返回单位阵且不参与包围盒展开。
+fn node_placement(body: &[u8], common: usize) -> ([f32; 16], Option<[f32; 16]>) {
+    if body.len() < common + 0x46 {
+        return (identity(), None);
+    }
+    let origin = [
+        raw_f32(body, common + 0x12),
+        raw_f32(body, common + 0x16),
+        raw_f32(body, common + 0x1a),
+    ];
+    let scale = [
+        raw_f32(body, common + 0x2e),
+        raw_f32(body, common + 0x32),
+        raw_f32(body, common + 0x36),
+    ];
+    let rotate = [
+        raw_f32(body, common + 0x3a),
+        raw_f32(body, common + 0x3e),
+        raw_f32(body, common + 0x42),
+    ];
+    let matrix = trs(origin, scale, rotate);
+    (matrix, Some(matrix))
+}
+
+fn trs(origin: [f32; 3], scale: [f32; 3], rotate: [f32; 3]) -> [f32; 16] {
+    let (sx, cx) = rotate[0].to_radians().sin_cos();
+    let (sy, cy) = rotate[1].to_radians().sin_cos();
+    let (sz, cz) = rotate[2].to_radians().sin_cos();
     [
-        scale[0], 0.0, 0.0, 0.0,
-        0.0, scale[1], 0.0, 0.0,
-        0.0, 0.0, scale[2], 0.0,
-        origin[0], origin[1], origin[2], 1.0,
+        cz * cy * scale[0],
+        sz * cy * scale[0],
+        -sy * scale[0],
+        0.0,
+        (cz * sy * sx - sz * cx) * scale[1],
+        (sz * sy * sx + cz * cx) * scale[1],
+        cy * sx * scale[1],
+        0.0,
+        (cz * sy * cx + sz * sx) * scale[2],
+        (sz * sy * cx - cz * sx) * scale[2],
+        cy * cx * scale[2],
+        0.0,
+        origin[0],
+        origin[1],
+        origin[2],
+        1.0,
     ]
 }
 
@@ -409,16 +428,20 @@ fn expand_point(bounds: &mut [f32; 6], point: [f32; 3]) {
     bounds[5] = bounds[5].max(point[2]);
 }
 
-fn expand_mesh(bounds: &mut [f32; 6], mesh: &[f32; 6], origin: [f32; 3], scale: [f32; 3]) {
+fn transform_point(matrix: &[f32; 16], point: [f32; 3]) -> [f32; 3] {
+    [
+        matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12],
+        matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13],
+        matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14],
+    ]
+}
+
+fn expand_mesh(bounds: &mut [f32; 6], mesh: &[f32; 6], matrix: [f32; 16]) {
     for corner in 0..8 {
         let x = if corner & 1 == 0 { mesh[0] } else { mesh[3] };
         let y = if corner & 2 == 0 { mesh[1] } else { mesh[4] };
         let z = if corner & 4 == 0 { mesh[2] } else { mesh[5] };
-        expand_point(bounds, [
-            origin[0] + x * scale[0],
-            origin[1] + y * scale[1],
-            origin[2] + z * scale[2],
-        ]);
+        expand_point(bounds, transform_point(&matrix, [x, y, z]));
     }
 }
 
