@@ -40,6 +40,8 @@ pub fn run() {
             command::doc::doc_pseudo,
             command::doc::doc_layout,
             command::doc::doc_mesh,
+            command::doc::doc_scene,
+            command::doc::doc_graph,
             command::doc::doc_text,
             command::library::file_meta,
             command::library::file_thumb,

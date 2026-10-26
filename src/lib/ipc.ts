@@ -234,6 +234,8 @@ export interface VizNode {
   kind: string;
   transform: number[];
   mesh: VizMesh | null;
+  /** 复用另一节点的网格（同一 FMD 被多个 model 实例引用）。 */
+  meshRef: number | null;
   reference: VizReference | null;
 }
 
@@ -241,6 +243,27 @@ export interface VizScene {
   bounds: [number, number, number, number, number, number];
   nodes: VizNode[];
   references: VizReference[];
+  truncated: boolean;
+}
+
+export interface GraphNode {
+  id: number;
+  label: string;
+  kind: string;
+  detail: string | null;
+  path: string | null;
+  offset: number | null;
+}
+
+export interface GraphEdge {
+  from: number;
+  to: number;
+  label: string;
+}
+
+export interface RscGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
   truncated: boolean;
 }
 
@@ -394,6 +417,8 @@ export const api = {
   docLayout: (path: string) => invoke<BbsLayout>("doc_layout", { path }),
   docText: (path: string) => invoke<FmsText>("doc_text", { path }),
   docMesh: (path: string) => invoke<VizScene>("doc_mesh", { path }),
+  docScene: (path: string) => invoke<VizScene>("doc_scene", { path }),
+  docGraph: (path: string) => invoke<RscGraph>("doc_graph", { path }),
   fileMeta: (path: string) => invoke<FileMeta>("file_meta", { path }),
   fileThumb: (path: string) => invoke<ArrayBuffer>("file_thumb", { path }),
   readFileHead: (path: string, maxBytes: number) =>

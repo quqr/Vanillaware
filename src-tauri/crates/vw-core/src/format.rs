@@ -120,7 +120,7 @@ pub const FORMATS: &[Format] = &[
         ext: "osb",
         kind: Kind::Scene,
         label: "OSB",
-        viewers: DOC_HEX,
+        viewers: &["scene", "doc", "hex"],
         has_thumb: false,
     },
     Format {
@@ -162,7 +162,7 @@ pub const FORMATS: &[Format] = &[
         ext: "rsc",
         kind: Kind::List,
         label: "RSC",
-        viewers: DOC_HEX,
+        viewers: &["graph", "doc", "hex"],
         has_thumb: false,
     },
     Format {

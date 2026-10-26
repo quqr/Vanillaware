@@ -2,12 +2,19 @@
 //!
 //! 依据 `osb_parse.py`：16B 头 + 路径池 + 递归节点树；节点 = 16B 头 + body。
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
 use super::arena::{Builder, DocArena, DocMark};
-use super::rdr;
-use super::text;
+use super::{fmd, rdr, text};
+use crate::viz::{identity, VizNodeDto, VizReferenceDto, VizSceneDto};
 
 const NODE_HEADER: usize = 0x10;
+/// Caption(0x40) + Label(0x10) + Group(u16)。
 const BODY_PREFIX: usize = 0x52;
+/// model / anime 末尾的公共参数（88B）起点。
+const MODEL_COMMON: usize = BODY_PREFIX + 0x44;
+const ANIME_COMMON: usize = BODY_PREFIX + 0x11;
 const MAX_DEPTH: usize = 64;
 const MAX_CHILDREN: u32 = 4096;
 
@@ -31,6 +38,393 @@ const NODE_NAMES: &[(u32, &str)] = &[
     (23, "route"),
     (24, "postfx"),
 ];
+
+/// 资源路径表（Scene 查看器与引用图共用）。
+pub fn resources(bytes: &[u8]) -> Vec<String> {
+    if bytes.len() < 0x18 {
+        return Vec::new();
+    }
+    let count = rdr::u32_at(bytes, 0x10).unwrap_or(0);
+    let pool_end = rdr::u32_at(bytes, 0x14).unwrap_or(0);
+    let mut out = Vec::new();
+    for index in 0..count.min(4096) {
+        let Some(start_off) = rdr::u32_at(bytes, 0x18 + index as usize * 4) else {
+            break;
+        };
+        let start = 0x10usize + start_off as usize;
+        let end = if index + 1 < count {
+            rdr::u32_at(bytes, 0x18 + (index as usize + 1) * 4)
+                .map(|next| 0x10usize + next as usize)
+                .unwrap_or(bytes.len())
+        } else {
+            0x10usize + pool_end as usize
+        };
+        let end = end.min(bytes.len());
+        let Some(raw) = bytes.get(start..end) else {
+            break;
+        };
+        out.push(text::sjis_slot(raw));
+    }
+    out
+}
+
+struct SceneBudget {
+    vertices: usize,
+    indices: usize,
+    truncated: bool,
+}
+
+/// 同一 FMD 在场景里被多个 model 引用时只保留一份网格。
+struct FmdInstance {
+    mesh_ids: Vec<u32>,
+    names: Vec<String>,
+}
+
+/// OSB 场景组装：节点树 + 资源引用；model 节点尝试把同目录 FMD 的网格挂进来。
+///
+/// 首版只做平移/缩放（不做旋转），FMD 灰模，纹理与动画引用只作为可跳转节点。
+pub fn scene(bytes: &[u8], osb_path: &Path) -> VizSceneDto {
+    let resources = resources(bytes);
+    let base = osb_path.parent().unwrap_or_else(|| Path::new("."));
+    let resolved: Vec<(String, PathBuf, bool)> = resources
+        .iter()
+        .map(|rel| {
+            let path = resolve_resource(base, rel);
+            let status = path.is_file();
+            (rel.clone(), path, status)
+        })
+        .collect();
+
+    let mut nodes = vec![VizNodeDto {
+        id: 0,
+        parent: None,
+        name: osb_path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "OSB".into()),
+        kind: "group".into(),
+        transform: identity(),
+        mesh: None,
+        mesh_ref: None,
+        reference: None,
+    }];
+    let mut references = Vec::new();
+    let mut fmd_cache: HashMap<PathBuf, FmdInstance> = HashMap::new();
+    let mut bounds = [
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    ];
+    let mut budget = SceneBudget {
+        vertices: 0,
+        indices: 0,
+        truncated: false,
+    };
+
+    if bytes.len() >= 0x18 {
+        let pool_end = rdr::u32_at(bytes, 0x14).unwrap_or(0) as usize;
+        let start = 0x10 + pool_end;
+        collect_scene(
+            bytes,
+            start,
+            bytes.len(),
+            0,
+            0,
+            &resolved,
+            &mut fmd_cache,
+            &mut nodes,
+            &mut references,
+            &mut bounds,
+            &mut budget,
+        );
+    }
+
+    VizSceneDto {
+        bounds: if bounds[0].is_finite() { bounds } else { [0.0; 6] },
+        nodes,
+        references,
+        truncated: budget.truncated,
+    }
+}
+
+fn resolve_resource(base: &Path, rel: &str) -> PathBuf {
+    let mut candidates = vec![base.join(rel)];
+    if let Some(parent) = base.parent() {
+        candidates.push(parent.join(rel));
+        if let Some(grand) = parent.parent() {
+            candidates.push(grand.join(rel));
+        }
+    }
+    candidates
+        .iter()
+        .find(|path| path.is_file())
+        .cloned()
+        .unwrap_or_else(|| base.join(rel))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_scene(
+    bytes: &[u8],
+    offset: usize,
+    end: usize,
+    depth: usize,
+    parent: u32,
+    resources: &[(String, PathBuf, bool)],
+    fmd_cache: &mut HashMap<PathBuf, FmdInstance>,
+    nodes: &mut Vec<VizNodeDto>,
+    references: &mut Vec<VizReferenceDto>,
+    bounds: &mut [f32; 6],
+    budget: &mut SceneBudget,
+) -> usize {
+    if depth >= MAX_DEPTH || offset + NODE_HEADER > end {
+        return end;
+    }
+    let type_id = rdr::u32_at(bytes, offset).unwrap_or(0);
+    let body_size = rdr::u32_at(bytes, offset + 4).unwrap_or(0) as usize;
+    let child_count = rdr::u32_at(bytes, offset + 8).unwrap_or(0);
+    let body_start = offset + NODE_HEADER;
+    if body_start + body_size > end {
+        return end;
+    }
+    let body = &bytes[body_start..body_start + body_size];
+
+    let caption = body.get(0..0x40).map(text::sjis_slot).unwrap_or_default();
+    let label = body.get(0x40..0x50).map(text::sjis_slot).unwrap_or_default();
+    let type_name = node_name(type_id);
+    let title = if !caption.is_empty() {
+        caption
+    } else if !label.is_empty() {
+        label
+    } else {
+        type_name.to_string()
+    };
+
+    let (transform, placement) = match type_id {
+        9 => {
+            let origin = [
+                raw_f32(body, MODEL_COMMON + 0x12),
+                raw_f32(body, MODEL_COMMON + 0x16),
+                raw_f32(body, MODEL_COMMON + 0x1a),
+            ];
+            let scale = [
+                raw_f32(body, MODEL_COMMON + 0x2e),
+                raw_f32(body, MODEL_COMMON + 0x32),
+                raw_f32(body, MODEL_COMMON + 0x36),
+            ];
+            (trs(origin, scale), Some((origin, scale)))
+        }
+        11 => {
+            let origin = [
+                raw_f32(body, ANIME_COMMON + 0x12),
+                raw_f32(body, ANIME_COMMON + 0x16),
+                raw_f32(body, ANIME_COMMON + 0x1a),
+            ];
+            let scale = [
+                raw_f32(body, ANIME_COMMON + 0x2e),
+                raw_f32(body, ANIME_COMMON + 0x32),
+                raw_f32(body, ANIME_COMMON + 0x36),
+            ];
+            (trs(origin, scale), Some((origin, scale)))
+        }
+        _ => (identity(), None),
+    };
+
+    let node_id = nodes.len() as u32;
+    nodes.push(VizNodeDto {
+        id: node_id,
+        parent: Some(parent),
+        name: format!("{type_name} · {title}"),
+        kind: "group".into(),
+        transform,
+        mesh: None,
+        mesh_ref: None,
+        reference: None,
+    });
+
+    if let Some((origin, _scale)) = placement {
+        expand_point(bounds, origin);
+    }
+
+    if type_id == 9 {
+        let fmd_id = rdr::u16_at(body, BODY_PREFIX).unwrap_or(0) as usize;
+        let ftx_id = rdr::u16_at(body, BODY_PREFIX + 2).unwrap_or(0) as usize;
+        add_reference(resources, fmd_id, "model", node_id, nodes, references);
+        add_reference(resources, ftx_id, "texture", node_id, nodes, references);
+        if let Some((_, path, true)) = resources.get(fmd_id) {
+            attach_model_meshes(path, placement, node_id, fmd_cache, nodes, bounds, budget);
+        }
+    } else if type_id == 11 {
+        let fsb_id = rdr::u16_at(body, BODY_PREFIX + 4).unwrap_or(0) as usize;
+        add_reference(resources, fsb_id, "animation", node_id, nodes, references);
+    }
+
+    let mut cursor = body_start + body_size;
+    for _ in 0..child_count.min(MAX_CHILDREN) {
+        cursor = collect_scene(
+            bytes,
+            cursor,
+            end,
+            depth + 1,
+            node_id,
+            resources,
+            fmd_cache,
+            nodes,
+            references,
+            bounds,
+            budget,
+        );
+    }
+    cursor
+}
+
+/// 把一个 FMD 的网格挂到 model 节点下；同一 FMD 的后续实例只引用首个实例的网格。
+#[allow(clippy::too_many_arguments)]
+fn attach_model_meshes(
+    path: &Path,
+    placement: Option<([f32; 3], [f32; 3])>,
+    parent: u32,
+    fmd_cache: &mut HashMap<PathBuf, FmdInstance>,
+    nodes: &mut Vec<VizNodeDto>,
+    bounds: &mut [f32; 6],
+    budget: &mut SceneBudget,
+) {
+    if let Some(cached) = fmd_cache.get(path) {
+        for (name, source_id) in cached.names.iter().zip(cached.mesh_ids.iter()) {
+            let mesh_bounds = nodes
+                .get(*source_id as usize)
+                .and_then(|node| node.mesh.as_ref())
+                .map(|mesh| mesh.bounds);
+            if let (Some((origin, scale)), Some(mesh_bounds)) = (placement, mesh_bounds) {
+                expand_mesh(bounds, &mesh_bounds, origin, scale);
+            }
+            nodes.push(VizNodeDto {
+                id: nodes.len() as u32,
+                parent: Some(parent),
+                name: name.clone(),
+                kind: "mesh".into(),
+                transform: identity(),
+                mesh: None,
+                mesh_ref: Some(*source_id),
+                reference: None,
+            });
+        }
+        return;
+    }
+
+    let Ok(data) = std::fs::read(path) else {
+        return;
+    };
+    let Ok(scene) = fmd::mesh_scene(&data) else {
+        return;
+    };
+    if scene.truncated {
+        budget.truncated = true;
+    }
+
+    let mut instance = FmdInstance {
+        mesh_ids: Vec::new(),
+        names: Vec::new(),
+    };
+    for mesh_node in scene.nodes.into_iter().skip(1) {
+        let Some(mesh) = mesh_node.mesh else {
+            continue;
+        };
+        if budget.vertices + mesh.positions.len() / 3 > 600_000
+            || budget.indices + mesh.indices.len() > 2_000_000
+        {
+            budget.truncated = true;
+            break;
+        }
+        budget.vertices += mesh.positions.len() / 3;
+        budget.indices += mesh.indices.len();
+        if let Some((origin, scale)) = placement {
+            expand_mesh(bounds, &mesh.bounds, origin, scale);
+        }
+        let id = nodes.len() as u32;
+        instance.mesh_ids.push(id);
+        instance.names.push(mesh_node.name.clone());
+        nodes.push(VizNodeDto {
+            id,
+            parent: Some(parent),
+            name: mesh_node.name,
+            kind: "mesh".into(),
+            transform: identity(),
+            mesh: Some(mesh),
+            mesh_ref: None,
+            reference: None,
+        });
+    }
+
+    fmd_cache.insert(path.to_path_buf(), instance);
+}
+
+fn add_reference(
+    resources: &[(String, PathBuf, bool)],
+    index: usize,
+    role: &str,
+    parent: u32,
+    nodes: &mut Vec<VizNodeDto>,
+    references: &mut Vec<VizReferenceDto>,
+) {
+    let Some((rel, path, status)) = resources.get(index) else {
+        return;
+    };
+    let reference = VizReferenceDto {
+        path: path.to_string_lossy().into_owned(),
+        ext: rel.rsplit('.').next().unwrap_or_default().to_ascii_lowercase(),
+        role: role.to_string(),
+        status: if *status { "resolved".into() } else { "missing".into() },
+    };
+    references.push(reference.clone());
+    nodes.push(VizNodeDto {
+        id: nodes.len() as u32,
+        parent: Some(parent),
+        name: rel.rsplit('/').next().unwrap_or(rel).to_string(),
+        kind: "reference".into(),
+        transform: identity(),
+        mesh: None,
+        mesh_ref: None,
+        reference: Some(reference),
+    });
+}
+
+fn trs(origin: [f32; 3], scale: [f32; 3]) -> [f32; 16] {
+    [
+        scale[0], 0.0, 0.0, 0.0,
+        0.0, scale[1], 0.0, 0.0,
+        0.0, 0.0, scale[2], 0.0,
+        origin[0], origin[1], origin[2], 1.0,
+    ]
+}
+
+fn expand_point(bounds: &mut [f32; 6], point: [f32; 3]) {
+    bounds[0] = bounds[0].min(point[0]);
+    bounds[1] = bounds[1].min(point[1]);
+    bounds[2] = bounds[2].min(point[2]);
+    bounds[3] = bounds[3].max(point[0]);
+    bounds[4] = bounds[4].max(point[1]);
+    bounds[5] = bounds[5].max(point[2]);
+}
+
+fn expand_mesh(bounds: &mut [f32; 6], mesh: &[f32; 6], origin: [f32; 3], scale: [f32; 3]) {
+    for corner in 0..8 {
+        let x = if corner & 1 == 0 { mesh[0] } else { mesh[3] };
+        let y = if corner & 2 == 0 { mesh[1] } else { mesh[4] };
+        let z = if corner & 4 == 0 { mesh[2] } else { mesh[5] };
+        expand_point(bounds, [
+            origin[0] + x * scale[0],
+            origin[1] + y * scale[1],
+            origin[2] + z * scale[2],
+        ]);
+    }
+}
+
+fn raw_f32(bytes: &[u8], at: usize) -> f32 {
+    rdr::f32_at(bytes, at).unwrap_or(0.0)
+}
 
 pub fn build(bytes: &[u8]) -> DocArena {
     let mut builder = Builder::new();

@@ -7,7 +7,7 @@ use tauri::State;
 use vw_formats::doc::{
     AsmDto, BbsLayoutDto, DocOpenDto, DocPageDto, FmsTextDto, PseudoDto, PAGE_LIMIT, PAGE_MAX,
 };
-use vw_formats::viz::VizSceneDto;
+use vw_formats::viz::{RscGraphDto, VizSceneDto};
 
 use crate::state::AppState;
 
@@ -74,6 +74,28 @@ pub async fn doc_asm(path: String, function: Option<u32>) -> Result<AsmDto, Stri
     tokio::task::spawn_blocking(move || {
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
         vw_formats::doc::asb::disassemble_file(&bytes, function.map(|value| value as usize))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+/// OSB 场景组装：节点树 + 资源引用 + 引用 FMD 的灰模网格。
+#[tauri::command]
+pub async fn doc_scene(path: String) -> Result<VizSceneDto, String> {
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        Ok(vw_formats::doc::osb::scene(&bytes, Path::new(&path)))
+    })
+    .await
+    .map_err(|e| format!("join error: {e}"))?
+}
+
+/// RSC 引用图：文件 → 条目 → 字节码载荷。
+#[tauri::command]
+pub async fn doc_graph(path: String) -> Result<RscGraphDto, String> {
+    tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        Ok(vw_formats::doc::rsc::graph(&bytes, Path::new(&path)))
     })
     .await
     .map_err(|e| format!("join error: {e}"))?

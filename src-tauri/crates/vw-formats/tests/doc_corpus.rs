@@ -322,6 +322,94 @@ fn bbs_corpus_is_closed() {
 
 #[test]
 #[ignore = "需要本机 13 Sentinels 语料"]
+fn osb_resources_sample() {
+    let dir = corpus("VW_CORPUS_OSB", r"F:\Codes\13\13rim ex\EX DATA\Stage");
+    let files = files(&dir, "osb");
+    let Some(path) = files.first() else { return };
+    let bytes = std::fs::read(path).unwrap();
+    let resources = doc::osb::resources(&bytes);
+    eprintln!("{}: {} resources", path.display(), resources.len());
+    for item in resources.iter().take(20) {
+        eprintln!("  {item}");
+    }
+}
+
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn osb_scene_sample_has_geometry() {
+    let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\Stage\98siki_2syume.osb");
+    if !path.is_file() {
+        eprintln!("跳过：{} 不存在", path.display());
+        return;
+    }
+    let bytes = std::fs::read(&path).unwrap();
+    let scene = doc::osb::scene(&bytes, &path);
+
+    let meshes: Vec<_> = scene.nodes.iter().filter_map(|node| node.mesh.as_ref()).collect();
+    let triangles: usize = meshes.iter().map(|mesh| mesh.indices.len() / 3).sum();
+    let references: usize = scene
+        .nodes
+        .iter()
+        .filter(|node| node.reference.is_some())
+        .count();
+    let resolved = scene
+        .references
+        .iter()
+        .filter(|reference| reference.status == "resolved")
+        .count();
+    eprintln!(
+        "osb scene: {} 节点，{} 网格，{} 三角，{} 引用（可解析 {}），bounds {:?}，truncated {}",
+        scene.nodes.len(),
+        meshes.len(),
+        triangles,
+        references,
+        resolved,
+        scene.bounds,
+        scene.truncated
+    );
+
+    assert!(scene.nodes.len() > 1);
+    assert!(!scene.references.is_empty());
+    assert!(resolved > 0, "样例 OSB 的引用应能按相对路径解析");
+    assert!(!meshes.is_empty());
+    assert!(triangles > 0);
+    assert!(scene.bounds.iter().all(|value| value.is_finite()));
+    assert!(meshes.iter().all(|mesh| mesh.positions.len() % 3 == 0));
+}
+
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn rsc_graph_sample_has_entries() {
+    let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\BattleScript\area1_wave1.rsc");
+    if !path.is_file() {
+        eprintln!("跳过：{} 不存在", path.display());
+        return;
+    }
+    let bytes = std::fs::read(&path).unwrap();
+    let graph = doc::rsc::graph(&bytes, &path);
+
+    let entries = graph.nodes.iter().filter(|node| node.kind == "entry").count();
+    let scripts = graph.nodes.iter().filter(|node| node.kind == "script").count();
+    eprintln!(
+        "rsc graph: {} 节点（entry {entries}，script {scripts}），{} 边，truncated {}",
+        graph.nodes.len(),
+        graph.edges.len(),
+        graph.truncated
+    );
+
+    assert_eq!(graph.nodes[0].kind, "file");
+    assert!(entries > 0);
+    assert!(scripts > 0);
+    assert_eq!(graph.edges.len(), entries + scripts);
+    assert!(graph.edges.iter().all(|edge| (edge.from as usize) < graph.nodes.len()));
+    assert!(graph
+        .edges
+        .iter()
+        .all(|edge| (edge.to as usize) < graph.nodes.len()));
+}
+
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
 fn osb_corpus_is_closed() {
     let dir = corpus("VW_CORPUS_OSB", r"F:\Codes\13\13rim ex\EX DATA\Stage");
     let files = files(&dir, "osb");

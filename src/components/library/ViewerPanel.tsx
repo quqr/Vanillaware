@@ -10,6 +10,8 @@ import { DocViewer } from "../viewers/DocViewer";
 import { FmdMeshViewer } from "../viewers/FmdMeshViewer";
 import { FmsTableViewer } from "../viewers/FmsTableViewer";
 import { HexViewer } from "../viewers/HexViewer";
+import { OsbSceneViewer } from "../viewers/OsbSceneViewer";
+import { RscGraphViewer } from "../viewers/RscGraphViewer";
 
 /** 查看器 id → 组件。新增格式只需在这里加一条（后端负责声明有哪些 id）。 */
 const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: string) => React.ReactNode }> = {
@@ -19,6 +21,8 @@ const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: s
   doc: { label: "结构", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
   layout: { label: "布局", render: (entry) => <BbsLayoutViewer entry={entry} /> },
   mesh: { label: "模型", render: (entry) => <FmdMeshViewer entry={entry} /> },
+  scene: { label: "场景", render: (entry) => <OsbSceneViewer entry={entry} /> },
+  graph: { label: "引用图", render: (entry) => <RscGraphViewer entry={entry} /> },
   text: { label: "文本", render: (entry) => <FmsTableViewer entry={entry} /> },
   hex: { label: "十六进制", render: (entry) => <HexViewer entry={entry} /> },
 };

@@ -44,6 +44,8 @@ pub struct VizNodeDto {
     /// 列主序 4×4；首版为屏幕对齐的单位矩阵。
     pub transform: [f32; 16],
     pub mesh: Option<VizMeshDto>,
+    /// 复用另一节点的网格（同一 FMD 被场景中多个 model 实例引用）。
+    pub mesh_ref: Option<u32>,
     pub reference: Option<VizReferenceDto>,
 }
 
@@ -55,6 +57,34 @@ pub struct VizSceneDto {
     pub nodes: Vec<VizNodeDto>,
     pub references: Vec<VizReferenceDto>,
     /// 首版为避免 IPC 爆炸设置的顶点/索引上限是否触发了截断。
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNodeDto {
+    pub id: u32,
+    pub label: String,
+    /// file / entry / script / external
+    pub kind: String,
+    pub detail: Option<String>,
+    pub path: Option<String>,
+    pub offset: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphEdgeDto {
+    pub from: u32,
+    pub to: u32,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RscGraphDto {
+    pub nodes: Vec<GraphNodeDto>,
+    pub edges: Vec<GraphEdgeDto>,
     pub truncated: bool,
 }
 

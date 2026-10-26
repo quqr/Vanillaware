@@ -231,6 +231,7 @@ pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
         kind: "group".into(),
         transform: identity(),
         mesh: None,
+        mesh_ref: None,
         reference: None,
     }];
     let mut scene_bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
@@ -432,6 +433,7 @@ fn collect_meshes(
                 bounds,
                 sub_ranges,
             }),
+            mesh_ref: None,
             reference: None,
         });
 

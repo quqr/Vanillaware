@@ -1,12 +1,108 @@
 //! RSC 脚本资源包：0x10 头 + 0xB4 定长条目 + 内嵌 FMSB 字节码。
 
+use std::path::Path;
+
 use super::arena::{Builder, DocArena, DocMark};
 use super::fms;
 use super::rdr;
 use super::text;
+use crate::viz::{GraphEdgeDto, GraphNodeDto, RscGraphDto};
 
 const ENTRY: usize = 0xb4;
 const MAX_ENTRIES: u32 = 4096;
+
+/// RSC 引用图：文件 → 条目 → 字节码载荷。
+pub fn graph(bytes: &[u8], path: &Path) -> RscGraphDto {
+    let mut nodes = vec![GraphNodeDto {
+        id: 0,
+        label: path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "RSC".into()),
+        kind: "file".into(),
+        detail: Some(format!("{} bytes", bytes.len())),
+        path: Some(path.to_string_lossy().into_owned()),
+        offset: None,
+    }];
+    let mut edges = Vec::new();
+    let mut truncated = false;
+
+    if bytes.len() < 0x10 {
+        return RscGraphDto { nodes, edges, truncated };
+    }
+
+    let count = rdr::u32_at(bytes, 0).unwrap_or(0);
+    let table_end = 0x10usize + count as usize * ENTRY;
+    if table_end > bytes.len() {
+        truncated = true;
+        return RscGraphDto { nodes, edges, truncated };
+    }
+
+    let offsets: Vec<u64> = (0..count)
+        .map(|index| {
+            let at = 0x10 + index as usize * ENTRY;
+            rdr::u32_at(bytes, at + 0xa0).unwrap_or(0) as u64
+        })
+        .collect();
+
+    for index in 0..count.min(MAX_ENTRIES) {
+        let at = 0x10 + index as usize * ENTRY;
+        let name = text::utf8_or_sjis(&bytes[at..at + 0x40]);
+        let offset = offsets[index as usize];
+        let entry_id = nodes.len() as u32;
+        let group = rdr::i16_at(bytes, at + 0x60).unwrap_or(0);
+        let entry_type = rdr::u32_at(bytes, at + 0xb0).unwrap_or(0);
+        nodes.push(GraphNodeDto {
+            id: entry_id,
+            label: if name.is_empty() { format!("entry[{index}]") } else { name },
+            kind: "entry".into(),
+            detail: Some(format!(
+                "id={} group={} type=0x{entry_type:x}",
+                rdr::u32_at(bytes, at + 0x40).unwrap_or(0),
+                group
+            )),
+            path: None,
+            offset: Some(offset),
+        });
+        edges.push(GraphEdgeDto {
+            from: 0,
+            to: entry_id,
+            label: "contains".into(),
+        });
+
+        if offset == 0 || offset as usize >= bytes.len() {
+            continue;
+        }
+        let end = offsets
+            .iter()
+            .copied()
+            .filter(|value| *value > offset)
+            .min()
+            .unwrap_or(bytes.len() as u64)
+            .min(bytes.len() as u64);
+        let script_id = nodes.len() as u32;
+        nodes.push(GraphNodeDto {
+            id: script_id,
+            label: format!("script · {} B", end - offset),
+            kind: "script".into(),
+            detail: Some(format!(
+                "0x{offset:x}..0x{end:x} · type={entry_type} · group={group}"
+            )),
+            path: None,
+            offset: Some(offset),
+        });
+        edges.push(GraphEdgeDto {
+            from: entry_id,
+            to: script_id,
+            label: "payload".into(),
+        });
+    }
+
+    if count > MAX_ENTRIES {
+        truncated = true;
+    }
+    RscGraphDto { nodes, edges, truncated }
+}
 
 pub fn build(bytes: &[u8]) -> DocArena {
     let mut builder = Builder::new();
