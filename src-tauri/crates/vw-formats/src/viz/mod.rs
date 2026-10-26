@@ -22,6 +22,8 @@ pub struct VizSubRangeDto {
     /// 索引数量（triangle count × 3）。
     pub count: u32,
     pub material: i32,
+    /// 材质指向的纹理页（MTRL[K].t2）；-1 表示无贴图。
+    pub page: i32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -29,6 +31,8 @@ pub struct VizSubRangeDto {
 pub struct VizMeshDto {
     pub positions: Vec<f32>,
     pub indices: Vec<u32>,
+    /// 每顶点 uv（2 个 f32）；为空表示没有 UV 流。
+    pub uvs: Vec<f32>,
     pub bounds: [f32; 6],
     pub sub_ranges: Vec<VizSubRangeDto>,
 }

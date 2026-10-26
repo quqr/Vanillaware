@@ -131,18 +131,30 @@ fn fmd_mesh_scene_has_geometry() {
 
     let meshes: Vec<_> = scene.nodes.iter().filter_map(|node| node.mesh.as_ref()).collect();
     let triangles: usize = meshes.iter().map(|mesh| mesh.indices.len() / 3).sum();
+    let with_uv = meshes.iter().filter(|mesh| !mesh.uvs.is_empty()).count();
+    let uv_range = meshes
+        .iter()
+        .flat_map(|mesh| mesh.uvs.iter())
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), value| {
+            (lo.min(*value), hi.max(*value))
+        });
     eprintln!(
-        "fmd mesh: {} 个网格，{} 三角，bounds {:?}，truncated {}",
+        "fmd mesh: {} 个网格，{} 三角，{} 带 UV，UV 范围 {:?}，bounds {:?}，truncated {}",
         meshes.len(),
         triangles,
+        with_uv,
+        uv_range,
         scene.bounds,
         scene.truncated
     );
 
     assert!(!meshes.is_empty());
     assert!(triangles > 0);
+    assert!(with_uv > 0, "样例 FMD 应解析出 UV");
+    assert!(uv_range.0.is_finite() && uv_range.1.is_finite());
     assert!(scene.bounds.iter().all(|value| value.is_finite()));
     assert!(meshes.iter().all(|mesh| mesh.positions.len() % 3 == 0));
+    assert!(meshes.iter().all(|mesh| mesh.uvs.len() % 2 == 0));
 }
 
 #[test]

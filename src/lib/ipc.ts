@@ -218,11 +218,15 @@ export interface VizSubRange {
   start: number;
   count: number;
   material: number;
+  /** 材质指向的纹理页（MTRL[K].t2）；-1 表示无贴图。 */
+  page: number;
 }
 
 export interface VizMesh {
   positions: number[];
   indices: number[];
+  /** 每顶点 uv（2 个浮点）；空数组表示没有 UV 流。 */
+  uvs: number[];
   bounds: [number, number, number, number, number, number];
   subRanges: VizSubRange[];
 }

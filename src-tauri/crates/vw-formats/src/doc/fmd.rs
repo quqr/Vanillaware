@@ -220,10 +220,55 @@ fn parse_txtr(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     }
 }
 
-/// 可视化首版：提取所有非空网格的 positions + 按 sub 生成的顺序 indices。
+/// MTRL 的 t2：每个材质指向的纹理页（`-1` 表示无贴图，如碰撞材质）。
+fn material_pages(bytes: &[u8]) -> Vec<i32> {
+    let mut pages = Vec::new();
+    let mut pos = 0usize;
+    while pos + 8 <= bytes.len() {
+        let tag = &bytes[pos..pos + 4];
+        let size = rdr::u32_at(bytes, pos + 4).unwrap_or(0) as usize;
+        if size < 8 || pos + size > bytes.len() {
+            break;
+        }
+        if tag == b"MTRL" {
+            collect_pages(bytes, pos + 8, pos + size, &mut pages);
+        }
+        pos += size;
+    }
+    pages
+}
+
+fn collect_pages(bytes: &[u8], start: usize, end: usize, pages: &mut Vec<i32>) {
+    let mut cur = Cursor::new(bytes, start, end);
+    let Some(count) = cur.u32() else { return };
+    for _ in 0..count.min(MAX_ITEMS) {
+        let Some(name_len) = cur.u32() else { break };
+        // name + tex_ref(4) + rgba(4) + a_flag(4)
+        if cur.skip(name_len as usize).is_none() || cur.skip(0x0c).is_none() {
+            break;
+        }
+        let Some(int_count) = cur.u32() else { break };
+        if int_count > 0x400 || cur.skip(int_count as usize * 4).is_none() {
+            break;
+        }
+        let Some(skip_count) = cur.i32() else { break };
+        if skip_count <= 0 {
+            pages.push(-1);
+            continue;
+        }
+        let Some(page) = rdr::u32_at(bytes, cur.pos) else { break };
+        pages.push(page as i32);
+        if cur.skip(skip_count as usize * 4).is_none() {
+            break;
+        }
+    }
+}
+
+/// 可视化首版：提取所有非空网格的 positions / uv + 按 sub 生成的顺序 indices。
 ///
-/// 不做材质/UV/贴图；只验证几何、包围盒与三角拓扑。
+/// 同时给出每个绘制段指向的纹理页（`MTRL[K].t2`）；材质其余参数与贴图解码留给前端。
 pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
+    let pages = material_pages(bytes);
     let mut nodes = vec![VizNodeDto {
         id: 0,
         parent: None,
@@ -245,7 +290,15 @@ pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
             break;
         }
         if tag == b"MESH" {
-            collect_meshes(bytes, pos + 8, pos + size, &mut nodes, &mut scene_bounds, &mut truncated)?;
+            collect_meshes(
+                bytes,
+                pos + 8,
+                pos + size,
+                &pages,
+                &mut nodes,
+                &mut scene_bounds,
+                &mut truncated,
+            )?;
         }
         pos += size;
     }
@@ -267,6 +320,7 @@ fn collect_meshes(
     bytes: &[u8],
     start: usize,
     end: usize,
+    pages: &[i32],
     nodes: &mut Vec<VizNodeDto>,
     scene_bounds: &mut [f32; 6],
     truncated: &mut bool,
@@ -311,6 +365,7 @@ fn collect_meshes(
         let tri_total: u64 = ranges.iter().map(|range| range.tri as u64).sum();
 
         let mut positions = Vec::new();
+        let mut uvs = Vec::new();
         let mut vtx_count = 0u32;
         if vtx_total != 0 || tri_total != 0 {
             if cur.align16().is_none() {
@@ -330,19 +385,9 @@ fn collect_meshes(
                 break;
             }
 
+            // 法线 / 切线 / 顶点色 / UV / idx16 / idx32：每条都先读 count 再按 payload 前进。
             let mut stream_ok = true;
-            for (stride, rule) in [
-                (12usize, AttrRule::Fixed),
-                (12, AttrRule::Fixed),
-                (12, AttrRule::Fixed),
-                (4, AttrRule::Fixed),
-                (8, AttrRule::Fixed),
-                (2, AttrRule::U16),
-                (4, AttrRule::U32I),
-            ]
-            .iter()
-            .skip(1)
-            {
+            for (index, (stride, rule)) in ATTR_STREAMS.iter().enumerate() {
                 if !stream_ok || cur.align16().is_none() {
                     stream_ok = false;
                     break;
@@ -368,7 +413,18 @@ fn collect_meshes(
                         }
                     }
                 };
-                if cur.skip(payload).is_none() {
+                if index == ATTR_UV {
+                    let Some(raw) = cur.take(payload) else {
+                        stream_ok = false;
+                        break;
+                    };
+                    if n == vtx_count {
+                        uvs = raw
+                            .chunks_exact(4)
+                            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                            .collect();
+                    }
+                } else if cur.skip(payload).is_none() {
                     stream_ok = false;
                     break;
                 }
@@ -389,10 +445,16 @@ fn collect_meshes(
             if count == 0 || range.start + count > vtx_count {
                 continue;
             }
+            let page = usize::try_from(range.material)
+                .ok()
+                .and_then(|index| pages.get(index))
+                .copied()
+                .unwrap_or(-1);
             sub_ranges.push(VizSubRangeDto {
                 start: range.start,
                 count,
                 material: range.material,
+                page,
             });
             for vertex in range.start..range.start + count {
                 indices.push(vertex);
@@ -430,6 +492,7 @@ fn collect_meshes(
             mesh: Some(VizMeshDto {
                 positions,
                 indices,
+                uvs,
                 bounds,
                 sub_ranges,
             }),
@@ -685,6 +748,19 @@ fn resync(bytes: &[u8], from: usize, end: usize) -> Option<usize> {
     }
     None
 }
+
+/// 顶点流之后的 6 条属性流：法线 / 切线 / 顶点色 / UV / idx16 / idx32。
+const ATTR_STREAMS: [(usize, AttrRule); 6] = [
+    (12, AttrRule::Fixed),
+    (12, AttrRule::Fixed),
+    (4, AttrRule::Fixed),
+    (8, AttrRule::Fixed),
+    (2, AttrRule::U16),
+    (4, AttrRule::U32I),
+];
+
+/// UV 在属性流里的下标。
+const ATTR_UV: usize = 3;
 
 #[derive(Clone, Copy)]
 enum AttrRule {
