@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { BufferGeometry, MeshStandardMaterial, Object3D } from "three";
-import { api, type FileEntry, type VizReference, type VizScene } from "../../lib/ipc";
+import type { Mesh, MeshStandardMaterial, Object3D, Texture } from "three";
+import { api, type FileEntry, type VizMesh, type VizReference, type VizScene } from "../../lib/ipc";
+import { buildMesh, loadPageTextures } from "../../lib/meshScene";
 import { useLibraryStore } from "../../store/libraryStore";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -92,42 +93,64 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
       scene.add(fill);
 
       const objects = new Map<number, Object3D>();
-      const geometries = new Map<number, BufferGeometry>();
       const materials: MeshStandardMaterial[] = [];
       materialsRef.current = materials;
 
+      // 纹理引用挂在 model 节点下：父节点即 model 节点。
+      const textureOfModel = new Map<number, string>();
       for (const node of data.nodes) {
-        const geometry = node.mesh
-          ? (() => {
-              const created = new THREE.BufferGeometry();
-              created.setAttribute(
-                "position",
-                new THREE.Float32BufferAttribute(node.mesh!.positions, 3),
-              );
-              created.setIndex(node.mesh!.indices);
-              created.computeVertexNormals();
-              created.computeBoundingSphere();
-              geometries.set(node.id, created);
-              return created;
-            })()
-          : node.meshRef === null
-            ? null
-            : geometries.get(node.meshRef) ?? null;
+        if (node.parent !== null && node.reference?.role === "texture") {
+          textureOfModel.set(node.parent, node.reference.path);
+        }
+      }
 
-        const object = geometry
-          ? (() => {
-              const material = new THREE.MeshStandardMaterial({
-                color: new THREE.Color().setHSL(((node.id * 0.137) % 1 + 1) % 1, 0.35, 0.6),
-                roughness: 0.85,
-                metalness: 0.05,
-                flatShading: true,
-                wireframe: false,
-                side: THREE.DoubleSide,
-              });
-              materials.push(material);
-              return new THREE.Mesh(geometry, material);
-            })()
-          : new THREE.Group();
+      const meshById = new Map<number, VizMesh>(
+        data.nodes.flatMap((node) => (node.mesh ? [[node.id, node.mesh] as const] : [])),
+      );
+      const pagesByPath = new Map<string, Set<number>>();
+      for (const node of data.nodes) {
+        const mesh = node.mesh ?? (node.meshRef === null ? null : meshById.get(node.meshRef));
+        if (!mesh || node.parent === null) continue;
+        const ftx = textureOfModel.get(node.parent);
+        if (!ftx) continue;
+        const pages = pagesByPath.get(ftx) ?? new Set<number>();
+        for (const range of mesh.subRanges) pages.add(range.page);
+        pagesByPath.set(ftx, pages);
+      }
+
+      const loaded = await Promise.all(
+        [...pagesByPath].map(
+          async ([path, pages]) =>
+            [path, await loadPageTextures(THREE, path, [...pages])] as const,
+        ),
+      );
+      const texturesByPath = new Map<string, Map<number, Texture>>(loaded);
+      if (disposed) {
+        for (const pages of texturesByPath.values()) {
+          for (const texture of pages.values()) texture.dispose();
+        }
+        return;
+      }
+
+      const emptyTextures = new Map<number, Texture>();
+      const built = new Map<number, Mesh>();
+      for (const node of data.nodes) {
+        let object: Object3D;
+        if (node.mesh) {
+          const ftx = node.parent === null ? null : textureOfModel.get(node.parent) ?? null;
+          const textures = ftx ? texturesByPath.get(ftx) ?? emptyTextures : emptyTextures;
+          const tint = new THREE.Color().setHSL(((node.id * 0.137) % 1 + 1) % 1, 0.35, 0.6);
+          const result = buildMesh(THREE, node.mesh, tint, textures);
+          materials.push(...result.materials);
+          built.set(node.id, result.object);
+          object = result.object;
+        } else if (node.meshRef !== null) {
+          // 同一 FMD 的后续实例复用首个实例的几何与材质。
+          const source = built.get(node.meshRef);
+          object = source ? new THREE.Mesh(source.geometry, source.material) : new THREE.Group();
+        } else {
+          object = new THREE.Group();
+        }
 
         object.matrixAutoUpdate = false;
         object.matrix.fromArray(node.transform);
@@ -179,6 +202,9 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
             }
           }
         });
+        for (const pages of texturesByPath.values()) {
+          for (const texture of pages.values()) texture.dispose();
+        }
         renderer.dispose();
         renderer.domElement.remove();
       };

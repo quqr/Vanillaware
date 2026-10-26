@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { MeshStandardMaterial } from "three";
 import { api, type FileEntry, type VizScene } from "../../lib/ipc";
+import { buildMesh, loadPageTextures } from "../../lib/meshScene";
 
-/** FMD 首版：纯色三角面 + 线框切换 + 轨道相机（ADR-0019）。
+/** FMD：贴图/纯色三角面 + 线框切换 + 轨道相机（ADR-0019）。
  *
  * Three.js 只在打开模型时动态加载，避免把 3D 引擎塞进首屏 bundle。
  */
@@ -83,28 +84,21 @@ export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
       const materials: MeshStandardMaterial[] = [];
       materialsRef.current = materials;
 
+      const pages = data.nodes.flatMap(
+        (node) => node.mesh?.subRanges.map((range) => range.page) ?? [],
+      );
+      const textures = await loadPageTextures(THREE, siblingFtx(entry.path), pages);
+      if (disposed) {
+        for (const texture of textures.values()) texture.dispose();
+        return;
+      }
+
       for (const node of data.nodes) {
         if (!node.mesh || node.mesh.indices.length === 0) continue;
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute(
-          "position",
-          new THREE.Float32BufferAttribute(node.mesh.positions, 3),
-        );
-        geometry.setIndex(node.mesh.indices);
-        geometry.computeVertexNormals();
-        geometry.computeBoundingSphere();
-
-        const color = new THREE.Color().setHSL(((node.id * 0.137) % 1 + 1) % 1, 0.42, 0.62);
-        const material = new THREE.MeshStandardMaterial({
-          color,
-          roughness: 0.82,
-          metalness: 0.05,
-          flatShading: true,
-          wireframe: false,
-          side: THREE.DoubleSide,
-        });
-        materials.push(material);
-        scene.add(new THREE.Mesh(geometry, material));
+        const tint = new THREE.Color().setHSL(((node.id * 0.137) % 1 + 1) % 1, 0.42, 0.62);
+        const built = buildMesh(THREE, node.mesh, tint, textures);
+        materials.push(...built.materials);
+        scene.add(built.object);
       }
 
       const [minX, minY, minZ, maxX, maxY, maxZ] = data.bounds;
@@ -150,6 +144,7 @@ export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
             }
           }
         }
+        for (const texture of textures.values()) texture.dispose();
         renderer.dispose();
         renderer.domElement.remove();
       };
@@ -215,4 +210,9 @@ export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
       </div>
     </div>
   );
+}
+
+/** 同名 .ftx：FMD 的 TXTR 页与它的页一一对应。 */
+function siblingFtx(path: string): string {
+  return path.replace(/\.[^./\\]+$/, "") + ".ftx";
 }
