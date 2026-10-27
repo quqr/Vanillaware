@@ -7,7 +7,7 @@ use tauri::State;
 use vw_formats::doc::{
     AsmDto, BbsLayoutDto, DocOpenDto, DocPageDto, FmsTextDto, PseudoDto, PAGE_LIMIT, PAGE_MAX,
 };
-use vw_formats::viz::{RscGraphDto, VizSceneDto};
+use vw_formats::viz::{FileGraphDto, VizSceneDto};
 
 use crate::state::AppState;
 
@@ -90,12 +90,21 @@ pub async fn doc_scene(path: String) -> Result<VizSceneDto, String> {
     .map_err(|e| format!("join error: {e}"))?
 }
 
-/// RSC 引用图：文件 → 条目 → 字节码载荷。
+/// 跨文件引用图：RSC（条目 → 载荷 → 资源串）/ OTM（清单 → 资源）/ BBS（装配单 → 名表）。
 #[tauri::command]
-pub async fn doc_graph(path: String) -> Result<RscGraphDto, String> {
+pub async fn doc_graph(path: String) -> Result<FileGraphDto, String> {
     tokio::task::spawn_blocking(move || {
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-        Ok(vw_formats::doc::rsc::graph(&bytes, Path::new(&path)))
+        let file = Path::new(&path);
+        let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
+        let ext = vw_core::fslist::extension(file);
+        Ok(match ext.as_str() {
+            "rsc" => vw_formats::doc::rsc::graph(&bytes, file),
+            "otm" => vw_formats::doc::otm::graph(&bytes, file),
+            "bbs" => vw_formats::doc::bbs::graph(&bytes, file),
+            other => {
+                return Err(format!("{other} 没有引用图"));
+            }
+        })
     })
     .await
     .map_err(|e| format!("join error: {e}"))?

@@ -7,7 +7,7 @@ use super::arena::{Builder, DocArena, DocMark};
 use super::fms;
 use super::rdr;
 use super::text;
-use crate::viz::{GraphEdgeDto, GraphNodeDto, RscGraphDto};
+use crate::viz::{FileGraphDto, GraphEdgeDto, GraphNodeDto};
 
 const ENTRY: usize = 0xb4;
 const MAX_ENTRIES: u32 = 4096;
@@ -22,7 +22,7 @@ const ASSET_EXTS: [&str; 10] = [
 /// 跨文件引用有两类：
 /// - 同名 `.fms` 文本表（引擎按 `RoundScript/%s.rsc` + `%s.fms` 成对加载）；
 /// - FMSB 载荷里 tag 1 的内联资源串，如 `GUI/WARPCIRCLE_MONE.MBS`。
-pub fn graph(bytes: &[u8], path: &Path) -> RscGraphDto {
+pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     let mut nodes = vec![GraphNodeDto {
         id: 0,
         label: path
@@ -39,7 +39,7 @@ pub fn graph(bytes: &[u8], path: &Path) -> RscGraphDto {
     let mut truncated = false;
 
     if bytes.len() < 0x10 {
-        return RscGraphDto { nodes, edges, truncated };
+        return FileGraphDto { nodes, edges, truncated };
     }
 
     let paired = path.with_extension("fms");
@@ -66,7 +66,7 @@ pub fn graph(bytes: &[u8], path: &Path) -> RscGraphDto {
     let table_end = 0x10usize + count as usize * ENTRY;
     if table_end > bytes.len() {
         truncated = true;
-        return RscGraphDto { nodes, edges, truncated };
+        return FileGraphDto { nodes, edges, truncated };
     }
 
     let base = path.parent().unwrap_or_else(|| Path::new("."));
@@ -155,7 +155,7 @@ pub fn graph(bytes: &[u8], path: &Path) -> RscGraphDto {
     if count > MAX_ENTRIES {
         truncated = true;
     }
-    RscGraphDto { nodes, edges, truncated }
+    FileGraphDto { nodes, edges, truncated }
 }
 
 /// 载荷中的内联资源路径：可打印 ASCII 串（NUL 结尾），含 `/` 且以已知扩展名收尾。

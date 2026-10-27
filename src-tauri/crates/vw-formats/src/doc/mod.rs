@@ -17,6 +17,7 @@ pub mod mpd;
 pub mod osb;
 pub mod otm;
 pub mod rdr;
+pub mod resolve;
 pub mod rsc;
 pub mod text;
 

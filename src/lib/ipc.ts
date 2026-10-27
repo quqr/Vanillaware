@@ -271,7 +271,7 @@ export interface GraphEdge {
   label: string;
 }
 
-export interface RscGraph {
+export interface FileGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
   truncated: boolean;
@@ -428,7 +428,7 @@ export const api = {
   docText: (path: string) => invoke<FmsText>("doc_text", { path }),
   docMesh: (path: string) => invoke<VizScene>("doc_mesh", { path }),
   docScene: (path: string) => invoke<VizScene>("doc_scene", { path }),
-  docGraph: (path: string) => invoke<RscGraph>("doc_graph", { path }),
+  docGraph: (path: string) => invoke<FileGraph>("doc_graph", { path }),
   fileMeta: (path: string) => invoke<FileMeta>("file_meta", { path }),
   fileThumb: (path: string) => invoke<ArrayBuffer>("file_thumb", { path }),
   readFileHead: (path: string, maxBytes: number) =>

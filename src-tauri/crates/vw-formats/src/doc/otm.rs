@@ -1,8 +1,12 @@
 //! OTBM 模型事件表：0x78 头 + A/B/C 三级索引。
 
+use std::path::Path;
+
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
+use super::resolve::Resolver;
 use super::text;
+use crate::viz::{FileGraphDto, GraphEdgeDto, GraphNodeDto};
 
 const HEADER: usize = 0x78;
 const A_RECORD: usize = 4;
@@ -140,5 +144,74 @@ fn build_c(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count: u
     }
     if count > MAX_RECORDS {
         builder.truncate();
+    }
+}
+
+/// 引用图：资源清单 → 头里登记的资源（实测是 `.MBS` 或 `.FSB`，全大写）。
+///
+/// 目标文件通常不在 OTM 目录，而在兄弟目录（`BattleEvent/`、`bg/`），
+/// 因此走 [`Resolver`] 的有界索引。
+pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
+    let base = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut resolver = Resolver::new(base);
+
+    let mut nodes = vec![GraphNodeDto {
+        id: 0,
+        label: path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "OTM".into()),
+        kind: "file".into(),
+        detail: Some(format!("{} bytes", bytes.len())),
+        path: Some(path.to_string_lossy().into_owned()),
+        offset: None,
+        status: None,
+    }];
+    let mut edges = Vec::new();
+
+    if bytes.len() < HEADER {
+        return FileGraphDto {
+            nodes,
+            edges,
+            truncated: true,
+        };
+    }
+
+    let name = text::utf8_or_sjis(&bytes[0x10..0x50]);
+    if !name.is_empty() {
+        let ext = Path::new(&name)
+            .extension()
+            .map(|value| value.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        let role = match ext.as_str() {
+            "mbs" | "mbp" => "model",
+            "fsb" => "animation",
+            "ftx" | "ftp" => "texture",
+            "fms" => "text",
+            "rsc" => "script",
+            _ => "resource",
+        };
+        let (resolved, ok) = resolver.resolve(&name);
+        let id = nodes.len() as u32;
+        nodes.push(GraphNodeDto {
+            id,
+            label: name,
+            kind: "external".into(),
+            detail: Some(role.into()),
+            path: Some(resolved.to_string_lossy().into_owned()),
+            offset: Some(0x10),
+            status: Some(if ok { "resolved" } else { "missing" }.into()),
+        });
+        edges.push(GraphEdgeDto {
+            from: 0,
+            to: id,
+            label: "resource".into(),
+        });
+    }
+
+    FileGraphDto {
+        nodes,
+        edges,
+        truncated: false,
     }
 }

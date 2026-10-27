@@ -3,9 +3,12 @@
 //! 依据 `uo_bbs.py`：头 0x338 + 9 个段偏移 + 名表/档位/物件/rec4..7/尾部表。
 
 use serde::Serialize;
+use std::path::Path;
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
+use super::resolve::Resolver;
+use crate::viz::{FileGraphDto, GraphEdgeDto, GraphNodeDto};
 
 const OFFSETS_AT: usize = 0x338;
 const SEGMENTS_AT: usize = 0x380;
@@ -477,4 +480,62 @@ fn hex32(bytes: &[u8], at: usize) -> String {
     rdr::u32_at(bytes, at)
         .map(|value| format!("0x{value:08x}"))
         .unwrap_or_else(|| "—".into())
+}
+
+/// 引用图：装配单 → 两张名表指向的 mbs / ftx。
+///
+/// 名表里只有文件名（如 `BGBtRoad_g.mbs`），引擎按 `BattleBG/` 同目录加载，
+/// 所以这里以同目录为主，解析不到再用有界索引兜底。
+pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
+    let base = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut resolver = Resolver::new(base);
+
+    let mut nodes = vec![GraphNodeDto {
+        id: 0,
+        label: path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "BBS".into()),
+        kind: "file".into(),
+        detail: Some(format!("{} bytes", bytes.len())),
+        path: Some(path.to_string_lossy().into_owned()),
+        offset: None,
+        status: None,
+    }];
+    let mut edges = Vec::new();
+
+    let layout = layout(bytes);
+
+    for (names, role, label) in [
+        (&layout.mbs_names, "model", "model"),
+        (&layout.ftx_names, "texture", "texture"),
+    ] {
+        for name in names {
+            if name.is_empty() {
+                continue;
+            }
+            let (resolved, ok) = resolver.resolve(name);
+            let id = nodes.len() as u32;
+            nodes.push(GraphNodeDto {
+                id,
+                label: name.clone(),
+                kind: "external".into(),
+                detail: Some(role.into()),
+                path: Some(resolved.to_string_lossy().into_owned()),
+                offset: None,
+                status: Some(if ok { "resolved" } else { "missing" }.into()),
+            });
+            edges.push(GraphEdgeDto {
+                from: 0,
+                to: id,
+                label: label.into(),
+            });
+        }
+    }
+
+    FileGraphDto {
+        nodes,
+        edges,
+        truncated: layout.counts[0] > MAX_RECORDS || layout.counts[1] > MAX_RECORDS,
+    }
 }

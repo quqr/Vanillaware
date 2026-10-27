@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type FileEntry, type GraphNode, type RscGraph } from "../../lib/ipc";
+import { api, type FileEntry, type GraphNode, type FileGraph } from "../../lib/ipc";
 import { useLibraryStore } from "../../store/libraryStore";
 
 const WIDTH = 760;
@@ -11,9 +11,9 @@ const EXTERNAL_LABEL: Record<string, string> = {
   loads: "资源",
 };
 
-/** RSC 引用图：文件 → 条目 → 字节码载荷 + 跨文件引用（ADR-0019）。 */
-export function RscGraphViewer({ entry }: { entry: FileEntry }) {
-  const [data, setData] = useState<RscGraph | null>(null);
+/** 跨文件引用图：RSC 条目/载荷、OTM 清单、BBS 名表共用（ADR-0019）。 */
+export function RefGraphViewer({ entry }: { entry: FileEntry }) {
+  const [data, setData] = useState<FileGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const select = useLibraryStore((s) => s.select);

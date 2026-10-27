@@ -83,6 +83,7 @@ pub struct Format {
 }
 
 const DOC_HEX: &[&str] = &["doc", "hex"];
+const GRAPH_DOC_HEX: &[&str] = &["graph", "doc", "hex"];
 const ANIMATION_DOC_HEX: &[&str] = &["animation", "doc", "hex"];
 const ATLAS_DOC_HEX: &[&str] = &["atlas", "doc", "hex"];
 
@@ -127,7 +128,7 @@ pub const FORMATS: &[Format] = &[
         ext: "bbs",
         kind: Kind::Scene,
         label: "BBS",
-        viewers: &["layout", "doc", "hex"],
+        viewers: &["layout", "graph", "doc", "hex"],
         has_thumb: false,
     },
     Format {
@@ -169,7 +170,7 @@ pub const FORMATS: &[Format] = &[
         ext: "otm",
         kind: Kind::Grid,
         label: "OTM",
-        viewers: DOC_HEX,
+        viewers: GRAPH_DOC_HEX,
         has_thumb: false,
     },
     Format {

@@ -90,9 +90,11 @@ pub struct GraphEdgeDto {
     pub label: String,
 }
 
+/// 跨文件引用图。RSC（条目 → 脚本载荷 → 资源串）、OTM（资源清单 → 资源）、
+/// BBS（背景装配单 → mbs/ftx 名表）都投影到这一层，前端只认它。
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RscGraphDto {
+pub struct FileGraphDto {
     pub nodes: Vec<GraphNodeDto>,
     pub edges: Vec<GraphEdgeDto>,
     pub truncated: bool,
