@@ -557,3 +557,47 @@ fn scb_tree_has_named_nodes() {
         "应当出现 @TITLE 节点"
     );
 }
+
+/// `.nnd` 容器不变量：`version == 2`、`wordCount % 3 == 0`、载荷不越界，
+/// 三条在全部 302 个文件上成立（见 `doc/nnd.rs` 的注释）。
+#[test]
+#[ignore = "需要本机 UNICORN OVERLORD 解包语料"]
+fn nnd_container_invariants_hold_for_all_files() {
+    let root = corpus(
+        "VW_UO_EXTRACT",
+        r"F:/Codes/UNICORN OVERLORD/extract/000/NodeNetworkData",
+    );
+    let mut list = Vec::new();
+    walk(&root, "nnd", &mut list);
+    assert!(!list.is_empty(), "语料为空：{}", root.display());
+
+    let (mut failed, mut with_units, mut with_tail, mut units) = (0, 0, 0, 0u64);
+    for path in &list {
+        let arena = doc::parse_file(path, None).expect("nnd parse");
+        for check in arena.checks() {
+            if !check.ok {
+                failed += 1;
+                eprintln!("未通过 {}: {} — {:?}", check.id, path.display(), check.detail);
+            }
+        }
+        let page = arena.page(0, arena.root(), 0, 100).expect("root page");
+        if page.items.iter().any(|node| node.name.starts_with("Units (")) {
+            with_units += 1;
+        }
+        if page.items.iter().any(|node| node.name.starts_with("Tail (")) {
+            with_tail += 1;
+        }
+        units += page
+            .items
+            .iter()
+            .filter(|node| node.name.starts_with("Units ("))
+            .count() as u64;
+    }
+
+    eprintln!(
+        "nnd: {} 个，失败 {failed}，带载荷 {with_units}，带尾部 {with_tail}，载荷段合计 {units}",
+        list.len()
+    );
+    assert_eq!(failed, 0);
+    assert_eq!(with_units, list.len(), "每个文件都应有载荷段");
+}

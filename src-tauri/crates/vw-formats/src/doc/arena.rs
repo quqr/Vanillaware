@@ -190,6 +190,11 @@ impl DocArena {
         })
     }
 
+    /// 自检结果（测试与调试用；对外通过 [`Self::doc`] 返回）。
+    pub fn checks(&self) -> &[DocCheckDto] {
+        &self.checks
+    }
+
     pub fn doc(
         &self,
         handle: u64,
@@ -198,8 +203,7 @@ impl DocArena {
         label: String,
         size: u64,
         build_ms: u32,
-    ) -> DocDto {
-        DocDto {
+    ) -> DocDto {        DocDto {
             handle,
             path,
             ext,

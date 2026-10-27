@@ -14,6 +14,7 @@ pub mod fsb;
 pub mod ftx;
 pub mod mbs;
 pub mod mpd;
+pub mod nnd;
 pub mod osb;
 pub mod otm;
 pub mod rdr;
@@ -63,6 +64,7 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
         "fsb" => Ok(fsb::build(bytes)),
         "asb" => asb::build(bytes).map_err(crate::Error::BadData),
         "scb" => Ok(scb::build(bytes)),
+        "nnd" => Ok(nnd::build(bytes)),
         _ => Ok(binary::build(bytes, ext)),
     }
 }
@@ -75,8 +77,58 @@ mod tests {
     fn binary_view_is_truncation_safe() {
         for len in 0..128 {
             let bytes = vec![0x41u8; len];
-            let arena = parse_bytes(&bytes, "nnd", None).expect("binary");
+            let arena = parse_bytes(&bytes, "zzz", None).expect("binary");
             assert!(arena.total_nodes() > 0);
+        }
+    }
+
+    #[test]
+    fn nnd_view_reads_header_units_and_names() {
+        // 头 0x18 + 2 组（6 个字）+ 尾部一个 64 字节名字槽
+        let mut bytes = vec![0u8; 0x18 + 24 + 68];
+        bytes[0..4].copy_from_slice(&2u32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&6u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&1003u32.to_le_bytes());
+        bytes[0x18..0x1c].copy_from_slice(&0u32.to_le_bytes());
+        bytes[0x1c..0x20].copy_from_slice(&2.5f32.to_le_bytes());
+        bytes[0x20..0x24].copy_from_slice(&832236u32.to_le_bytes());
+        let tail = 0x18 + 24;
+        bytes[tail..tail + 4].copy_from_slice(&1u32.to_le_bytes());
+        bytes[tail + 4..tail + 12].copy_from_slice(b"Gate_D01");
+
+        let arena = parse_bytes(&bytes, "nnd", None).expect("nnd");
+        let page = arena.page(1, arena.root(), 0, 100).unwrap();
+        assert!(page.total >= 4, "应含 header / summary / units / tail");
+        let checks = arena.checks();
+        assert!(checks.iter().all(|check| check.id != "nnd.version" || check.ok));
+        assert!(checks.iter().all(|check| check.id != "nnd.units" || check.ok));
+
+        let units = page
+            .items
+            .iter()
+            .find(|node| node.name.starts_with("Units ("))
+            .map(|node| node.id)
+            .expect("Units 分组");
+        let first = arena.page(1, units, 0, 10).unwrap();
+        assert_eq!(first.total, 2, "两组记录");
+        let unit = first.items[0].id;
+        let fields: Vec<String> = arena
+            .page(1, unit, 0, 10)
+            .unwrap()
+            .items
+            .iter()
+            .map(|node| node.name.clone())
+            .collect();
+        for key in ["w0", "w1", "w1f", "w2"] {
+            assert!(fields.iter().any(|name| name == key), "缺少字段 {key}");
+        }
+    }
+
+    #[test]
+    fn nnd_view_survives_truncation() {
+        for len in 0..0x40 {
+            let bytes = vec![0u8; len];
+            let _ = parse_bytes(&bytes, "nnd", None);
         }
     }
 
