@@ -36,6 +36,8 @@ const KIND_LABEL: Record<string, string> = {
   text: "文本",
   list: "列表",
   grid: "网格",
+  audio: "音频",
+  video: "影片",
   binary: "二进制",
 };
 

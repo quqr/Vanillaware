@@ -32,7 +32,9 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | --- | --- | --- |
 | **纹理文件 / Texture file** | `.ftx` / `.ftp` 等 FTEX 容器，装的是压缩像素帧。类别 = 纹理。 | An FTEX container (`.ftx`, `.ftp`) holding compressed pixel frames. Kind = texture. |
 | **动画文件 / Animation file** | `.mbs` / `.mbp` 等族文件，装的是骨骼-四边形动画数据。类别 = 动画。 | A family file (`.mbs`, `.mbp`) holding skeleton/quad animation data. Kind = animation. |
-| **二进制类别 / Binary kind** | 已确认是原生资源、解析器尚未进场的族（如 `.nnd`、`.bbs`）。可看元信息与头部字节，不做解读。 | A native resource whose parser has not landed yet. Metadata and leading bytes only. |
+| **音频类别 / Audio kind** | CRI ADX2 的 `.acb`（cue sheet）/ `.awb`（AFS2 wave bank）/ `.acf`（配置表）。表结构按 `@UTF` 逐列解码，载荷（HCA）按字节保留。 | CRI ADX2 containers: `.acb` cue sheet, `.awb` AFS2 wave bank, `.acf` config. Tables decoded column-by-column; HCA payload kept as bytes. |
+| **影片类别 / Video kind** | `.usm`（CRI Sofdec2）容器；块链走到 EOF，视频/音频载荷不解码。 | A `.usm` (CRI Sofdec2) container; the chunk chain is walked to EOF, payloads are not decoded. |
+| **二进制类别 / Binary kind** | 容器可读、载荷不透明的原生资源（如加密目录表的 CRI `.cpk`）。只报元信息与头部字节。 | A native resource whose container is readable but payload opaque (e.g. CRI `.cpk` with an encrypted TOC). Metadata and leading bytes only. |
 | **收录 / Catalogued** | 只有格式注册表里登记的原生资源才被收录。`.png`、`.json`、`.txt`、`.quad` 等派生产物在目录列表里被过滤掉，只报数量。 | Only registry-listed native resources are catalogued. Derived artifacts (`.png`, `.json`, `.txt`, `.quad`) are filtered out of listings; only a count is reported. |
 
 ## 动画格式层 / Animation format layer

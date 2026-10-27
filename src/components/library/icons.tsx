@@ -63,6 +63,20 @@ export function FormatIcon({ icon, size = 16 }: { icon: string; size?: number })
           <rect x="9" y="9" width="5" height="5" />
         </svg>
       );
+    case "audio":
+      return (
+        <svg {...common}>
+          <path d="M3 6h2l3-3v10L5 10H3z" />
+          <path d="M11 5.5a4 4 0 0 1 0 5M13 3.5a7 7 0 0 1 0 9" />
+        </svg>
+      );
+    case "video":
+      return (
+        <svg {...common}>
+          <rect x="2" y="3" width="8" height="10" />
+          <path d="M10 6l4-2v8l-4-2z" />
+        </svg>
+      );
     default:
       return (
         <svg {...common}>

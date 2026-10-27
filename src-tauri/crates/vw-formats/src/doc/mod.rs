@@ -2,12 +2,15 @@
 //!
 //! 本模块只依赖字节与格式自身，不依赖 `vw-core`；DTO 直接由命令层返回。
 
+pub mod acb;
 pub mod arena;
 pub mod asb;
 pub mod asb_ops;
+pub mod awb;
 pub mod bbs;
 pub mod binary;
 pub mod ctb;
+pub mod drg;
 pub mod fmd;
 pub mod fms;
 pub mod fsb;
@@ -22,12 +25,17 @@ pub mod resolve;
 pub mod rsc;
 pub mod scb;
 pub mod text;
+pub mod ucb;
+pub mod ufb;
+pub mod usm;
+pub mod utf;
+pub mod vs2;
 
 use std::path::Path;
 
 pub use arena::{
-    DocArena, DocCheckDto, DocDto, DocMark, DocNodeDto, DocNodeKind, DocOpenDto, DocPageDto, Builder,
-    MAX_DEPTH, MAX_NODES, MAX_STRING, PAGE_LIMIT, PAGE_MAX,
+    Builder, DocArena, DocCheckDto, DocDto, DocMark, DocNodeDto, DocNodeKind, DocOpenDto,
+    DocPageDto, MAX_DEPTH, MAX_NODES, MAX_STRING, PAGE_LIMIT, PAGE_MAX,
 };
 pub use asb::{AsmDto, PseudoDto};
 pub use bbs::BbsLayoutDto;
@@ -65,6 +73,15 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
         "asb" => asb::build(bytes).map_err(crate::Error::BadData),
         "scb" => Ok(scb::build(bytes)),
         "nnd" => Ok(nnd::build(bytes)),
+        "acb" => Ok(acb::build(bytes, "ACB")),
+        "acf" => Ok(utf::build(bytes, "ACF")),
+        "awb" => Ok(awb::build(bytes, "AFS2")),
+        "usm" => Ok(usm::build(bytes)),
+        "ufb" => Ok(ufb::build(bytes)),
+        "ucb" => Ok(ucb::build(bytes)),
+        "drg" => Ok(drg::build(bytes)),
+        "vs2" => Ok(vs2::build(bytes)),
+        "inc" => Ok(text::build_plain(bytes, "INC")),
         _ => Ok(binary::build(bytes, ext)),
     }
 }
@@ -100,8 +117,12 @@ mod tests {
         let page = arena.page(1, arena.root(), 0, 100).unwrap();
         assert!(page.total >= 4, "应含 header / summary / units / tail");
         let checks = arena.checks();
-        assert!(checks.iter().all(|check| check.id != "nnd.version" || check.ok));
-        assert!(checks.iter().all(|check| check.id != "nnd.units" || check.ok));
+        assert!(checks
+            .iter()
+            .all(|check| check.id != "nnd.version" || check.ok));
+        assert!(checks
+            .iter()
+            .all(|check| check.id != "nnd.units" || check.ok));
 
         let units = page
             .items
@@ -163,8 +184,7 @@ mod tests {
         let mut bytes = vec![0u8; 0x380];
         bytes[..4].copy_from_slice(b"UBBS");
         for index in 0..9 {
-            bytes[0x338 + index * 8..0x340 + index * 8]
-                .copy_from_slice(&0x380u64.to_le_bytes());
+            bytes[0x338 + index * 8..0x340 + index * 8].copy_from_slice(&0x380u64.to_le_bytes());
         }
 
         let arena = parse_bytes(&bytes, "bbs", None).expect("bbs");

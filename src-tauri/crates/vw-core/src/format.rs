@@ -29,7 +29,11 @@ pub enum Kind {
     List,
     /// 索引 / 网格状数据。
     Grid,
-    /// 已确认是原生资源但尚无解析器：只看元信息与头部字节。
+    /// 音频容器（cue sheet / wave bank）。
+    Audio,
+    /// 影片容器。
+    Video,
+    /// 容器可读、载荷不透明的原生资源（如 CRI CPK）。
     Binary,
 }
 
@@ -44,6 +48,8 @@ impl Kind {
             Kind::Text => "text",
             Kind::List => "list",
             Kind::Grid => "grid",
+            Kind::Audio => "audio",
+            Kind::Video => "video",
             Kind::Binary => "binary",
         }
     }
@@ -64,6 +70,8 @@ impl Kind {
             Kind::Text => "文本",
             Kind::List => "列表",
             Kind::Grid => "网格",
+            Kind::Audio => "音频",
+            Kind::Video => "影片",
             Kind::Binary => "二进制",
         }
     }
@@ -187,81 +195,83 @@ pub const FORMATS: &[Format] = &[
         viewers: DOC_HEX,
         has_thumb: false,
     },
-    // 已确认是原生资源、解析器尚未进场的族。
+    // 大地图与调试参数库：结构已逐字段闭合，查看器给出全量字段。
     Format {
         ext: "nnd",
-        kind: Kind::Binary,
+        kind: Kind::Grid,
         label: "NND",
         viewers: DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "drg",
-        kind: Kind::Binary,
+        kind: Kind::List,
         label: "DRG",
         viewers: DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "ufb",
-        kind: Kind::Binary,
+        kind: Kind::Scene,
         label: "UFB",
         viewers: DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "ucb",
-        kind: Kind::Binary,
+        kind: Kind::Grid,
         label: "UCB",
         viewers: DOC_HEX,
         has_thumb: false,
     },
     Format {
-        ext: "acb",
-        kind: Kind::Binary,
-        label: "ACB",
-        viewers: DOC_HEX,
-        has_thumb: false,
-    },
-    Format {
-        ext: "awb",
-        kind: Kind::Binary,
-        label: "AWB",
-        viewers: DOC_HEX,
-        has_thumb: false,
-    },
-    Format {
-        ext: "acf",
-        kind: Kind::Binary,
-        label: "ACF",
-        viewers: DOC_HEX,
-        has_thumb: false,
-    },
-    Format {
-        ext: "cpk",
-        kind: Kind::Binary,
-        label: "CPK",
-        viewers: DOC_HEX,
-        has_thumb: false,
-    },
-    Format {
-        ext: "usm",
-        kind: Kind::Binary,
-        label: "USM",
-        viewers: DOC_HEX,
-        has_thumb: false,
-    },
-    Format {
         ext: "vs2",
-        kind: Kind::Binary,
+        kind: Kind::List,
         label: "VS2",
         viewers: DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "inc",
-        kind: Kind::Binary,
+        kind: Kind::Text,
         label: "INC",
+        viewers: DOC_HEX,
+        has_thumb: false,
+    },
+    // CRI 音频 / 影片：容器层闭合，载荷（HCA / Sofdec2）按字节保留。
+    Format {
+        ext: "acb",
+        kind: Kind::Audio,
+        label: "ACB",
+        viewers: DOC_HEX,
+        has_thumb: false,
+    },
+    Format {
+        ext: "awb",
+        kind: Kind::Audio,
+        label: "AFS2",
+        viewers: DOC_HEX,
+        has_thumb: false,
+    },
+    Format {
+        ext: "acf",
+        kind: Kind::Audio,
+        label: "ACF",
+        viewers: DOC_HEX,
+        has_thumb: false,
+    },
+    Format {
+        ext: "usm",
+        kind: Kind::Video,
+        label: "USM",
+        viewers: DOC_HEX,
+        has_thumb: false,
+    },
+    // CPK 是 CRI 封包，目录表加密且 romfs 已全解包：只报元信息。
+    Format {
+        ext: "cpk",
+        kind: Kind::Binary,
+        label: "CPK",
         viewers: DOC_HEX,
         has_thumb: false,
     },
@@ -332,6 +342,8 @@ mod tests {
             Kind::Text,
             Kind::List,
             Kind::Grid,
+            Kind::Audio,
+            Kind::Video,
             Kind::Binary,
         ] {
             assert!(
@@ -345,7 +357,12 @@ mod tests {
     #[test]
     fn only_textures_have_thumbnails() {
         for f in FORMATS {
-            assert_eq!(f.has_thumb, f.kind == Kind::Texture, "{} 缩略图策略不对", f.ext);
+            assert_eq!(
+                f.has_thumb,
+                f.kind == Kind::Texture,
+                "{} 缩略图策略不对",
+                f.ext
+            );
         }
     }
 }
