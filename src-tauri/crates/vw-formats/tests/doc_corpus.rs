@@ -492,3 +492,68 @@ fn osb_corpus_is_closed() {
     eprintln!("osb: {} 个，失败 {failed}", files.len());
     assert_eq!(failed, 0);
 }
+
+/// `.scb` 只出现在 DLC 的 `Script/`，所以三个根一起扫。
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn scb_corpus_is_closed() {
+    let roots = [
+        corpus("VW_CORPUS_13", r"F:\Codes\13\13rim ex\EX DATA"),
+        PathBuf::from(r"F:\Codes\13\13rim dlc ex"),
+        PathBuf::from(r"F:\Codes\13\13rim dlc2 ex"),
+    ];
+
+    let mut scb = Vec::new();
+    for root in &roots {
+        walk(root, "scb", &mut scb);
+    }
+    if scb.is_empty() {
+        eprintln!("跳过：三个根下都没有 .scb");
+        return;
+    }
+
+    let mut failed = 0;
+    for path in &scb {
+        let arena = doc::parse_file(path, None).expect("scb parse");
+        if check_ok(&arena, "scb.eof") != Some(true) {
+            failed += 1;
+            eprintln!("未闭合: {}", path.display());
+        }
+    }
+    eprintln!("scb: {} 个，失败 {failed}", scb.len());
+    assert_eq!(failed, 0);
+}
+
+/// 树形投影的形状检查：ROOT 下应当直接是 @TITLE / @MONSTER / @PAGE 节点。
+#[test]
+#[ignore = "需要本机 13 Sentinels 语料"]
+fn scb_tree_has_named_nodes() {
+    let path = PathBuf::from(r"F:\Codes\13\13rim dlc ex\Script\Animation.scb");
+    if !path.is_file() {
+        eprintln!("跳过：{} 不存在", path.display());
+        return;
+    }
+
+    let arena = doc::parse_file(&path, None).expect("scb parse");
+    let root_page = arena.page(0, 0, 0, 100).expect("root page");
+    let root_id = root_page
+        .items
+        .iter()
+        .find(|node| node.name == "ROOT")
+        .map(|node| node.id)
+        .expect("ROOT 分组");
+
+    let page = arena.page(0, root_id, 0, 100).expect("ROOT page");
+
+    let names: Vec<String> = page.items.iter().map(|node| node.name.clone()).collect();
+    eprintln!("前 12 个节点: {:#?}", &names[..names.len().min(12)]);
+
+    assert!(
+        names.iter().any(|name| name.starts_with("@MONSTER")),
+        "应当出现 @MONSTER 节点"
+    );
+    assert!(
+        names.iter().any(|name| name.starts_with("@TITLE")),
+        "应当出现 @TITLE 节点"
+    );
+}

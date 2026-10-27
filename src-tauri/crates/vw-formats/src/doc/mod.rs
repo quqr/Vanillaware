@@ -19,6 +19,7 @@ pub mod otm;
 pub mod rdr;
 pub mod resolve;
 pub mod rsc;
+pub mod scb;
 pub mod text;
 
 use std::path::Path;
@@ -61,6 +62,7 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
         "fmd" => Ok(fmd::build(bytes)),
         "fsb" => Ok(fsb::build(bytes)),
         "asb" => asb::build(bytes).map_err(crate::Error::BadData),
+        "scb" => Ok(scb::build(bytes)),
         _ => Ok(binary::build(bytes, ext)),
     }
 }

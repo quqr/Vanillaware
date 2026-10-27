@@ -267,7 +267,7 @@ pub const FORMATS: &[Format] = &[
     },
     Format {
         ext: "scb",
-        kind: Kind::Binary,
+        kind: Kind::Text,
         label: "SCB",
         viewers: DOC_HEX,
         has_thumb: false,
