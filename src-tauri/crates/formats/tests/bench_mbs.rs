@@ -1,5 +1,3 @@
-//! MBS 解析耗时（预览打开时的固定成本）。默认不跑：
-//!
 //! ```text
 //! cargo test --release -p formats --test bench_mbs -- --ignored --nocapture
 //! ```
@@ -10,11 +8,11 @@ const GUI_DIR: &str = r"F:\Codes\UNICORN OVERLORD\extract\000\GUI";
 const TAG: &str = "swi_unic";
 
 #[test]
-#[ignore = "需要本机 UNICORN OVERLORD 解包语料"]
+#[ignore = "requires the local UNICORN OVERLORD extraction"]
 fn parse_and_convert_cost() {
     let dir = std::path::Path::new(GUI_DIR);
     if !dir.is_dir() {
-        eprintln!("跳过：{} 不存在", dir.display());
+        eprintln!("skipped: {} does not exist", dir.display());
         return;
     }
 
@@ -35,7 +33,7 @@ fn parse_and_convert_cost() {
         let v55 = match formats::mbs::parse_file(&path, TAG) {
             Ok(v55) => v55,
             Err(e) => {
-                eprintln!("{} 解析失败：{e}", path.display());
+                eprintln!("{} failed to parse: {e}", path.display());
                 continue;
             }
         };
@@ -45,14 +43,14 @@ fn parse_and_convert_cost() {
         let quad = match formats::mbs::convert(&v55) {
             Ok(quad) => quad,
             Err(e) => {
-                eprintln!("{} 转换失败：{e}", path.display());
+                eprintln!("{} failed to convert: {e}", path.display());
                 continue;
             }
         };
         let convert = t.elapsed();
 
         eprintln!(
-            "{}（{:.1} KB）：parse {:?} + convert {:?}",
+            "{} ({:.1} KB): parse {:?} + convert {:?}",
             path.file_name().unwrap().to_string_lossy(),
             size as f64 / 1024.0,
             parse,

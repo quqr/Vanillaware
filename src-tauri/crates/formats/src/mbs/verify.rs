@@ -1,32 +1,13 @@
-//! 结构等价比对（判据见 ADR-0006）。
-//!
-//! 用途有两个，共用同一套递归比较：
-//! - V55 ↔ PHP `.mbs.v55`：两侧都是本工具/权威 PHP 的原样 schema，期望**零差异**；
-//! - Quad ↔ 旧 C# golden：先按 ADR-0006 的闭集差异表把 golden 规范化，再零差异比较。
-//!
-//! 判据本身不含任何「容忍」：键序与空白不参与比较，数值按 `1e-6` 容差，
-//! 其余任何不同都记一条 [`Diff`]。**比对不通过就是不通过**，不允许在比较器里放宽。
-
 use serde_json::Value;
 
-/// 浮点比较容差（绝对下限）：PHP 把 f32 经 `number_format(x, 6)` 落盘，误差上界 5e-7。
 pub const TOLERANCE: f64 = 1e-6;
 
-/// 浮点比较的相对容差：旧 C# golden 按 `float` 的**最短往返表示**落盘（约 7 位有效数字），
-/// 本工具把 f32 精确展宽成 f64，二者最多差半个 f32 ulp（≈ `|x| * 1.19e-7`）。
-///
-/// 只对「两侧都是 f32 来源」的数值有意义，但比较器无法区分来源，故统一按此放宽；
-/// 它比 1 个 f32 ulp 还紧，不会掩盖真正的错位（见 ADR-0006 第 11 项）。
 pub const RELATIVE_TOLERANCE: f64 = 2e-7;
 
-/// 一处字段级差异。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diff {
-    /// 字段路径，如 `s4[3].attr`。
     pub path: String,
-    /// 期望值（真值侧）。
     pub expected: String,
-    /// 实际值（本工具侧）。
     pub actual: String,
 }
 
@@ -34,24 +15,16 @@ impl std::fmt::Display for Diff {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}: 期望 {} 实际 {}",
+            "{}: expected {}, got {}",
             self.path, self.expected, self.actual
         )
     }
 }
 
-/// 递归比较两个 JSON 值，差异全部追加到 `out`。
-///
-/// 规则：
-/// - 对象：键集合必须相等（多键/缺键各记一条），然后逐键递归；
-/// - 数组：长度必须相等（不等即记一条并停止比较该数组），然后逐元素递归；
-/// - 数值：`|a - b| <= tolerance` 视为相等；
-/// - 其余（字符串/布尔/null）：精确相等。
 pub fn diff_values(expected: &Value, actual: &Value, path: &str, out: &mut Vec<Diff>) {
     diff_values_with(expected, actual, path, &tolerance_for, out);
 }
 
-/// 同 [`diff_values`]，但数值容差由调用方给（矩阵比对需要更宽的界，见 ADR-0006 第 9 项）。
 pub fn diff_values_with(
     expected: &Value,
     actual: &Value,
@@ -75,7 +48,7 @@ pub fn diff_values_with(
                     None => out.push(Diff {
                         path: child_path(path, key),
                         expected: compact(expected_child),
-                        actual: "<缺失>".to_string(),
+                        actual: "<missing>".to_string(),
                     }),
                 }
             }
@@ -83,7 +56,7 @@ pub fn diff_values_with(
                 if !expected_map.contains_key(key) {
                     out.push(Diff {
                         path: child_path(path, key),
-                        expected: "<缺失>".to_string(),
+                        expected: "<missing>".to_string(),
                         actual: compact(&actual_map[key]),
                     });
                 }
@@ -93,8 +66,8 @@ pub fn diff_values_with(
             if expected_items.len() != actual_items.len() {
                 out.push(Diff {
                     path: path.to_string(),
-                    expected: format!("长度 {}", expected_items.len()),
-                    actual: format!("长度 {}", actual_items.len()),
+                    expected: format!("length {}", expected_items.len()),
+                    actual: format!("length {}", actual_items.len()),
                 });
                 return;
             }
@@ -135,12 +108,10 @@ pub fn diff_values_with(
     }
 }
 
-/// 单次比较允许的偏差：绝对下限 + f32 有效位相对项。
 fn tolerance_for(a: f64, b: f64) -> f64 {
     TOLERANCE + RELATIVE_TOLERANCE * a.abs().max(b.abs())
 }
 
-/// 键路径拼接：顶层为 `$` 时直接返回键名，避免出现 `$.s0`。
 fn child_path(path: &str, key: &str) -> String {
     if path.is_empty() {
         key.to_string()
@@ -149,7 +120,6 @@ fn child_path(path: &str, key: &str) -> String {
     }
 }
 
-/// 差异行里的值：单行紧凑 JSON，方便肉眼读。
 fn compact(value: &Value) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "<无法序列化>".to_string())
+    serde_json::to_string(value).unwrap_or_else(|_| "<not serialisable>".to_string())
 }

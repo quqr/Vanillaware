@@ -1,21 +1,6 @@
-//! AFS2 音频包（`.awb`，CRI ADX2 的 wave bank）。
-//!
 //! ```text
 //! +0x00  "AFS2"
-//! +0x04  u32 版本（本语料恒为 0x00040402）
-//! +0x08  u32 条目数 N
-//! +0x0c  u32 条目描述长度（本语料恒为 0x20，与偏移表无关）
-//! +0x10  id[N]            —— 顺序 id，0 起（宽度 u32 = UO 侧，u16 = 13 侧 AFS2 v2）
-//! +0x10+wN  u32 off[N]    —— 绝对偏移
-//! +0x10+wN+4N  u32 总大小 —— 恒等于文件长度（这就是"到 EOF"的硬约束）
-//! +0x14+wN+4N  ...         条目载荷：每个条目 = off[i]..off[i+1]
 //! ```
-//!
-//! 条目载荷是 **HCA**（CRI 自家有损音频）。本语料的 AWB 用了 AWB 子密钥，
-//! 载荷头部被加密，扫不到 `HCA\0` 魔数，因此这里只到**容器层**：
-//! 每条给出 id / 偏移 / 长度，载荷本身按字节保留，不做解码也不臆造声明。
-//! 全部 6 个 `.awb`（UO 侧）在这三条不变量上闭合：总大小 == 文件长、偏移严格递增、
-//! 首条偏移 == 描述区末尾。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -35,14 +20,9 @@ pub struct Afs2 {
     pub declared_total: u32,
     pub entries: Vec<Entry>,
     pub data_start: usize,
-    /// id 表元素宽度：UO 侧为 4，13 侧（AFS2 v2）为 2。
     pub id_width: usize,
 }
 
-/// 解析 `at` 处的 AFS2 头；越界或魔数不符返回 `None`。
-///
-/// id 表有 u32 / u16 两种宽度，靠「偏移表首项 == 数据区起点」与
-/// 「总大小 == 文件长度」两条恒等式自证，先试 u32 再试 u16。
 pub fn parse(bytes: &[u8], at: usize) -> Option<Afs2> {
     parse_with(bytes, at, 4).or_else(|| parse_with(bytes, at, 2))
 }
@@ -83,7 +63,6 @@ fn parse_with(bytes: &[u8], at: usize, id_width: usize) -> Option<Afs2> {
 
     let declared_total = rdr::u32_at(bytes, total_at)?;
     let data_start = total_at + 4;
-    // 两条恒等式：数据区紧随描述区、总大小就是文件长度。任一不成立即换宽度重试。
     if entries.first().map(|entry| entry.offset) != Some(data_start) {
         return None;
     }
@@ -107,7 +86,7 @@ pub fn build(bytes: &[u8], title: &str) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     let Some(afs2) = parse(bytes, 0) else {
-        builder.warn("不是 AFS2：魔数或偏移表越界");
+        builder.warn("not AFS2: bad magic or offset table out of range");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     };
@@ -133,19 +112,19 @@ pub fn build(bytes: &[u8], title: &str) -> DocArena {
 
     builder.check(
         "awb.total",
-        "总大小字段 == 文件长度",
+        "total size field equals the file length",
         afs2.declared_total as usize == bytes.len(),
         Some(format!("{:#x} / {:#x}", afs2.declared_total, bytes.len())),
     );
     builder.check(
         "awb.monotonic",
-        "偏移表严格递增",
+        "offset table is strictly increasing",
         monotonic,
-        Some(format!("{} 条", afs2.entries.len())),
+        Some(format!("{} entries", afs2.entries.len())),
     );
     builder.check(
         "awb.data_start",
-        "首条偏移 == 描述区末尾",
+        "first offset equals the end of the descriptor area",
         afs2.entries
             .first()
             .map(|entry| entry.offset == afs2.data_start)
@@ -156,15 +135,15 @@ pub fn build(bytes: &[u8], title: &str) -> DocArena {
     );
     builder.check(
         "awb.eof",
-        "末条结束 == 文件长度",
+        "last entry ends at the file length",
         last_end == bytes.len(),
         Some(format!("{last_end:#x} / {:#x}", bytes.len())),
     );
     builder.check(
         "awb.payload",
-        "条目长度之和 == 载荷区长度",
+        "entry lengths add up to the payload area",
         total == bytes.len().saturating_sub(afs2.data_start),
-        Some(format!("{total} 字节")),
+        Some(format!("{total} bytes")),
     );
 
     let summary = builder.group(root, Some("summary"), "Summary");

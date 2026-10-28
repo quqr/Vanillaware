@@ -1,7 +1,3 @@
-//! OSB 场景容器的结构视图（13 Sentinels，94/94 闭合）。
-//!
-//! 依据 `osb_parse.py`：16B 头 + 路径池 + 递归节点树；节点 = 16B 头 + body。
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -10,9 +6,7 @@ use super::{fmd, rdr, text};
 use crate::primitives::{identity, VizNodeDto, VizReferenceDto, VizSceneDto};
 
 const NODE_HEADER: usize = 0x10;
-/// Caption(0x40) + Label(0x10) + Group(u16)。
 const BODY_PREFIX: usize = 0x52;
-/// model / anime 末尾的公共参数（88B）起点。
 const MODEL_COMMON: usize = BODY_PREFIX + 0x44;
 const ANIME_COMMON: usize = BODY_PREFIX + 0x11;
 const MAX_DEPTH: usize = 64;
@@ -39,7 +33,6 @@ const NODE_NAMES: &[(u32, &str)] = &[
     (24, "postfx"),
 ];
 
-/// 资源路径表（Scene 查看器与引用图共用）。
 pub fn resources(bytes: &[u8]) -> Vec<String> {
     if bytes.len() < 0x18 {
         return Vec::new();
@@ -74,16 +67,11 @@ struct SceneBudget {
     truncated: bool,
 }
 
-/// 同一 FMD 在场景里被多个 model 引用时只保留一份网格。
 struct FmdInstance {
     mesh_ids: Vec<u32>,
     names: Vec<String>,
 }
 
-/// OSB 场景组装：节点树 + 资源引用；model 节点尝试把同目录 FMD 的网格挂进来。
-///
-/// model / anime 应用 common88 的平移、缩放与旋转；FMD 灰模，
-/// 纹理与动画引用只作为可跳转节点。
 pub fn scene(bytes: &[u8], osb_path: &Path) -> VizSceneDto {
     let resources = resources(bytes);
     let base = osb_path.parent().unwrap_or_else(|| Path::new("."));
@@ -257,7 +245,6 @@ fn collect_scene(
     cursor
 }
 
-/// 把一个 FMD 的网格挂到 model 节点下；同一 FMD 的后续实例只引用首个实例的网格。
 #[allow(clippy::too_many_arguments)]
 fn attach_model_meshes(
     path: &Path,
@@ -368,10 +355,6 @@ fn add_reference(
     });
 }
 
-/// 从 common88 读 origin / scale / rotate，生成节点变换矩阵。
-///
-/// `rotate` 以度为单位，按 RotZ → RotY → RotX 组合（列主序，平移在 12..15）。
-/// body 不足时返回单位阵且不参与包围盒展开。
 fn node_placement(body: &[u8], common: usize) -> ([f32; 16], Option<[f32; 16]>) {
     if body.len() < common + 0x46 {
         return (identity(), None);
@@ -456,7 +439,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < 0x18 {
-        builder.warn("文件不足 0x18 字节");
+        builder.warn("file is shorter than 0x18 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -476,13 +459,13 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "osb.magic",
-        "魔数为 OSB\\0",
+        "magic is OSB\\0",
         magic_ok,
         Some(rdr::hex(&bytes[..4])),
     );
     builder.check(
         "osb.scene",
-        "场景区起点在文件内",
+        "the scene area starts inside the file",
         scene <= bytes.len() as u64,
         Some(format!("{scene:#x} vs {:#x}", bytes.len())),
     );
@@ -494,7 +477,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     }
     for index in 0..shown {
         let Some(start_off) = rdr::u32_at(bytes, 0x18 + index as usize * 4) else {
-            builder.warn(format!("资源路径表 {index} 越界"));
+            builder.warn(format!("resource path table {index} out of range"));
             break;
         };
         let start = 0x10usize + start_off as usize;
@@ -507,7 +490,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         };
         let end = end.min(bytes.len());
         let Some(raw) = bytes.get(start..end) else {
-            builder.warn(format!("资源路径 {index} 区间越界"));
+            builder.warn(format!("resource path {index} range out of bounds"));
             continue;
         };
         let key = format!("r{index}");
@@ -525,7 +508,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let walk_end = parse_node(&mut builder, bytes, scene as usize, bytes.len(), 0, scene_group);
     builder.check(
         "osb.closed",
-        "场景树精确闭合到 EOF",
+        "the scene tree closes exactly at EOF",
         walk_end == bytes.len(),
         Some(format!("{walk_end:#x} vs {:#x}", bytes.len())),
     );
@@ -542,12 +525,12 @@ fn parse_node(
     parent: u32,
 ) -> usize {
     if depth >= MAX_DEPTH {
-        builder.warn("节点树深度超过上限");
+        builder.warn("the node tree exceeds the depth limit");
         builder.truncate();
         return end;
     }
     if offset + NODE_HEADER > end {
-        builder.warn(format!("节点头越界 @{offset:#x}"));
+        builder.warn(format!("node header out of range @{offset:#x}"));
         return end;
     }
 
@@ -557,7 +540,7 @@ fn parse_node(
     let body_start = offset + NODE_HEADER;
 
     if body_start + body_size > end {
-        builder.warn(format!("节点 body 越界 @{offset:#x}"));
+        builder.warn(format!("node body out of range @{offset:#x}"));
         return end;
     }
 
@@ -600,7 +583,7 @@ fn parse_node(
     let children = child_count.min(MAX_CHILDREN);
     if child_count > children {
         builder.truncate();
-        builder.warn(format!("节点 {title} 的子节点过多（{child_count}）"));
+        builder.warn(format!("node {title} has too many children ({child_count})"));
     }
     for _ in 0..children {
         cursor = parse_node(builder, bytes, cursor, end, depth + 1, node);

@@ -1,5 +1,3 @@
-//! 由 uo_asb_ops.py 机械生成：操作码 → 参数个数。
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArgKind {
     None,

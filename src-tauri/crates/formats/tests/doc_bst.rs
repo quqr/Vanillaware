@@ -30,11 +30,9 @@ fn header() -> Vec<u8> {
     out
 }
 
-/// 造一份最小 BST：头部 + 一条舞台头记录 + 一条碰撞板 + 一条地形块。
 fn sample() -> Vec<u8> {
     let mut out = header();
 
-    // 舞台头记录
     push_text(&mut out, "BT_STAGE00.fmd");
     push_text(&mut out, "BT_STAGE00.ftx");
     push_vec3(&mut out, [1900.0, 0.0, 1900.0]);
@@ -43,7 +41,6 @@ fn sample() -> Vec<u8> {
     push_vec3(&mut out, [-1400.0, 0.0, -1200.0]);
     out.push(RECORD_END);
 
-    // 碰撞板记录
     push_int(&mut out, 1);
     push_int(&mut out, 0);
     push_int(&mut out, 0);
@@ -62,7 +59,6 @@ fn sample() -> Vec<u8> {
     }
     out.push(RECORD_END);
 
-    // 地形块记录：4 角 + 名字 + 若干填充
     for corner in [
         [0.0f32, 0.0, 0.0],
         [1.0, 0.0, 0.0],
@@ -96,7 +92,6 @@ fn parses_stage_header_and_records() {
 
 #[test]
 fn record_array_is_detected() {
-    // 两条碰撞板放进记录数组：`33 02` + record + record + END
     let mut out = header();
     push_int(&mut out, 621);
     out.push(0x33);
@@ -124,19 +119,19 @@ fn record_array_is_detected() {
     out.push(RECORD_END);
 
     let bst = parse(&out);
-    assert!(bst.unknown_tag.is_none(), "应当整体闭合");
+    assert!(bst.unknown_tag.is_none(), "must close exactly");
     assert_eq!(bst.end, out.len());
     assert_eq!(bst.plates.len(), 2);
     assert_eq!(bst.plates[1].id, 31);
     match &bst.records[0] {
         Node::Record(items) => match &items[1] {
             Node::Array { grouped, items, .. } => {
-                assert!(*grouped, "应当识别成记录数组");
+                assert!(*grouped, "must be read as an array of records");
                 assert_eq!(items.len(), 2);
             }
-            other => panic!("第二项应当是数组：{other:?}"),
+            other => panic!("the second item must be an array: {other:?}"),
         },
-        other => panic!("应当是记录：{other:?}"),
+        other => panic!("must be a record: {other:?}"),
     }
 }
 

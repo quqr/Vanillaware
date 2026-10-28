@@ -1,8 +1,5 @@
-//! 文本槽解码：Shift-JIS（cp932）优先，UTF-16LE 用于 fms。
-
 use encoding_rs::SHIFT_JIS;
 
-/// 定长槽：在第一个 NUL 处截断，按 Shift-JIS 解码；失败时做有损回退。
 pub fn sjis_slot(bytes: &[u8]) -> String {
     let end = bytes
         .iter()
@@ -12,7 +9,6 @@ pub fn sjis_slot(bytes: &[u8]) -> String {
     text.into_owned()
 }
 
-/// UTF-8 优先、Shift-JIS 回退（fms / rsc 的字符串池）。
 pub fn utf8_or_sjis(bytes: &[u8]) -> String {
     let end = bytes
         .iter()
@@ -28,7 +24,6 @@ pub fn utf8_or_sjis(bytes: &[u8]) -> String {
     }
 }
 
-/// UTF-16LE 解码（调用方保证偶数长度）。
 pub fn utf16le(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
         .chunks_exact(2)
@@ -39,9 +34,6 @@ pub fn utf16le(bytes: &[u8]) -> String {
 
 const MAX_LINES_SHOWN: usize = 256;
 
-/// 明文资源的文档视图（`.inc` 这类开发期枚举表）。
-///
-/// 不做结构化假装：只判编码、切行、把前 256 行作为文本节点挂出来。
 pub fn build_plain(bytes: &[u8], title: &str) -> super::arena::DocArena {
     use super::arena::Builder;
 
@@ -71,15 +63,15 @@ pub fn build_plain(bytes: &[u8], title: &str) -> super::arena::DocArena {
     builder.field(root, "lines", lines.len().to_string());
     builder.check(
         "text.lines",
-        "按换行切出的行数 > 0",
+        "line count is greater than 0",
         !lines.is_empty(),
-        Some(format!("{} 行", lines.len())),
+        Some(format!("{} lines", lines.len())),
     );
 
     let group = builder.array(
         root,
         Some("lines"),
-        format!("Lines ({}，仅前 {MAX_LINES_SHOWN})", lines.len()),
+        format!("Lines ({}; first {MAX_LINES_SHOWN} only)", lines.len()),
     );
     for (index, line) in lines.iter().take(MAX_LINES_SHOWN).enumerate() {
         let value = line.trim_end_matches('\r');

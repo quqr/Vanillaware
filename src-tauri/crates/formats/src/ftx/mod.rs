@@ -1,5 +1,3 @@
-//! FTEX 纹理容器。目前实现 Switch（`FTEX` + `FTX0` + `.tex`），其余平台待有语料再补。
-
 pub mod switch;
 
 use std::path::Path;
@@ -10,7 +8,6 @@ use schema::gen::ftex_index::{FtexIndex, FtexIndex_TextureEntry};
 use crate::codec::fcmp;
 use crate::{DecodedTexture, Error, Result};
 
-/// 只描述结构的帧信息（不含像素）。用于帧数徽标与计数排序。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextureInfo {
     pub name: String,
@@ -21,7 +18,6 @@ pub struct TextureInfo {
 }
 
 impl TextureInfo {
-    /// 人类可读的格式名，例如 `BC7`。
     pub fn format_name(&self) -> &'static str {
         match self.format {
             switch::FMT_BC3 => "BC3",
@@ -32,15 +28,11 @@ impl TextureInfo {
     }
 }
 
-/// 只读结构，不读像素数据、不做 BC 解码。
-///
-/// 索引与 [`decode_file_frame`] 严格对齐：两者都跳过不支持的格式与 0 尺寸块。
 pub fn probe_file(path: &Path) -> Result<Vec<TextureInfo>> {
     let bytes = std::fs::read(path)?;
     probe_bytes(&bytes)
 }
 
-/// 见 [`probe_file`]。
 pub fn probe_bytes(bytes: &[u8]) -> Result<Vec<TextureInfo>> {
     let data = unwrap_fcmp(bytes)?;
 
@@ -57,13 +49,11 @@ pub fn probe_bytes(bytes: &[u8]) -> Result<Vec<TextureInfo>> {
     }
 }
 
-/// 只解码指定帧。缩略图必须走这个，禁止为了第 0 帧解码整个文件。
 pub fn decode_file_frame(path: &Path, index: usize) -> Result<DecodedTexture> {
     let bytes = std::fs::read(path)?;
     decode_bytes_frame(&bytes, index)
 }
 
-/// 见 [`decode_file_frame`]。
 pub fn decode_bytes_frame(bytes: &[u8], index: usize) -> Result<DecodedTexture> {
     let data = unwrap_fcmp(bytes)?;
 
@@ -80,13 +70,11 @@ pub fn decode_bytes_frame(bytes: &[u8], index: usize) -> Result<DecodedTexture> 
     }
 }
 
-/// 从文件读取并解码全部纹理。会自动处理 FCMP 压缩外壳。
 pub fn decode_file(path: &Path) -> Result<Vec<DecodedTexture>> {
     let bytes = std::fs::read(path)?;
     decode_bytes(&bytes)
 }
 
-/// 从内存字节解码。会自动处理 FCMP 压缩外壳。
 pub fn decode_bytes(bytes: &[u8]) -> Result<Vec<DecodedTexture>> {
     let data = unwrap_fcmp(bytes)?;
 
@@ -103,7 +91,6 @@ pub fn decode_bytes(bytes: &[u8]) -> Result<Vec<DecodedTexture>> {
     }
 }
 
-/// FCMP 解压外壳；未压缩时直接借用原切片。
 fn unwrap_fcmp(bytes: &[u8]) -> Result<std::borrow::Cow<'_, [u8]>> {
     if !fcmp::is_fcmp(bytes) {
         return Ok(std::borrow::Cow::Borrowed(bytes));
@@ -165,7 +152,6 @@ fn texture_name(entries: &[kaitai::OptRc<FtexIndex_TextureEntry>], index: usize)
         .unwrap_or_else(|| format!("texture{index}"))
 }
 
-/// 大于等于 `value` 的最小 2 的幂（对应 C# `ByteHelper.IntCeilPow2`）。
 pub(crate) fn ceil_pow2(value: usize) -> usize {
     if value == 0 {
         return 1;

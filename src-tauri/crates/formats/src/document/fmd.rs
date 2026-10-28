@@ -1,8 +1,3 @@
-//! FMD 模型容器：HEAD/JINT/MTRL/TXTR/MESH/ANIM/POSE 块序列。
-//!
-//! 块级严格按 `block_start + size` 推进；MESH 只解析网格头、子段/叶计数与顶点流锚点，
-//! 不复制顶点数组。依据 `fmd_format.py`。
-
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 use super::text;
@@ -74,7 +69,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         let tag = &bytes[pos..pos + 4];
         let size = rdr::u32_at(bytes, pos + 4).unwrap_or(0) as usize;
         if size < 8 || pos + size > bytes.len() {
-            builder.warn(format!("块 {} size={size} 非法", rdr::ascii(tag)));
+            builder.warn(format!("block {} has an invalid size={size}", rdr::ascii(tag)));
             break;
         }
 
@@ -84,7 +79,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         let group = builder.group(chunks, Some(&format!("@{pos:x}")), format!("{tag_name} @{pos:#x}"));
         builder.field(group, "tag", tag_name.clone());
         builder.field(group, "size", size.to_string());
-        builder.bytes(group, Some("range"), "块区间", pos as u64, size as u64);
+        builder.bytes(group, Some("range"), "block range", pos as u64, size as u64);
 
         match tag {
             b"HEAD" => {
@@ -116,11 +111,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "fmd.closed",
-        "块序列精确闭合到 EOF",
+        "block sequence closes exactly at EOF",
         pos == bytes.len(),
         Some(format!("{pos:#x} vs {:#x}", bytes.len())),
     );
-    builder.check("fmd.versionGate", "版本闸门通过", version_ok, None);
+    builder.check("fmd.versionGate", "version gate passes", version_ok, None);
 
     builder.finish()
 }
@@ -137,23 +132,23 @@ fn parse_jint(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     for index in 0..count.min(MAX_ITEMS) {
         let Some(n_a) = cur.u32() else { break };
         if n_a > 0x4000 || cur.skip(n_a as usize * 4).is_none() {
-            builder.warn(format!("JINT 节点 {index} 首字段非法"));
+            builder.warn(format!("JINT node {index} has an invalid first field"));
             break;
         }
         let Some(name_len) = cur.u32() else { break };
         let Some(name_raw) = cur.take(name_len as usize) else {
-            builder.warn(format!("JINT 节点 {index} 名字越界"));
+            builder.warn(format!("JINT node {index} name out of range"));
             break;
         };
         let Some(parent_index) = cur.i32() else { break };
         let Some(_unk) = cur.i32() else { break };
         let Some(child_count) = cur.u32() else { break };
         if child_count > 0x4000 || cur.skip(child_count as usize * 4).is_none() {
-            builder.warn(format!("JINT 节点 {index} 子表非法"));
+            builder.warn(format!("JINT node {index} sub-table is invalid"));
             break;
         }
         if cur.skip(4 * 16 * 4).is_none() {
-            builder.warn(format!("JINT 节点 {index} 矩阵越界"));
+            builder.warn(format!("JINT node {index} matrix out of range"));
             break;
         }
 
@@ -183,12 +178,12 @@ fn parse_mtrl(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
         let Some(_a_flag) = cur.u32() else { break };
         let Some(int_count) = cur.u32() else { break };
         if int_count > 0x400 || cur.skip(int_count as usize * 4).is_none() {
-            builder.warn(format!("MTRL[{index}] 内联表越界"));
+            builder.warn(format!("MTRL[{index}] inline table out of range"));
             break;
         }
         let Some(skip_count) = cur.i32() else { break };
         if skip_count > 0 && cur.skip(skip_count as usize * 4).is_none() {
-            builder.warn(format!("MTRL[{index}] 跳过区越界"));
+            builder.warn(format!("MTRL[{index}] skipped region out of range"));
             break;
         }
 
@@ -220,18 +215,13 @@ fn parse_txtr(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     }
 }
 
-/// MTRL 中与预览渲染相关的字段。
 #[derive(Clone, Copy)]
 struct Material {
-    /// t2：纹理页下标；-1 表示无贴图（如碰撞材质）。
     page: i32,
-    /// tint，内存序 R,G,B,A。
     rgba: [u8; 4],
-    /// 渲染路径：-1 default / 0 NML / 1 ADD / 2 SUB / 3 OPA。
     tex_ref: i32,
 }
 
-/// 材质越界时的占位：无贴图、白色、默认渲染路径。
 const NO_MATERIAL: Material = Material {
     page: -1,
     rgba: [0xff; 4],
@@ -288,10 +278,6 @@ fn collect_materials(bytes: &[u8], start: usize, end: usize, out: &mut Vec<Mater
     }
 }
 
-/// 可视化：提取所有非空网格的 positions / uv + 按 sub 生成的顺序 indices。
-///
-/// 每个绘制段带上材质指向的纹理页（`MTRL[K].t2`）、tint 与渲染路径；
-/// 无贴图且 alpha 为 0 的碰撞材质（BT_STAGE 的 HIT）不参与渲染。
 pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
     let materials = material_table(bytes);
     let mut nodes = vec![VizNodeDto {
@@ -410,7 +396,6 @@ fn collect_meshes(
                 break;
             }
 
-            // 法线 / 切线 / 顶点色 / UV / idx16 / idx32：每条都先读 count 再按 payload 前进。
             let mut stream_ok = true;
             for (index, (stride, rule)) in ATTR_STREAMS.iter().enumerate() {
                 if !stream_ok || cur.align16().is_none() {
@@ -475,7 +460,6 @@ fn collect_meshes(
                 .and_then(|index| materials.get(index))
                 .copied()
                 .unwrap_or(NO_MATERIAL);
-            // 碰撞壳：无贴图且 alpha 为 0，引擎里不可见。
             if material.page < 0 && material.rgba[3] == 0 {
                 continue;
             }
@@ -531,7 +515,6 @@ fn collect_meshes(
             reference: None,
         });
 
-        // 首版 IPC 上限：超过后停止继续提取，前端明确显示「已截断」。
         const MAX_VERTICES: usize = 600_000;
         const MAX_INDICES: usize = 2_000_000;
         let vertices: usize = nodes.iter().filter_map(|node| node.mesh.as_ref()).map(|mesh| mesh.positions.len() / 3).sum();
@@ -553,7 +536,7 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     for index in 0..mesh_count.min(MAX_ITEMS) {
         if !probe_header(bytes, cur.pos, end) {
             let Some(next) = resync(bytes, cur.pos, end) else {
-                builder.warn(format!("mesh[{index}] 无法重同步到下一个网格头"));
+                builder.warn(format!("mesh[{index}] cannot resync to the next mesh header"));
                 break;
             };
             cur.pos = next;
@@ -561,7 +544,7 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
 
         let Some(name_len) = cur.u32() else { break };
         if name_len == 0 || name_len > 0x400 {
-            builder.warn(format!("mesh[{index}] nameLen={name_len} 非法"));
+            builder.warn(format!("mesh[{index}] nameLen={name_len} is invalid"));
             break;
         }
         let Some(name_raw) = cur.take(name_len as usize) else { break };
@@ -571,23 +554,23 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
         let Some(sub_count) = cur.i32() else { break };
         let Some(vtx_total) = cur.i32() else { break };
         if cur.f32s(11).is_none() {
-            builder.warn(format!("mesh[{index}] bounds 越界"));
+            builder.warn(format!("mesh[{index}] bounds out of range"));
             break;
         }
         if !(1..=0x400).contains(&sub_count) {
-            builder.warn(format!("mesh[{index}] subCount={sub_count} 非法"));
+            builder.warn(format!("mesh[{index}] subCount={sub_count} is invalid"));
             break;
         }
 
         let Some((after_subs, ranges)) = skip_subs(bytes, cur.pos, end, sub_count) else {
             match resync(bytes, cur.pos, end) {
                 Some(next) => {
-                    builder.warn(format!("mesh[{index}] 子段/叶越界，重同步到 {next:#x}"));
+                    builder.warn(format!("mesh[{index}] sub-range or leaf out of range, resynced to {next:#x}"));
                     cur.pos = next;
                     continue;
                 }
                 None => {
-                    builder.warn(format!("mesh[{index}] 子段/叶越界且无法重同步"));
+                    builder.warn(format!("mesh[{index}] sub-range or leaf out of range, cannot resync"));
                     break;
                 }
             }
@@ -646,14 +629,13 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
                         break;
                     }
                 }
-                // Python: p = align16(p + 4 + pay) 对最后一条流也成立。
                 if vertex_ok && cur.align16().is_none() {
                     vertex_ok = false;
                 }
             }
         }
         if !vertex_ok {
-            builder.warn(format!("mesh[{index}] 顶点流定位失败"));
+            builder.warn(format!("mesh[{index}] vertex stream not found"));
             break;
         }
 
@@ -682,7 +664,6 @@ fn align16(pos: usize) -> usize {
     }
 }
 
-/// 一个绘制段：顶点起始、三角数、材质下标。
 #[derive(Clone, Copy, Debug)]
 struct SubRange {
     start: u32,
@@ -690,7 +671,6 @@ struct SubRange {
     material: i32,
 }
 
-/// 顺序读取 `sub_count` 条子段及其叶，返回落点与每个绘制段。
 fn skip_subs(bytes: &[u8], mut pos: usize, end: usize, sub_count: i32) -> Option<(usize, Vec<SubRange>)> {
     if sub_count < 0 {
         return None;
@@ -731,7 +711,6 @@ fn skip_subs(bytes: &[u8], mut pos: usize, end: usize, sub_count: i32) -> Option
     Some((pos, ranges))
 }
 
-/// 网格头预检：名字合法 + 五个 i32 合理 + 子段/叶可顺序读出。
 fn probe_header(bytes: &[u8], q: usize, end: usize) -> bool {
     if q + 4 > end {
         return false;
@@ -780,7 +759,6 @@ fn resync(bytes: &[u8], from: usize, end: usize) -> Option<usize> {
     None
 }
 
-/// 顶点流之后的 6 条属性流：法线 / 切线 / 顶点色 / UV / idx16 / idx32。
 const ATTR_STREAMS: [(usize, AttrRule); 6] = [
     (12, AttrRule::Fixed),
     (12, AttrRule::Fixed),
@@ -790,7 +768,6 @@ const ATTR_STREAMS: [(usize, AttrRule); 6] = [
     (4, AttrRule::U32I),
 ];
 
-/// UV 在属性流里的下标。
 const ATTR_UV: usize = 3;
 
 #[derive(Clone, Copy)]

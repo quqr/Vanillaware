@@ -1,7 +1,3 @@
-//! 与格式无关的可视化图元层（ADR-0019）。
-//!
-//! FMD / OSB / RSC 各自投影到同一套场景 → 节点 → 网格/引用，前端只认这一层。
-
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
@@ -19,14 +15,10 @@ pub struct VizReferenceDto {
 #[serde(rename_all = "camelCase")]
 pub struct VizSubRangeDto {
     pub start: u32,
-    /// 索引数量（triangle count × 3）。
     pub count: u32,
     pub material: i32,
-    /// 材质指向的纹理页（MTRL[K].t2）；-1 表示无贴图。
     pub page: i32,
-    /// 材质 tint，内存序 R,G,B,A；碰撞材质的 alpha 为 0。
     pub rgba: [u8; 4],
-    /// 渲染路径：-1 default / 0 NML / 1 ADD / 2 SUB / 3 OPA。
     pub tex_ref: i32,
 }
 
@@ -35,7 +27,6 @@ pub struct VizSubRangeDto {
 pub struct VizMeshDto {
     pub positions: Vec<f32>,
     pub indices: Vec<u32>,
-    /// 每顶点 uv（2 个 f32）；为空表示没有 UV 流。
     pub uvs: Vec<f32>,
     pub bounds: [f32; 6],
     pub sub_ranges: Vec<VizSubRangeDto>,
@@ -49,10 +40,8 @@ pub struct VizNodeDto {
     pub name: String,
     /// group / mesh / sprite / light / camera / reference
     pub kind: String,
-    /// 列主序 4×4；首版为屏幕对齐的单位矩阵。
     pub transform: [f32; 16],
     pub mesh: Option<VizMeshDto>,
-    /// 复用另一节点的网格（同一 FMD 被场景中多个 model 实例引用）。
     pub mesh_ref: Option<u32>,
     pub reference: Option<VizReferenceDto>,
 }
@@ -64,7 +53,6 @@ pub struct VizSceneDto {
     pub bounds: [f32; 6],
     pub nodes: Vec<VizNodeDto>,
     pub references: Vec<VizReferenceDto>,
-    /// 首版为避免 IPC 爆炸设置的顶点/索引上限是否触发了截断。
     pub truncated: bool,
 }
 
@@ -78,7 +66,6 @@ pub struct GraphNodeDto {
     pub detail: Option<String>,
     pub path: Option<String>,
     pub offset: Option<u64>,
-    /// resolved / missing；只有 external 节点有值。
     pub status: Option<String>,
 }
 
@@ -90,8 +77,6 @@ pub struct GraphEdgeDto {
     pub label: String,
 }
 
-/// 跨文件引用图。RSC（条目 → 脚本载荷 → 资源串）、OTM（资源清单 → 资源）、
-/// BBS（背景装配单 → mbs/ftx 名表）都投影到这一层，前端只认它。
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileGraphDto {

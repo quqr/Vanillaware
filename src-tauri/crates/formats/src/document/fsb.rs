@@ -1,7 +1,3 @@
-//! FSB 单位出场包：HEAD → RESL → CTLG → SCNL 四块。
-//!
-//! 块级严格闭合；SCNL 只解析条目/组/关键帧头，不展开矩阵与关键帧数组。
-
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 use super::text;
@@ -64,7 +60,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         let magic = &bytes[pos..pos + 4];
         let size = rdr::u32_at(bytes, pos + 4).unwrap_or(0) as usize;
         if size < 8 || pos + size > bytes.len() {
-            builder.warn(format!("块 {} size={size} 非法", rdr::ascii(magic)));
+            builder.warn(format!("block {} has an invalid size={size}", rdr::ascii(magic)));
             break;
         }
 
@@ -72,7 +68,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         magic_seq.push(name.clone());
         let group = builder.group(chunks, Some(&format!("@{pos:x}")), format!("{name} @{pos:#x}"));
         builder.field(group, "size", size.to_string());
-        builder.bytes(group, Some("range"), "块区间", pos as u64, size as u64);
+        builder.bytes(group, Some("range"), "block range", pos as u64, size as u64);
 
         let body = pos + 8;
         let end = pos + size;
@@ -103,13 +99,13 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let sequence_ok = magic_seq == ["HEAD", "RESL", "CTLG", "SCNL"];
     builder.check(
         "fsb.sequence",
-        "四块顺序 HEAD→RESL→CTLG→SCNL",
+        "chunk order is HEAD -> RESL -> CTLG -> SCNL",
         sequence_ok,
         Some(magic_seq.join(" → ")),
     );
     builder.check(
         "fsb.closed",
-        "块序列精确闭合到 EOF",
+        "block sequence closes exactly at EOF",
         pos == bytes.len(),
         Some(format!("{pos:#x} vs {:#x}", bytes.len())),
     );
@@ -159,7 +155,7 @@ fn parse_ctlg(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
             0x1d => read_vals(&mut cur, builder, node, 12),
             0x20 => read_flag(&mut cur, builder, node),
             _ => {
-                builder.warn(format!("CTLG 未知记录类型 0x{record_type:x}"));
+                builder.warn(format!("CTLG record type 0x{record_type:x} is unknown"));
                 false
             }
         };

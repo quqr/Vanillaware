@@ -1,61 +1,21 @@
-//! BST —— 13 Sentinels 的战斗关卡（`EX DATA/BattleStageData/`，43 个）。
-//!
 //! ```text
 //! +0x00 char[4] "BBST"
-//! +0x04 u32     0（版本）
 //! +0x08 u32     0
 //! +0x0c u32     0
-//! +0x10 u32     关卡计数（语料 116～118）
-//! +0x14 u8      名字表首字符相对 0x10 的偏移（恒 0x0b）
-//! +0x15 u8      恒 1
-//! +0x16 ...     带类型标签的值流
 //! ```
-//!
-//! 值流是自描述的：**1 字节标签 + 定长载荷**，`0x34` 是记录结束符。
-//!
-//! | 标签 | 载荷 | 含义 |
 //! |---|---|---|
-//! | `0x05` `0x06` | i32 | 整数（两个变体，语义未区分） |
-//! | `0x08` | f32 ×2 | 双精度对（语料仅 1 处） |
-//! | `0x09` | f32 | 浮点 |
-//! | `0x0b` | u8 | 布尔 |
-//! | `0x14` | RGBA | 颜色 |
-//! | `0x15` | u32 | 整数（语料仅 1 处） |
-//! | `0x1f` | f32 ×2 | vec2（UV / 法线 / 平面坐标） |
-//! | `0x20` | f32 ×3 | vec3（角点 / 位置 / 包围盒） |
-//! | `0x23` | f32 ×16 | 4×4 矩阵（语料仅 1 处） |
-//! | `0x28` | u32 长度 + UTF-8 + NUL | 字符串 |
-//! | `0x33` | u32 个数 | 数组 |
-//! | `0x34` | — | 记录结束 |
-//!
-//! **数组的元素有两种形态**（同一套序列化器，由写入端的元素类型决定）：
-//!
-//! - 标量数组：`0x33 n` 之后跟 n 个值，例如碰撞板的角点索引表 `[45, 162, 327, 593]`；
-//! - 记录数组：`0x33 n` 之后跟 n 条「若干值 + `0x34`」的记录，例如 `[621, 522 条碰撞板]`。
-//!
-//! 两者靠「读完 n 个之后必须正好落在 `0x34` 或 EOF」自证：先试标量，不成立再试记录组。
-//! 43/43 个文件按这个判据读到 EOF 恰好用尽，闭合率为 100%。
-//!
-//! 记录形态（按首值分类）：
-//!
-//! - **舞台头**（每文件 1 条）：`fmd 名 / ftx 名 / 4 角 / f32 / 4 色 / 3 bool / 波次生成器数组`；
-//! - **碰撞板**（10 个值）：`1, 0, 0, "", bool, bool, id, 中心 vec3, 0, 角点索引数组`；
-//! - **地形块**（40+ 个值）：4 个角点 vec3 开头，随后是名字、若干标志、包围盒与半径。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 
 const MAGIC: &[u8] = b"BBST";
-/// 值流起点（名字表第一个字符串的标签处）。
 pub const STREAM_AT: usize = 0x16;
-/// 记录结束符。
 pub const RECORD_END: u8 = 0x34;
 
 const MAX_RECORDS_SHOWN: usize = 48;
 const MAX_PLATES_SHOWN: usize = 64;
 const MAX_QUADS_SHOWN: usize = 48;
 
-/// 一个值。
 #[derive(Debug, Clone)]
 pub enum Value {
     Int(i32),
@@ -69,13 +29,10 @@ pub enum Value {
     Text(String),
 }
 
-/// 解析后的节点：值 / 数组 / 记录。
 #[derive(Debug, Clone)]
 pub enum Node {
     Value(Value),
-    /// 数组内部的结束符（计数里算作一个元素）。
     End,
-    /// `grouped = true` 表示元素是「以 0x34 结尾的记录」。
     Array {
         count: u32,
         grouped: bool,
@@ -84,7 +41,6 @@ pub enum Node {
     Record(Vec<Node>),
 }
 
-/// 碰撞板：可站立的一块四边形。
 #[derive(Debug, Clone)]
 pub struct Plate {
     pub at: usize,
@@ -93,7 +49,6 @@ pub struct Plate {
     pub corners: Vec<i32>,
 }
 
-/// 地形块：带四个角点与名字的舞台面片。
 #[derive(Debug, Clone)]
 pub struct Quad {
     pub at: usize,
@@ -101,13 +56,11 @@ pub struct Quad {
     pub name: String,
 }
 
-/// 整份文件。
 pub struct Bst {
     pub names: Vec<String>,
     pub records: Vec<Node>,
     pub plates: Vec<Plate>,
     pub quads: Vec<Quad>,
-    /// 值流读完的位置（应与文件长度相等）。
     pub end: usize,
     pub unknown_tag: Option<(usize, u8)>,
 }
@@ -117,7 +70,6 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    /// 跳过 `count` 个「标量值」（数组按标量递归），返回结束位置。
     fn skip_values(&self, at: usize, count: u32) -> Option<usize> {
         let mut cursor = at;
         for _ in 0..count {
@@ -126,7 +78,6 @@ impl<'a> Parser<'a> {
         Some(cursor)
     }
 
-    /// 跳过 `count` 条以 `0x34` 结尾的记录。
     fn skip_groups(&self, at: usize, count: u32) -> Option<usize> {
         let mut cursor = at;
         for _ in 0..count {
@@ -143,7 +94,6 @@ impl<'a> Parser<'a> {
         Some(cursor)
     }
 
-    /// 一个值（数组按「标量」语义）的结束位置。
     fn value_end(&self, at: usize) -> Option<usize> {
         let tag = *self.bytes.get(at)?;
         let fixed = match tag {
@@ -168,11 +118,6 @@ impl<'a> Parser<'a> {
         (end <= self.bytes.len()).then_some(end)
     }
 
-    /// 数组区段：先试标量，再试记录组，取「正好落在 0x34 / EOF」的那一个。
-    ///
-    /// 只有「计数 + 数组」这种两字段记录里的数组才试记录组（`allow_group`）。
-    /// 语料里 43 个文件每个恰好一处：`[顶点数, 碰撞板数组]`。别的数组（角点索引、
-    /// 边线、UV）元素一定是标量，试记录组只会在别处蒙到一个 `0x34` 而读错。
     fn array_span(&self, at: usize, allow_group: bool) -> Option<(usize, bool)> {
         let count = rdr::u32_at(self.bytes, at + 1)?;
         let scalar = self.skip_values(at + 5, count)?;
@@ -191,12 +136,9 @@ impl<'a> Parser<'a> {
         at == self.bytes.len() || self.bytes.get(at) == Some(&RECORD_END)
     }
 
-    /// 解析一个节点。`allow_group` 见 `array_span`。
     fn node(&self, at: usize, allow_group: bool) -> Option<(Node, usize)> {
         let tag = *self.bytes.get(at)?;
         if tag == RECORD_END {
-            // 数组的元素里可能出现结束符（`array 386` 里就有 7 个），
-            // 计数把它们算作元素，所以在数组层要当一个值吃掉。
             return Some((Node::End, at + 1));
         }
         if tag == 0x33 {
@@ -229,7 +171,6 @@ impl<'a> Parser<'a> {
         Some((Node::Value(value), end))
     }
 
-    /// 解析一条记录（值直到 `0x34`，结束符不计入）。
     fn record(&self, at: usize) -> Option<(Node, usize)> {
         let mut items = Vec::new();
         let mut cursor = at;
@@ -238,7 +179,6 @@ impl<'a> Parser<'a> {
                 cursor += 1;
                 break;
             }
-            // 记录数组只出现在第二项，见 `array_span`。
             let allow_group = items.len() == 1;
             let (node, next) = self.node(cursor, allow_group)?;
             if next <= cursor {
@@ -289,14 +229,12 @@ impl<'a> Parser<'a> {
                 let raw = self.bytes.get(at + 5..at + 5 + len)?;
                 Value::Text(String::from_utf8_lossy(raw).to_string())
             }
-            // 0x33 由 `node` 处理；0x34 留给记录层。
             _ => return None,
         };
         Some((value, end))
     }
 }
 
-/// 解析整份文件。
 pub fn parse(bytes: &[u8]) -> Bst {
     let mut names = Vec::new();
     let mut records = Vec::new();
@@ -336,7 +274,6 @@ pub fn parse(bytes: &[u8]) -> Bst {
                 }
             }
             classify(items, cursor, &mut plates, &mut quads);
-            // 记录数组里的碰撞板也要收集。
             for item in items {
                 if let Node::Array {
                     grouped: true,
@@ -367,9 +304,7 @@ pub fn parse(bytes: &[u8]) -> Bst {
     }
 }
 
-/// 按值形态认记录：10 个值的碰撞板、以 4 个 vec3 开头的地形块。
 fn classify(items: &[Node], at: usize, plates: &mut Vec<Plate>, quads: &mut Vec<Quad>) {
-    // 碰撞板：1, 0, 0, "", bool, bool, id, vec3, 0, [角点]
     if items.len() == 10 {
         if let (
             Node::Value(Value::Int(id)),
@@ -396,7 +331,6 @@ fn classify(items: &[Node], at: usize, plates: &mut Vec<Plate>, quads: &mut Vec<
         }
     }
 
-    // 地形块：4 个角点 vec3 开头，后面字段数量随变体浮动（语料 40～52 个）。
     if items.len() >= 20 {
         let corners: Vec<[f32; 3]> = items
             .iter()
@@ -458,16 +392,16 @@ fn push_node(builder: &mut Builder, parent: u32, node: &Node, key: &str, depth: 
             items,
         } => {
             let title = if *grouped {
-                format!("Array（{count} 条记录）")
+                format!("Array ({count} records)")
             } else {
-                format!("Array（{count} 个值）")
+                format!("Array ({count} values)")
             };
             let group = builder.group(parent, Some(key), title);
             if depth > 4 {
                 builder.field(
                     group,
                     "note",
-                    format!("{} 项（层级过深，未展开）", items.len()),
+                    format!("{} items (nesting too deep, not expanded)", items.len()),
                 );
                 return;
             }
@@ -479,18 +413,17 @@ fn push_node(builder: &mut Builder, parent: u32, node: &Node, key: &str, depth: 
             }
         }
         Node::Record(items) => {
-            let group = builder.group(parent, Some(key), format!("Record（{} 个值）", items.len()));
+            let group = builder.group(parent, Some(key), format!("Record ({} values)", items.len()));
             for (index, item) in items.iter().enumerate().take(16) {
                 push_node(builder, group, item, &index.to_string(), depth + 1);
             }
             if items.len() > 16 {
-                builder.field(group, "…", format!("另有 {} 个值", items.len() - 16));
+                builder.field(group, "…", format!("{} more values", items.len() - 16));
             }
         }
     }
 }
 
-/// 文档树。
 pub fn build(bytes: &[u8]) -> DocArena {
     let bst = parse(bytes);
     let mut builder = Builder::new();
@@ -498,12 +431,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < STREAM_AT {
-        builder.warn("文件不足 0x16 字节");
+        builder.warn("file is shorter than 0x16 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
 
-    // --- 头部 ---
     let header = builder.group(root, Some("header"), "Header");
     builder.field(header, "magic", rdr::ascii(&bytes[..4]));
     builder.field(
@@ -524,7 +456,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "bst.magic",
-        "魔数为 BBST",
+        "magic is BBST",
         &bytes[..4] == MAGIC,
         Some(rdr::hex(&bytes[..4])),
     );
@@ -532,9 +464,9 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let names = bst.names.clone();
     builder.check(
         "bst.names",
-        "名字表解出 .fmd / .ftx",
+        "the name table yields .fmd / .ftx",
         names.len() >= 2,
-        Some(format!("{} 个", names.len())),
+        Some(format!("{} items", names.len())),
     );
     let list = builder.array(
         root,
@@ -545,12 +477,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.field(list, &format!("r{index}"), name.clone());
     }
 
-    // --- 舞台头（第一条记录）---
     if let Some(Node::Record(items)) = bst.records.first() {
         let stage = builder.group(
             root,
             Some("stage"),
-            format!("Stage（{} 个值）", items.len()),
+            format!("Stage ({} values)", items.len()),
         );
         let corners = items
             .iter()
@@ -598,7 +529,6 @@ pub fn build(bytes: &[u8]) -> DocArena {
         }
     }
 
-    // --- 统计 ---
     let stats = builder.group(root, Some("stats"), "Stats");
     builder.field(stats, "records", bst.records.len().to_string());
     builder.field(stats, "plates", bst.plates.len().to_string());
@@ -606,15 +536,14 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "bst.closed",
-        "值流恰好读到 EOF",
+        "the value stream stops exactly at EOF",
         bst.unknown_tag.is_none() && bst.end == bytes.len(),
         Some(match bst.unknown_tag {
-            Some((at, tag)) => format!("0x{at:x} 处未知标签 0x{tag:02x}"),
+            Some((at, tag)) => format!("unknown tag 0x{tag:02x} at 0x{at:x}"),
             None => format!("{:#x} / {:#x}", bst.end, bytes.len()),
         }),
     );
 
-    // --- 碰撞板 ---
     let plates = builder.array(
         root,
         Some("plates"),
@@ -646,7 +575,6 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.truncate();
     }
 
-    // --- 地形块 ---
     let quads = builder.array(root, Some("quads"), format!("Quads ({})", bst.quads.len()));
     for (index, quad) in bst.quads.iter().take(MAX_QUADS_SHOWN).enumerate() {
         let row = builder.group(
@@ -671,11 +599,10 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.truncate();
     }
 
-    // --- 值流（前若干条记录）---
     let stream = builder.group(
         root,
         Some("stream"),
-        format!("Stream（{} 条记录）", bst.records.len()),
+        format!("Stream ({} records)", bst.records.len()),
     );
     for (index, node) in bst.records.iter().take(MAX_RECORDS_SHOWN).enumerate() {
         push_node(&mut builder, stream, node, &index.to_string(), 0);

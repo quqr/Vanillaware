@@ -1,6 +1,3 @@
-//! 临时实证测试：解码真实纹理，测水平相邻像素平均差。
-//! 正确的 de-swizzle 应产生连贯图像（小差值）；错误重排产生噪声（大差值）。
-
 use std::path::Path;
 
 const SAMPLE_ROOTS: &[&str] = &[
@@ -22,7 +19,7 @@ fn decoded_texture_is_spatially_coherent() {
             collect_ftx(p, &mut files);
         }
     }
-    eprintln!("共发现 {} 个 .ftx", files.len());
+    eprintln!("found {} .ftx files", files.len());
     assert!(!files.is_empty(), "no samples");
 
     let mut checked = 0usize;
@@ -52,14 +49,13 @@ fn decoded_texture_is_spatially_coherent() {
             let avg = total / n as f64;
             worst = worst.max(avg);
             eprintln!(
-                "{:?} #{} {}x{} fmt={:#x}: 相邻差 = {avg:.2}",
+                "{:?} #{} {}x{} fmt={:#x}: adjacent delta = {avg:.2}",
                 f.file_name().unwrap(),
                 tex.name,
                 tex.width,
                 tex.height,
                 tex.format
             );
-            // 连贯图像相邻像素差通常 < 40；随机噪声约 85（均匀分布）。
             assert!(avg < 40.0, "{} looks like noise (avg {avg:.2})", tex.name);
         }
         checked += 1;

@@ -6,10 +6,8 @@ fn minimal_usm() -> Vec<u8> {
     bytes[..4].copy_from_slice(b"CRID");
     bytes[4..8].copy_from_slice(&((header - 8) as u32).to_be_bytes());
     bytes[8..12].copy_from_slice(&0x0018_0690u32.to_be_bytes());
-    // 第一块：@SFV，0x40 字节
     bytes[header..header + 4].copy_from_slice(b"@SFV");
     bytes[header + 4..header + 8].copy_from_slice(&0x40u32.to_be_bytes());
-    // 第二块：@END，0x20 字节
     let next = header + 0x40;
     bytes[next..next + 4].copy_from_slice(b"@END");
     bytes[next + 4..next + 8].copy_from_slice(&0x20u32.to_be_bytes());

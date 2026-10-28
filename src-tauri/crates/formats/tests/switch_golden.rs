@@ -1,15 +1,3 @@
-//! 与旧实现（C# `UnifiedFtexReader`）导出的黄金像素对比。
-//!
-//! 黄金数据由 `F:\Codes\QuadToSpine2D\Tests\GoldenExportTests.cs` 在
-//! `GOLDEN_EXPORT=1` 时导出到 `spec/golden`。没有 manifest 时本测试直接跳过。
-//!
-//! 严格程度按格式区分：
-//! - **BC3 / BC4**：逐字节相等。解码器是手写移植，必须与旧实现完全一致。
-//! - **BC7**：只做结构性校验。BC7 由 `texture2ddecoder` 解码，它与旧仓库手写的
-//!   `BptcTexture.cs` 在部分 mode 上结果不同（实测平均 72% 字节一致，块位置正确）。
-//!   BC7 解码由规范完全确定，第三方实现经过广泛验证，因此不把旧实现的输出当作
-//!   像素级真值，只要求尺寸、通道、长度、不透明覆盖率与平均亮度一致。
-
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -52,7 +40,7 @@ fn golden_root() -> PathBuf {
 }
 
 #[test]
-#[ignore = "黄金数据来自旧 C#（分档位表 swizzle），其 >64 块纹理的块映射已被确认错误（见 spec/golden/README.md）；Tegra X1 重排已按 rip-vanillaware PHP 参考 + Tegra TRM 位模式修复，需在旧仓库修正后重新导出黄金数据。用 cargo test -- --ignored 单独跑"]
+#[ignore = "the goldens come from the old C# tool (split-table swizzle); its block mapping for textures above 64 blocks is known wrong (see spec/golden/README.md). The Tegra X1 rearrangement now follows the rip-vanillaware PHP reference and the Tegra TRM bit patterns, so the goldens must be re-exported. Run with cargo test -- --ignored"]
 fn switch_ftx_matches_golden_pixels() {
     let root = golden_root();
     let manifest_path = root.join("manifest.json");
@@ -184,7 +172,6 @@ fn switch_ftx_matches_golden_pixels() {
     );
 }
 
-/// 与 C# 侧 `id = relative[..^ext].Replace('/', '_')` 对应。
 fn sample_dir(relative: &str) -> String {
     let without_ext = relative
         .rsplit_once('.')
@@ -226,7 +213,6 @@ fn diff_pixels(expected: &[u8], actual: &[u8], width: usize, channels: usize) ->
     ))
 }
 
-/// BC7 的结构性对比：不透明覆盖率与平均亮度。返回（逐字节一致率, 错误信息）。
 fn compare_coverage(expected: &[u8], actual: &[u8], channels: usize) -> (f64, Option<String>) {
     let pixels = expected.len() / channels;
     let mut exact = 0usize;

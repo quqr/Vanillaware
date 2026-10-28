@@ -1,7 +1,3 @@
-//! probe（只读结构）与 decode_frame（只解一帧）的一致性。
-//!
-//! 两者必须共用同一套「跳过不支持格式 / 0 尺寸块」的规则，否则缩略图会索引错位。
-
 use std::path::Path;
 
 const SAMPLE: &str = r"F:\Codes\13\13rim ex\EX DATA\BattleEffect\Barrier00.ftx";
@@ -70,7 +66,6 @@ fn probe_frame_count_matches_decode_for_many_files() {
             ));
         }
 
-        // 最后一帧也要能单独取到，且与批量解码结果一致。
         if let Some(last) = infos.len().checked_sub(1) {
             if let Ok(one) = formats::ftx::decode_file_frame(&entry, last) {
                 if one.data != frames[last].data {
@@ -90,7 +85,6 @@ fn probe_frame_count_matches_decode_for_many_files() {
     );
 }
 
-/// 深优先序取前 `limit` 个文件，避免测试扫描整个语料。
 fn walk(root: &Path, limit: usize) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];

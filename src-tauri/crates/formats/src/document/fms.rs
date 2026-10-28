@@ -1,7 +1,3 @@
-//! FMSB 文本表：0x20 头 + u64 入口表 + 字符串池 + FEOC 尾。
-//!
-//! 入口表在文件内恒为 0（运行期被覆写为指针），所以文档树按字符串池顺序走。
-
 use serde::Serialize;
 
 use super::arena::{Builder, DocArena, DocMark};
@@ -20,7 +16,6 @@ pub struct FmsTextDto {
     pub strings: Vec<String>,
 }
 
-/// 文本表：按入口顺序解出全部字符串（供文本查看器搜索/虚拟列表）。
 pub fn text_table(bytes: &[u8]) -> FmsTextDto {
     if bytes.len() < HEADER {
         return FmsTextDto {
@@ -74,12 +69,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.finish()
 }
 
-/// 供 RSC 内嵌 FMSB 复用；`parent` 是调用方已建好的分组。
 pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix: &str) {
     builder.field(parent, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER {
-        builder.warn(format!("{prefix}: 文件不足 0x20 字节"));
+        builder.warn(format!("{prefix}: file is shorter than 0x20 bytes"));
         builder.mark(parent, DocMark::Error);
         return;
     }
@@ -98,9 +92,9 @@ pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix
 
     builder.check(
         &format!("{prefix}.magic"),
-        "魔数为 FMSB",
+        "magic is FMSB",
         magic == "FMSB",
-        Some(format!("读到 {magic}")),
+        Some(format!("read {magic}")),
     );
     builder.check(
         &format!("{prefix}.header"),
@@ -110,7 +104,7 @@ pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix
     );
     builder.check(
         &format!("{prefix}.reserved"),
-        "u32@0x0C/0x10 为 0",
+        "u32 at 0x0C/0x10 is 0",
         rdr::u32_at(bytes, 0x0c) == Some(0) && rdr::u32_at(bytes, 0x10) == Some(0),
         None,
     );
@@ -119,7 +113,7 @@ pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix
     let table_ok = table_end <= bytes.len();
     builder.check(
         &format!("{prefix}.table"),
-        "入口表在文件内",
+        "the entry table lies inside the file",
         table_ok,
         Some(format!("tableEnd={table_end:#x} size={:#x}", bytes.len())),
     );
@@ -137,7 +131,7 @@ pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix
     let mut cursor = table_end;
     for index in 0..count {
         if cursor >= bytes.len() {
-            builder.warn(format!("{prefix}: 字符串 {index} 越界"));
+            builder.warn(format!("{prefix}: string {index} out of range"));
             break;
         }
 
@@ -180,7 +174,7 @@ pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix
         && bytes.get(aligned..aligned + 4) == Some(b"FEOC");
     builder.check(
         &format!("{prefix}.trailer"),
-        "16B FEOC 尾精确闭合",
+        "the 16-byte FEOC trailer closes exactly",
         trailer_ok,
         Some(format!(
             "aligned={aligned:#x} size={:#x}",
@@ -220,6 +214,6 @@ fn encoding_name(encoding: u8) -> &'static str {
     match encoding {
         0 | 3 => "UTF-8",
         1 => "UTF-16LE",
-        _ => "未知",
+        _ => "unknown",
     }
 }

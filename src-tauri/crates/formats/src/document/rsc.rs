@@ -1,5 +1,3 @@
-//! RSC 脚本资源包：0x10 头 + 0xB4 定长条目 + 内嵌 FMSB 字节码。
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -12,16 +10,10 @@ use crate::primitives::{FileGraphDto, GraphEdgeDto, GraphNodeDto};
 const ENTRY: usize = 0xb4;
 const MAX_ENTRIES: u32 = 4096;
 
-/// 载荷里可能出现的外部资源扩展名（大小写不敏感）。
 const ASSET_EXTS: [&str; 10] = [
     ".fmd", ".ftx", ".mbs", ".fsb", ".osb", ".rsc", ".fms", ".otm", ".mpd", ".ctb",
 ];
 
-/// RSC 引用图：文件 → 条目 → 字节码载荷，外加跨文件引用。
-///
-/// 跨文件引用有两类：
-/// - 同名 `.fms` 文本表（引擎按 `RoundScript/%s.rsc` + `%s.fms` 成对加载）；
-/// - FMSB 载荷里 tag 1 的内联资源串，如 `GUI/WARPCIRCLE_MONE.MBS`。
 pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     let mut nodes = vec![GraphNodeDto {
         id: 0,
@@ -158,7 +150,6 @@ pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     FileGraphDto { nodes, edges, truncated }
 }
 
-/// 载荷中的内联资源路径：可打印 ASCII 串（NUL 结尾），含 `/` 且以已知扩展名收尾。
 fn asset_refs(code: &[u8], start: usize, end: usize) -> Vec<(String, usize)> {
     let end = end.min(code.len());
     let mut refs = Vec::new();
@@ -190,7 +181,6 @@ fn asset_refs(code: &[u8], start: usize, end: usize) -> Vec<(String, usize)> {
     refs
 }
 
-/// 资源串相对 RSC 目录解析：逐级向上最多 3 层（`RoundScript/` → `EX DATA/`）。
 fn resolve_asset(base: &Path, rel: &str) -> (PathBuf, bool) {
     let mut dir = Some(base);
     for _ in 0..3 {
@@ -211,7 +201,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < 0x10 {
-        builder.warn("文件不足 0x10 字节");
+        builder.warn("file is shorter than 0x10 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -226,7 +216,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let table_end = 0x10usize + count as usize * ENTRY;
     builder.check(
         "rsc.table",
-        "条目表在文件内",
+        "the entry table lies inside the file",
         table_end <= bytes.len(),
         Some(format!("{table_end:#x} vs {:#x}", bytes.len())),
     );
@@ -267,7 +257,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
             continue;
         }
         if offset as usize >= bytes.len() {
-            builder.warn(format!("entry[{index}] payload 越界: {offset:#x}"));
+            builder.warn(format!("entry[{index}] payload out of range: {offset:#x}"));
             builder.mark(group, DocMark::Warn);
             continue;
         }
@@ -296,7 +286,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         .all(|pair| pair[0] <= pair[1]);
     builder.check(
         "rsc.offsets",
-        "payload 偏移升序",
+        "payload offsets are ascending",
         ascending,
         None,
     );
@@ -305,7 +295,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     if let Some(min) = min_offset {
         builder.check(
             "rsc.payloadStart",
-            "最小 payload 偏移 == 条目区末尾",
+            "the smallest payload offset equals the end of the entry area",
             min == table_end as u64,
             Some(format!("{min:#x} vs {table_end:#x}")),
         );

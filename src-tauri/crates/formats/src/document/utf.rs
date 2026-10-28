@@ -1,25 +1,6 @@
-//! CRI `@UTF` 表：ADX2 的 ACB / ACF 都由它构成（一个文件里嵌多张表）。
-//!
-//! 表头口径与 CRI 官方读取器一致（大端）：
-//!
 //! ```text
 //! +0x00  "@UTF"
-//! +0x04  u32 表长（从 0x08 起算）
-//! +0x08  u8  ?   +0x09 u8 编码（0 = Shift-JIS，非 0 = UTF-8）
-//! +0x0a  u16 行区偏移（相对 0x08）
-//! +0x0c  u32 串池偏移（相对 0x08）
-//! +0x10  u32 数据池偏移（相对 0x08）
-//! +0x18  u16 列数      +0x1a u16 行宽      +0x1c u32 行数
-//! +0x20  列定义 × 列数：
-//!         u8 flag（低 4 位=类型，0x10=有列名，0x20=有默认值，0x40=行内存储）
-//!         [u32 列名偏移]  [默认值]
 //! ```
-//!
-//! 行内按列宽依次排布；字符串是相对串池的 u32 偏移，`RawData` 是
-//! `{u32 长度, u32 偏移}` 八个字节（ACB 的 `CueTable` 等子表就是用它指过去的）。
-//!
-//! 本模块只做三件事：**枚举**（扫 `@UTF` 出现位置）、**校验**（行宽等于列宽之和、
-//! 行区/串池落在文件内）、**解码**（把每列的值渲染成可读文本）。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -31,19 +12,15 @@ const MAX_TABLES: usize = 512;
 const MAX_COLS_SHOWN: usize = 96;
 const MAX_ROWS_SHOWN: usize = 64;
 
-/// 一列的类型与位置。
 #[derive(Debug, Clone)]
 pub struct Column {
     pub name: String,
     pub kind: u8,
     pub row_storage: bool,
-    /// 默认值（`flag & 0x20`）在文件里的位置。
     pub default_at: Option<usize>,
-    /// 该列在行内占的字节数。
     pub size: usize,
 }
 
-/// 一张 `@UTF` 表。
 #[derive(Debug, Clone)]
 pub struct Table {
     pub at: usize,
@@ -57,12 +34,10 @@ pub struct Table {
 }
 
 impl Table {
-    /// 行区起点。
     pub fn rows_at(&self) -> usize {
         self.at + self.rows
     }
 
-    /// 表头声明的列宽之和（应与 `row_width` 相等）。
     pub fn computed_width(&self) -> usize {
         self.columns
             .iter()
@@ -72,7 +47,6 @@ impl Table {
     }
 }
 
-/// 单元格字节数。
 pub fn cell_size(kind: u8) -> usize {
     match kind {
         0 | 1 => 1,
@@ -84,7 +58,6 @@ pub fn cell_size(kind: u8) -> usize {
     }
 }
 
-/// 类型名（CRI 的列类型编号）。
 pub fn type_name(kind: u8) -> &'static str {
     match kind {
         0 => "u8",
@@ -104,7 +77,6 @@ pub fn type_name(kind: u8) -> &'static str {
     }
 }
 
-/// 解析位于 `at` 的一张表；任何越界都返回 `None`。
 pub fn parse_table(bytes: &[u8], at: usize) -> Option<Table> {
     if bytes.get(at..at + 4)? != MAGIC {
         return None;
@@ -166,7 +138,6 @@ pub fn parse_table(bytes: &[u8], at: usize) -> Option<Table> {
     })
 }
 
-/// 扫描文件里的全部 `@UTF` 表（按偏移升序），跳过解析失败的伪命中。
 pub fn scan_tables(bytes: &[u8]) -> Vec<Table> {
     let mut out = Vec::new();
     let mut cursor = 0usize;
@@ -214,7 +185,6 @@ fn decode(raw: &[u8], utf8: bool) -> String {
     text::sjis_slot(raw)
 }
 
-/// 单元格渲染。
 pub fn cell_text(bytes: &[u8], table: &Table, at: usize, column: &Column) -> String {
     let Some(slice) = bytes.get(at..at + column.size) else {
         return "—".to_string();
@@ -261,29 +231,27 @@ pub fn cell_text(bytes: &[u8], table: &Table, at: usize, column: &Column) -> Str
     }
 }
 
-/// 把扫描到的表挂到 `root` 下（acb / acf / usm 共用），返回表数量。
 pub fn append(builder: &mut Builder, root: u32, bytes: &[u8]) -> usize {
     let tables = scan_tables(bytes);
     builder.field(root, "tables", tables.len().to_string());
 
     if tables.is_empty() {
-        builder.warn("没有找到可解析的 @UTF 表");
+        builder.warn("no parsable @UTF table found");
         builder.mark(root, DocMark::Error);
         return 0;
     }
 
-    // 「表长」字段与下一张表的偏移互为约束：锚定第一张表能反查表长口径。
     let first = &tables[0];
     let declared = rdr::u32_be_at(bytes, first.at + 4).unwrap_or(0) as usize;
     builder.check(
         "utf.first_table",
-        "第一张表在文件头",
+        "the first table sits at the start of the file",
         first.at == 0,
         Some(format!("@{:#x}", first.at)),
     );
     builder.check(
         "utf.table_size",
-        "表长字段 + 0x08 不超过文件",
+        "table length + 0x08 stays inside the file",
         declared + 8 <= bytes.len(),
         Some(format!("{declared:#x} + 8 ≤ {:#x}", bytes.len())),
     );
@@ -307,7 +275,7 @@ pub fn append(builder: &mut Builder, root: u32, bytes: &[u8]) -> usize {
             width_ok += 1;
         } else {
             builder.mark(node, DocMark::Warn).warn(format!(
-                "表[{index}] 行宽 {computed} ≠ 声明 {}",
+                "table[{index}] row width {computed} != declared {}",
                 table.row_width
             ));
         }
@@ -329,7 +297,7 @@ pub fn append(builder: &mut Builder, root: u32, bytes: &[u8]) -> usize {
                 type_name(column.kind),
                 column.size,
                 if column.default_at.is_some() {
-                    " · 默认值"
+                    " · default value"
                 } else {
                     ""
                 }
@@ -365,15 +333,14 @@ pub fn append(builder: &mut Builder, root: u32, bytes: &[u8]) -> usize {
 
     builder.check(
         "utf.row_width",
-        "每张表的行宽 == 列宽之和",
+        "every table row width equals the sum of its column widths",
         width_ok == tables.len(),
-        Some(format!("{width_ok}/{} 张表", tables.len())),
+        Some(format!("{width_ok}/{} tables", tables.len())),
     );
 
     tables.len()
 }
 
-/// 整棵树：`.acb` / `.acf` 走这里。
 pub fn build(bytes: &[u8], title: &str) -> DocArena {
     let mut builder = Builder::new();
     let root = builder.root(title);

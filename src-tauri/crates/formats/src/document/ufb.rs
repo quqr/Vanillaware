@@ -1,27 +1,5 @@
-//! UFB 大地图图层装配（`FieldBG/Field.ufb`）。
-//!
-//! 文件 = 头（0x88）+ 记录区 + 网格区 + F 记录 + u32 表 + 字符串池，五段**首尾相接**，
-//! 所以「解析到 EOF 且 slack == 0」是这条链路的硬校验。
-//!
 //! ```text
-//! +0x40 u32 记录数 A      +0x44 B      +0x48 C      +0x4c D      +0x50 E
-//! +0x54 u32 网格数        +0x58 F 记录数 +0x5c u32 表数
-//! +0x60 u32 资源对数      +0x64 采样点名 +0x68 G 名   +0x6c 名数
-//!
-//! 记录 @0x88 × A：
-//!   +0x00 .. +0x20 头（末 4 字节：u16 层数、u8 扩展块数、u8 组数）
-//!   +0x24 u8[层数 × 0x40] 层描述
-//!   ...   u8[扩展块数 × 0x90]
-//!   ...   u8[组数 × { cnt(在 +3), cnt × 0xF0 }]
-//!
-//! 每个网格：+0x24 i32 x0,y0,x1,y1；+0x3c 起 (x1-x0+1)(y1-y0+1) × u32；共 0x3c + w*h*4
-//! F 记录 ×0x18：u16 ×4 + f32 ×4
-//! u32 表：u32 × 表数
-//! 字符串池：资源对 ×2 串 → 采样名 → G 名 → 名（全部 NUL 结尾）
 //! ```
-//!
-//! 依据是解出的 `FUN_710020f530`（解析）+ `FUN_71000288f0`（记录步长）+
-//! `FUN_7100028aa0`（网格步长），147 MB 全文件 slack = 0。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -38,7 +16,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER {
-        builder.warn("文件不足 0x88 字节");
+        builder.warn("file is shorter than 0x88 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -71,7 +49,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     for index in 0..rec_count {
         let Some((size, layers, ext, groups)) = record_size(bytes, cursor) else {
-            record_error = Some(format!("记录[{index}] @0x{cursor:x} 越界"));
+            record_error = Some(format!("record[{index}] @0x{cursor:x} out of range"));
             break;
         };
         layers_total += layers as u64;
@@ -88,12 +66,12 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let mut grid_error = None;
     for index in 0..grid_count {
         let Some((x0, y0, x1, y1, w, h)) = grid_extent(bytes, cursor) else {
-            grid_error = Some(format!("网格[{index}] @0x{cursor:x} 头越界"));
+            grid_error = Some(format!("grid[{index}] @0x{cursor:x} header out of range"));
             break;
         };
         let payload = w.saturating_mul(h).saturating_mul(4);
         if cursor + 0x3c + payload > bytes.len() {
-            grid_error = Some(format!("网格[{index}] @0x{cursor:x} 数据越界"));
+            grid_error = Some(format!("grid[{index}] @0x{cursor:x} data out of range"));
             break;
         }
         if grids.len() < MAX_GRIDS_SHOWN {
@@ -132,7 +110,6 @@ pub fn build(bytes: &[u8]) -> DocArena {
     cursor += word_count * 4;
     let words_end = cursor;
 
-    // 字符串池：四段，任何一段读不出来就停在这里报 slack。
     let mut pairs = Vec::new();
     for _ in 0..pair_count {
         let Some((left, after)) = read_string(bytes, cursor) else {
@@ -187,28 +164,28 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "ufb.records",
-        "记录数 == 头声明",
+        "record count matches the header",
         records_end != 0 && record_error.is_none(),
-        Some(format!("{rec_count} 条，结束 0x{records_end:x}")),
+        Some(format!("{rec_count} records, end 0x{records_end:x}")),
     );
     builder.check(
         "ufb.grids",
-        "网格数 == 头声明",
+        "grid count matches the header",
         grid_error.is_none(),
-        Some(format!("{grid_count} 个，结束 0x{grids_end:x}")),
+        Some(format!("{grid_count} grids, end 0x{grids_end:x}")),
     );
     builder.check(
         "ufb.pairs",
-        "资源对数 == 头声明",
+        "resource pair count matches the header",
         pairs.len() == pair_count,
         Some(format!("{}/{}", pairs.len(), pair_count)),
     );
     builder.check(
         "ufb.slack",
-        "字符串池末尾 == 文件长度（slack = 0）",
+        "the string pool ends at the file length (slack = 0)",
         strings_end == bytes.len(),
         Some(format!(
-            "结束 0x{strings_end:x} / 文件 0x{:x}，slack {}",
+            "ends at 0x{strings_end:x} / file 0x{:x}, slack {}",
             bytes.len(),
             bytes.len() as i64 - strings_end as i64
         )),
@@ -222,7 +199,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         summary,
         "layout",
         format!(
-            "记录 → 0x{records_end:x} · 网格 → 0x{grids_end:x} · F → 0x{f_end:x} · u32 → 0x{words_end:x} · 资源对 → 0x{pairs_end:x} · 采样名 → 0x{samples_end:x} · G 名 → 0x{gnames_end:x}"
+            "records -> 0x{records_end:x} · grids -> 0x{grids_end:x} · F -> 0x{f_end:x} · u32 -> 0x{words_end:x} · pairs -> 0x{pairs_end:x} · sample names -> 0x{samples_end:x} · G names -> 0x{gnames_end:x}"
         ),
     );
 
@@ -314,7 +291,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
         root,
         Some("strings"),
         format!(
-            "Strings ({} 采样名 · {} G 名 · {} 名)",
+            "Strings ({} sample names · {} G names · {} names)",
             samples.len(),
             gnames.len(),
             names.len()
@@ -349,7 +326,6 @@ fn append_strings(builder: &mut Builder, parent: u32, key: &str, title: &str, it
     }
 }
 
-/// 单条记录的步长与三个计数；任何越界返回 `None`。
 pub fn record_size(bytes: &[u8], at: usize) -> Option<(usize, u16, u8, u8)> {
     let layers = rdr::u16_at(bytes, at + 0x20)?;
     let ext = rdr::u8_at(bytes, at + 0x22)?;

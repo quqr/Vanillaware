@@ -1,7 +1,3 @@
-//! FTEX 容器的结构视图：头 + 页目录。
-//!
-//! 页负载是 NVN 私有纹理块，这里只给区间，不做解码。
-
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 
@@ -16,7 +12,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER_SIZE {
-        builder.warn("文件不足 0x20 字节，无法读取 FTEX 头");
+        builder.warn("file is shorter than 0x20 bytes, no FTEX header");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -39,15 +35,15 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "ftx.magic",
-        "魔数为 FTEX",
+        "magic is FTEX",
         magic == "FTEX",
-        Some(format!("读到 {magic}")),
+        Some(format!("read {magic}")),
     );
 
     let expected = data_size as usize + header_size as usize + 0x10;
     builder.check(
         "ftx.payload",
-        "dataSize + headerSize + 0x10 == 文件长",
+        "dataSize + headerSize + 0x10 equals the file length",
         expected == bytes.len(),
         Some(format!("{expected:#x} vs {:#x}", bytes.len())),
     );
@@ -55,22 +51,22 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let directory_end = HEADER_SIZE + page_count as usize * PAGE_STRIDE;
     builder.check(
         "ftx.directory",
-        "headerSize 覆盖页目录",
+        "headerSize covers the page directory",
         header_size as usize >= directory_end,
-        Some(format!("headerSize {header_size:#x} / 目录末尾 {directory_end:#x}")),
+        Some(format!("headerSize {header_size:#x} / directory ends at {directory_end:#x}")),
     );
 
     let pages = builder.array(root, Some("pages"), format!("Pages ({page_count})"));
     let shown = page_count.min(MAX_PAGES);
     if page_count > MAX_PAGES {
         builder.truncate();
-        builder.warn(format!("页目录只展示前 {MAX_PAGES} / {page_count} 页"));
+        builder.warn(format!("page directory shows the first {MAX_PAGES} of {page_count} pages"));
     }
 
     for index in 0..shown {
         let base = HEADER_SIZE + index as usize * PAGE_STRIDE;
         let Some(name_bytes) = bytes.get(base..base + 0x20) else {
-            builder.warn(format!("页 {index} 的目录项越界"));
+            builder.warn(format!("page {index} directory entry out of range"));
             break;
         };
         let name = rdr::c_string(name_bytes);
@@ -103,7 +99,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
             "timestamp",
             rdr::hex(&bytes[base + 0x28..base + 0x2e]),
         );
-        builder.bytes(group, Some("entry"), "目录项", base as u64, PAGE_STRIDE as u64);
+        builder.bytes(group, Some("entry"), "directory entry", base as u64, PAGE_STRIDE as u64);
     }
 
     builder.finish()

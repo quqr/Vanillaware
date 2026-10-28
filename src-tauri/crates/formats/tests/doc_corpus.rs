@@ -1,5 +1,3 @@
-//! 真实语料的文档树闭合验证（默认忽略）。
-//!
 //! ```text
 //! cargo test -p formats --test doc_corpus -- --ignored --nocapture
 //! ```
@@ -55,7 +53,7 @@ fn assert_corpus(ext: &str, ids: &[&str]) {
     let mut files = Vec::new();
     walk(&root, ext, &mut files);
     if files.is_empty() {
-        eprintln!("跳过：{} 下没有 .{ext}", root.display());
+        eprintln!("skipped: no .{ext} under {}", root.display());
         return;
     }
 
@@ -65,29 +63,29 @@ fn assert_corpus(ext: &str, ids: &[&str]) {
         for id in ids {
             if check_ok(&arena, id) == Some(false) {
                 failed += 1;
-                eprintln!("{} 未通过 {}: {}", path.display(), id, path.display());
+                eprintln!("{} failed {}: {}", path.display(), id, path.display());
                 break;
             }
         }
     }
-    eprintln!(".{ext}: {} 个，失败 {failed}", files.len());
+    eprintln!(".{ext}: {} files, {failed} failed", files.len());
     assert_eq!(failed, 0);
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn fms_corpus_is_closed() {
     assert_corpus("fms", &["fms.trailer", "fms.payload"]);
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn rsc_corpus_is_closed() {
     assert_corpus("rsc", &["rsc.table", "rsc.payloadStart"]);
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn otm_corpus_is_closed() {
     assert_corpus(
         "otm",
@@ -96,13 +94,13 @@ fn otm_corpus_is_closed() {
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn mpd_corpus_is_closed() {
     assert_corpus("mpd", &["mpd.magic", "mpd.size", "mpd.payload", "mpd.offset"]);
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn ctb_corpus_is_closed() {
     assert_corpus(
         "ctb",
@@ -119,11 +117,11 @@ fn ctb_corpus_is_closed() {
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn fmd_mesh_scene_has_geometry() {
     let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\BattleStageModel\BT_STAGE00.fmd");
     if !path.is_file() {
-        eprintln!("跳过：{} 不存在", path.display());
+        eprintln!("skipped: {} does not exist", path.display());
         return;
     }
     let bytes = std::fs::read(path).unwrap();
@@ -146,7 +144,7 @@ fn fmd_mesh_scene_has_geometry() {
         .count();
     let untextured = ranges.len() - textured - collision;
     eprintln!(
-        "fmd mesh: {} 个网格，{} 三角，{} 带 UV，UV 范围 {:?}，{} 段（贴图 {} / 无贴图 {} / 碰撞 {}），bounds {:?}，truncated {}",
+        "fmd mesh: {} meshes, {} triangles, {} with UV, UV range {:?}, {} sections (textured {} / untextured {} / collision {}), bounds {:?}, truncated {}",
         meshes.len(),
         triangles,
         with_uv,
@@ -161,32 +159,32 @@ fn fmd_mesh_scene_has_geometry() {
 
     assert!(!meshes.is_empty());
     assert!(triangles > 0);
-    assert!(with_uv > 0, "样例 FMD 应解析出 UV");
+    assert!(with_uv > 0, "the sample FMD must yield UVs");
     assert!(uv_range.0.is_finite() && uv_range.1.is_finite());
     assert!(scene.bounds.iter().all(|value| value.is_finite()));
     assert!(meshes.iter().all(|mesh| mesh.positions.len() % 3 == 0));
     assert!(meshes.iter().all(|mesh| mesh.uvs.len() % 2 == 0));
-    assert!(textured > 0, "样例 FMD 应有带贴图的绘制段");
-    assert_eq!(collision, 0, "碰撞材质不应进入绘制段");
+    assert!(textured > 0, "the sample FMD must have a textured draw section");
+    assert_eq!(collision, 0, "collision materials must not enter draw sections");
     assert!(ranges
         .iter()
         .all(|range| (-1..=3).contains(&range.tex_ref)));
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn fmd_corpus_is_closed() {
     assert_corpus("fmd", &["fmd.closed", "fmd.versionGate"]);
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn fmd_mesh_count_matches_python() {
     let root = corpus("CORPUS_13", r"F:\Codes\13\13rim ex\EX DATA");
     let mut files = Vec::new();
     walk(&root, "fmd", &mut files);
     if files.is_empty() {
-        eprintln!("跳过：{} 下没有 .fmd", root.display());
+        eprintln!("skipped: no .fmd under {}", root.display());
         return;
     }
 
@@ -201,11 +199,11 @@ fn fmd_mesh_count_matches_python() {
         declared += arena.sum_field("meshCount");
     }
     eprintln!(
-        ".fmd: {} 个文件，声明网格 {declared}，解析 {parsed}，非空 {meshes}",
+        ".fmd: {} files, declared {declared} meshes, parsed {parsed}, non-empty {meshes}",
         files.len()
     );
 
-    assert_eq!(declared, parsed as u64, "声明网格数与解析网格数不一致");
+    assert_eq!(declared, parsed as u64, "declared and parsed mesh counts differ");
     if let Ok(expected) = std::env::var("FMD_MESHES") {
         assert_eq!(meshes, expected.parse::<usize>().unwrap());
     }
@@ -213,13 +211,13 @@ fn fmd_mesh_count_matches_python() {
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn fsb_corpus_is_closed() {
     assert_corpus("fsb", &["fsb.closed", "fsb.sequence", "fsb.version"]);
 }
 
 #[test]
-#[ignore = "需要本机 UO 语料"]
+#[ignore = "requires the local UO corpus"]
 fn asb_corpus_parses_to_eof() {
     let dir = corpus(
         "CORPUS_ASB",
@@ -227,7 +225,7 @@ fn asb_corpus_parses_to_eof() {
     );
     let files = files(&dir, "asb");
     if files.is_empty() {
-        eprintln!("跳过：{} 下没有 .asb", dir.display());
+        eprintln!("skipped: no .asb under {}", dir.display());
         return;
     }
 
@@ -246,27 +244,27 @@ fn asb_corpus_parses_to_eof() {
             }
             Ok(_) => {
                 failed += 1;
-                eprintln!("未到 EOF: {}", path.display());
+                eprintln!("did not reach EOF: {}", path.display());
             }
             Err(error) => {
                 failed += 1;
-                eprintln!("解析失败 {}: {error}", path.display());
+                eprintln!("parse failed {}: {error}", path.display());
             }
         }
     }
     eprintln!(
-        ".asb: {} 个，失败 {failed}；enum {enums} / func {functions} / global {globals} / string {strings}",
+        ".asb: {} files, {failed} failed; enum {enums} / func {functions} / global {globals} / string {strings}",
         files.len()
     );
     assert_eq!(failed, 0);
 }
 
 #[test]
-#[ignore = "需要本机 UO 语料"]
+#[ignore = "requires the local UO corpus"]
 fn asb_disasm_sample_matches_golden() {
     let path = PathBuf::from(r"F:\Codes\UNICORN OVERLORD\extract\000\Script\CaptureCharacter.asb");
     if !path.is_file() {
-        eprintln!("跳过：{} 不存在", path.display());
+        eprintln!("skipped: {} does not exist", path.display());
         return;
     }
     let bytes = std::fs::read(path).unwrap();
@@ -290,7 +288,7 @@ fn asb_disasm_sample_matches_golden() {
 }
 
 #[test]
-#[ignore = "需要本机 UO 语料"]
+#[ignore = "requires the local UO corpus"]
 fn bbs_layout_sample_is_nonempty() {
     let dir = corpus(
         "CORPUS_BBS",
@@ -298,7 +296,7 @@ fn bbs_layout_sample_is_nonempty() {
     );
     let files = files(&dir, "bbs");
     let Some(path) = files.first() else {
-        eprintln!("跳过：{} 下没有 .bbs", dir.display());
+        eprintln!("skipped: no .bbs under {}", dir.display());
         return;
     };
     let bytes = std::fs::read(path).unwrap();
@@ -309,11 +307,11 @@ fn bbs_layout_sample_is_nonempty() {
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn fms_text_sample_is_nonempty() {
     let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\Fms\ScriptText.fms");
     if !path.is_file() {
-        eprintln!("跳过：{} 不存在", path.display());
+        eprintln!("skipped: {} does not exist", path.display());
         return;
     }
     let bytes = std::fs::read(path).unwrap();
@@ -324,7 +322,7 @@ fn fms_text_sample_is_nonempty() {
 }
 
 #[test]
-#[ignore = "需要本机 UO 语料"]
+#[ignore = "requires the local UO corpus"]
 fn bbs_corpus_is_closed() {
     let dir = corpus(
         "CORPUS_BBS",
@@ -332,7 +330,7 @@ fn bbs_corpus_is_closed() {
     );
     let files = files(&dir, "bbs");
     if files.is_empty() {
-        eprintln!("跳过：{} 不存在 .bbs", dir.display());
+        eprintln!("skipped: {} has no .bbs", dir.display());
         return;
     }
 
@@ -341,15 +339,15 @@ fn bbs_corpus_is_closed() {
         let arena = document::parse_file(path, None).expect("bbs parse");
         if check_ok(&arena, "bbs.closed") != Some(true) {
             failed += 1;
-            eprintln!("未闭合: {}", path.display());
+            eprintln!("not closed: {}", path.display());
         }
     }
-    eprintln!("bbs: {} 个，失败 {failed}", files.len());
+    eprintln!("bbs: {} files, {failed} failed", files.len());
     assert_eq!(failed, 0);
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn osb_resources_sample() {
     let dir = corpus("CORPUS_OSB", r"F:\Codes\13\13rim ex\EX DATA\Stage");
     let files = files(&dir, "osb");
@@ -363,11 +361,11 @@ fn osb_resources_sample() {
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn osb_scene_sample_has_geometry() {
     let path = PathBuf::from(r"F:\Codes\13\13rim ex\EX DATA\Stage\98siki_2syume.osb");
     if !path.is_file() {
-        eprintln!("跳过：{} 不存在", path.display());
+        eprintln!("skipped: {} does not exist", path.display());
         return;
     }
     let bytes = std::fs::read(&path).unwrap();
@@ -386,7 +384,7 @@ fn osb_scene_sample_has_geometry() {
         .filter(|reference| reference.status == "resolved")
         .count();
     eprintln!(
-        "osb scene: {} 节点，{} 网格，{} 三角，{} 引用（可解析 {}），bounds {:?}，truncated {}",
+        "osb scene: {} nodes, {} meshes, {} triangles, {} references ({} resolvable), bounds {:?}, truncated {}",
         scene.nodes.len(),
         meshes.len(),
         triangles,
@@ -398,7 +396,7 @@ fn osb_scene_sample_has_geometry() {
 
     assert!(scene.nodes.len() > 1);
     assert!(!scene.references.is_empty());
-    assert!(resolved > 0, "样例 OSB 的引用应能按相对路径解析");
+    assert!(resolved > 0, "the sample OSB references must resolve by relative path");
     assert!(!meshes.is_empty());
     assert!(triangles > 0);
     assert!(scene.bounds.iter().all(|value| value.is_finite()));
@@ -410,9 +408,8 @@ fn osb_scene_sample_has_geometry() {
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn rsc_graph_sample_has_entries() {
-    // BattleScript 只有配对文本表；RoundScript 的载荷里还会内联外部资源串。
     let samples = [
         r"F:\Codes\13\13rim ex\EX DATA\BattleScript\area1_wave1.rsc",
         r"F:\Codes\13\13rim ex\EX DATA\RoundScript\Amiguchi00_30.rsc",
@@ -420,7 +417,7 @@ fn rsc_graph_sample_has_entries() {
     for sample in samples {
         let path = PathBuf::from(sample);
         if !path.is_file() {
-            eprintln!("跳过：{} 不存在", path.display());
+            eprintln!("skipped: {} does not exist", path.display());
             continue;
         }
         let bytes = std::fs::read(&path).unwrap();
@@ -431,7 +428,7 @@ fn rsc_graph_sample_has_entries() {
         let externals = graph.nodes.iter().filter(|node| node.kind == "external").count();
         let loads = graph.edges.iter().filter(|edge| edge.label == "loads").count();
         eprintln!(
-            "{}: {} 节点（entry {entries}，script {scripts}，external {externals}），{} 边（loads {loads}），truncated {}",
+            "{}: {} nodes (entry {entries}, script {scripts}, external {externals}), {} edges (loads {loads}), truncated {}",
             path.file_name().unwrap().to_string_lossy(),
             graph.nodes.len(),
             graph.edges.len(),
@@ -442,9 +439,8 @@ fn rsc_graph_sample_has_entries() {
         assert!(graph.nodes[0].status.is_none());
         assert!(entries > 0);
         assert!(scripts > 0);
-        // 1 条配对文本表边 + 每个条目 1 条 contains + 每个载荷 1 条 payload + 每条 loads。
         assert_eq!(graph.edges.len(), entries + scripts + externals);
-        assert_eq!(externals, 1 + loads, "external = 配对 .fms + 载荷资源");
+        assert_eq!(externals, 1 + loads, "external = paired .fms plus payload assets");
         assert!(graph
             .nodes
             .iter()
@@ -462,7 +458,7 @@ fn rsc_graph_sample_has_entries() {
                 .iter()
                 .filter(|node| node.kind == "external" && node.status.as_deref() == Some("resolved"))
                 .count();
-            assert_eq!(resolved, 1 + loads, "全部引用应能在语料中解析");
+            assert_eq!(resolved, 1 + loads, "every reference must resolve in the corpus");
             assert!(graph
                 .nodes
                 .iter()
@@ -472,12 +468,12 @@ fn rsc_graph_sample_has_entries() {
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn osb_corpus_is_closed() {
     let dir = corpus("CORPUS_OSB", r"F:\Codes\13\13rim ex\EX DATA\Stage");
     let files = files(&dir, "osb");
     if files.is_empty() {
-        eprintln!("跳过：{} 不存在 .osb", dir.display());
+        eprintln!("skipped: {} has no .osb", dir.display());
         return;
     }
 
@@ -486,16 +482,15 @@ fn osb_corpus_is_closed() {
         let arena = document::parse_file(path, None).expect("osb parse");
         if check_ok(&arena, "osb.closed") != Some(true) {
             failed += 1;
-            eprintln!("未闭合: {}", path.display());
+            eprintln!("not closed: {}", path.display());
         }
     }
-    eprintln!("osb: {} 个，失败 {failed}", files.len());
+    eprintln!("osb: {} files, {failed} failed", files.len());
     assert_eq!(failed, 0);
 }
 
-/// `.scb` 只出现在 DLC 的 `Script/`，所以三个根一起扫。
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn scb_corpus_is_closed() {
     let roots = [
         corpus("CORPUS_13", r"F:\Codes\13\13rim ex\EX DATA"),
@@ -508,7 +503,7 @@ fn scb_corpus_is_closed() {
         walk(root, "scb", &mut scb);
     }
     if scb.is_empty() {
-        eprintln!("跳过：三个根下都没有 .scb");
+        eprintln!("skipped: no .scb under any of the three roots");
         return;
     }
 
@@ -517,20 +512,19 @@ fn scb_corpus_is_closed() {
         let arena = document::parse_file(path, None).expect("scb parse");
         if check_ok(&arena, "scb.eof") != Some(true) {
             failed += 1;
-            eprintln!("未闭合: {}", path.display());
+            eprintln!("not closed: {}", path.display());
         }
     }
-    eprintln!("scb: {} 个，失败 {failed}", scb.len());
+    eprintln!("scb: {} files, {failed} failed", scb.len());
     assert_eq!(failed, 0);
 }
 
-/// 树形投影的形状检查：ROOT 下应当直接是 @TITLE / @MONSTER / @PAGE 节点。
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn scb_tree_has_named_nodes() {
     let path = PathBuf::from(r"F:\Codes\13\13rim dlc ex\Script\Animation.scb");
     if !path.is_file() {
-        eprintln!("跳过：{} 不存在", path.display());
+        eprintln!("skipped: {} does not exist", path.display());
         return;
     }
 
@@ -541,27 +535,25 @@ fn scb_tree_has_named_nodes() {
         .iter()
         .find(|node| node.name == "ROOT")
         .map(|node| node.id)
-        .expect("ROOT 分组");
+        .expect("ROOT group");
 
     let page = arena.page(0, root_id, 0, 100).expect("ROOT page");
 
     let names: Vec<String> = page.items.iter().map(|node| node.name.clone()).collect();
-    eprintln!("前 12 个节点: {:#?}", &names[..names.len().min(12)]);
+    eprintln!("first 12 nodes: {:#?}", &names[..names.len().min(12)]);
 
     assert!(
         names.iter().any(|name| name.starts_with("@MONSTER")),
-        "应当出现 @MONSTER 节点"
+        "a @MONSTER node must appear"
     );
     assert!(
         names.iter().any(|name| name.starts_with("@TITLE")),
-        "应当出现 @TITLE 节点"
+        "a @TITLE node must appear"
     );
 }
 
-/// `.nnd` 容器不变量：`version == 2`、`wordCount % 3 == 0`、载荷不越界，
-/// 三条在全部 302 个文件上成立（见 `doc/nnd.rs` 的注释）。
 #[test]
-#[ignore = "需要本机 UNICORN OVERLORD 解包语料"]
+#[ignore = "requires the local UNICORN OVERLORD extraction"]
 fn nnd_container_invariants_hold_for_all_files() {
     let root = corpus(
         "UO_EXTRACT",
@@ -569,7 +561,7 @@ fn nnd_container_invariants_hold_for_all_files() {
     );
     let mut list = Vec::new();
     walk(&root, "nnd", &mut list);
-    assert!(!list.is_empty(), "语料为空：{}", root.display());
+    assert!(!list.is_empty(), "the corpus is empty: {}", root.display());
 
     let (mut failed, mut with_units, mut with_tail, mut units) = (0, 0, 0, 0u64);
     for path in &list {
@@ -577,7 +569,7 @@ fn nnd_container_invariants_hold_for_all_files() {
         for check in arena.checks() {
             if !check.ok {
                 failed += 1;
-                eprintln!("未通过 {}: {} — {:?}", check.id, path.display(), check.detail);
+                eprintln!("failed {}: {} - {:?}", check.id, path.display(), check.detail);
             }
         }
         let page = arena.page(0, arena.root(), 0, 100).expect("root page");
@@ -595,9 +587,9 @@ fn nnd_container_invariants_hold_for_all_files() {
     }
 
     eprintln!(
-        "nnd: {} 个，失败 {failed}，带载荷 {with_units}，带尾部 {with_tail}，载荷段合计 {units}",
+        "nnd: {} files, {failed} failed, {with_units} with payload, {with_tail} with tail, {units} payload units",
         list.len()
     );
     assert_eq!(failed, 0);
-    assert_eq!(with_units, list.len(), "每个文件都应有载荷段");
+    assert_eq!(with_units, list.len(), "every file must carry a payload section");
 }

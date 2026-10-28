@@ -1,8 +1,3 @@
-//! ASB（AngelScript 2.34.0 asCWriter）模块结构视图。
-//!
-//! 逐行复刻 `uo_asb.py` 的 Reader：解析全部声明与函数调试信息以精确到达 EOF；
-//! 字节码只保留指令数，不在此展开（反汇编是后续查看器）。
-
 use serde::Serialize;
 
 use super::arena::{Builder, DocArena, DocMark};
@@ -234,7 +229,7 @@ impl<'a> Reader<'a> {
                 .dtypes
                 .get(index)
                 .cloned()
-                .ok_or_else(|| format!("dtype cache {index} 越界"));
+                .ok_or_else(|| format!("dtype cache {index} out of range"));
         }
         let token = self.enc_int()?;
         let type_info = if token == TT_IDENTIFIER {
@@ -310,7 +305,7 @@ impl<'a> Reader<'a> {
             let kind = ASB_OPS
                 .get(op as usize)
                 .map(|(_, kind)| *kind)
-                .ok_or_else(|| format!("未知操作码 {op}"))?;
+                .ok_or_else(|| format!("unknown opcode {op}"))?;
             let arg_count = match kind {
                 ArgKind::None => 0,
                 ArgKind::One => 1,
@@ -622,7 +617,7 @@ pub fn build(bytes: &[u8]) -> Result<DocArena, String> {
 
     builder.check(
         "asb.eof",
-        "模块精确消费到 EOF",
+        "modules consume the file exactly",
         eof,
         Some(format!("{:#x} vs {:#x}", reader.pos, bytes.len())),
     );
@@ -779,7 +774,6 @@ pub struct AsmDto {
     pub lines: Vec<AsmLineDto>,
 }
 
-/// 反汇编一个函数；`function_index` 是「functions + globalFuncs」合并后的下标。
 pub fn disassemble_file(bytes: &[u8], function_index: Option<usize>) -> Result<AsmDto, String> {
     let mut reader = Reader::new(bytes);
     let module = reader.read_module()?;
@@ -948,7 +942,6 @@ pub struct PseudoDto {
     pub text: String,
 }
 
-/// 伪代码：复刻 `uo_as_dec.py` 的表达式栈模拟，控制流保留 label+goto。
 pub fn pseudo_file(bytes: &[u8], function_index: Option<usize>) -> Result<PseudoDto, String> {
     let mut reader = Reader::new(bytes);
     let module = reader.read_module()?;
@@ -1171,7 +1164,7 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
                     .and_then(|info| info.as_ref())
                     .map(type_info_name)
                     .unwrap_or_else(|| "obj".into());
-                out.push(format!("/* new {} */", if type_name.is_empty() { "<匿名>" } else { &type_name }));
+                out.push(format!("/* new {} */", if type_name.is_empty() { "<anonymous>" } else { &type_name }));
             }
             "LoadRObjR" | "LoadVObjR" if args.len() >= 3 => {
                 let property = args[1] as usize;
@@ -1193,7 +1186,7 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
     }
 
     while let Some((value, _)) = stack.pop() {
-        out.push(format!("// [栈残留] {value}"));
+        out.push(format!("// [stack leftovers] {value}"));
     }
 
     let mut text = String::new();

@@ -23,7 +23,6 @@ fn flip_and_move_degrade_identity() {
 
 #[test]
 fn scale_rotate_z_composes_like_php() {
-    // 缩放 2 倍再绕 z 轴 90 度：sin=1、cos≈0。
     let m = s7_matrix(
         &[0.0; 3],
         &[0.0, 0.0, std::f32::consts::FRAC_PI_2],

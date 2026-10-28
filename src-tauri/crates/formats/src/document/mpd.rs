@@ -1,5 +1,3 @@
-//! MPD 四边形绘制记录：0x20 头 + count × 0xA0 记录。
-
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 use super::text;
@@ -15,7 +13,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER {
-        builder.warn("文件不足 0x20 字节");
+        builder.warn("file is shorter than 0x20 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -35,13 +33,13 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "mpd.magic",
-        "魔数为 MPD\\0",
+        "magic is MPD\\0",
         magic_ok,
         Some(rdr::hex(&bytes[..4])),
     );
     builder.check(
         "mpd.size",
-        "0x20 + count × 0xA0 == 文件长",
+        "0x20 + count × 0xA0 equals the file length",
         HEADER as u64 + count as u64 * RECORD as u64 == bytes.len() as u64,
         Some(format!("{count} × 0xA0")),
     );

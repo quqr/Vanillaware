@@ -1,9 +1,3 @@
-//! 对照 PHP 参考工具导出结果验证 FTX 解码。
-//!
-//! 参考数据由 `php FTEX_swit_unicorn.php <ftx>` 生成，存放于 `.tmp/phpout`：
-//! 输出为 `RGBA` 容器（`RGBA` magic + w(4) + h(4) + w*h*4 像素）。该输出正是
-//! 官方 PNG 的来源，可作为逐字节真值。目录缺失时本测试自动跳过。
-
 use std::path::Path;
 
 fn read_rgba_container(path: &Path) -> Option<(usize, usize, Vec<u8>)> {
@@ -20,7 +14,7 @@ fn read_rgba_container(path: &Path) -> Option<(usize, usize, Vec<u8>)> {
 fn ftx_matches_php_reference() {
     let dir = Path::new(r"F:\Codes\Vanillaware\.tmp\phpout");
     if !dir.is_dir() {
-        eprintln!("skip: 参考目录不存在");
+        eprintln!("skip: reference directory does not exist");
         return;
     }
 
@@ -43,13 +37,12 @@ fn ftx_matches_php_reference() {
                 continue;
             };
 
-            assert_eq!(tex.width as usize, pw, "{stem} 帧 {index} 宽度");
-            assert_eq!(tex.height as usize, ph, "{stem} 帧 {index} 高度");
+            assert_eq!(tex.width as usize, pw, "{stem} frame {index} width");
+            assert_eq!(tex.height as usize, ph, "{stem} frame {index} height");
 
-            // 仅四通道格式可与 RGBA 参考逐字节比对（BC4 为灰度，见下方说明）。
             let ch = tex.channels as usize;
             if ch != 4 {
-                eprintln!("{stem} 帧 {index}: ch={ch}，跳过 RGBA 比对");
+                eprintln!("{stem} frame {index}: ch={ch}, skipping the RGBA comparison");
                 continue;
             }
 
@@ -62,16 +55,16 @@ fn ftx_matches_php_reference() {
                 }
             }
             eprintln!(
-                "{stem} 帧 {index}: {}x{} fmt={:#x} → {:.2}%",
+                "{stem} frame {index}: {}x{} fmt={:#x} -> {:.2}%",
                 tex.width,
                 tex.height,
                 tex.format,
                 exact as f64 * 100.0 / (pw * ph) as f64
             );
-            assert_eq!(exact, pw * ph, "{stem} 帧 {index} 未逐字节一致");
+            assert_eq!(exact, pw * ph, "{stem} frame {index} is not byte-identical");
             checked += 1;
         }
     }
 
-    eprintln!("共比对 {checked} 帧");
+    eprintln!("compared {checked} frames");
 }

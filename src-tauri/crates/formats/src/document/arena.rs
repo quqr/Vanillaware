@@ -1,7 +1,3 @@
-//! 文档树 arena：节点以数组下标为 id，子节点只存 id，分页按需切片。
-//!
-//! 这里只有 DTO 与容器，不含任何格式知识；各格式解析器通过 [`Builder`] 建树。
-
 use serde::Serialize;
 
 pub const PAGE_LIMIT: u32 = 100;
@@ -30,7 +26,6 @@ pub enum DocMark {
     Error,
 }
 
-/// 扁平节点。`children` 只存 id，不下发到前端。
 #[derive(Debug, Clone)]
 pub struct DocNode {
     pub id: u32,
@@ -103,7 +98,6 @@ pub struct DocOpenDto {
     pub page: DocPageDto,
 }
 
-/// 文档树容器。
 #[derive(Debug, Clone)]
 pub struct DocArena {
     nodes: Vec<DocNode>,
@@ -121,7 +115,6 @@ impl DocArena {
         self.nodes.len() as u32
     }
 
-    /// 对所有 key 匹配的字段值求和（语料测试用）。
     pub fn sum_field(&self, key: &str) -> u64 {
         self.nodes
             .iter()
@@ -131,7 +124,6 @@ impl DocArena {
             .sum()
     }
 
-    /// 统计 key/value 完全匹配的节点数（语料测试用）。
     pub fn count_field_value(&self, key: &str, value: &str) -> usize {
         self.nodes
             .iter()
@@ -154,7 +146,6 @@ impl DocArena {
         payload + self.nodes.len() * std::mem::size_of::<DocNode>()
     }
 
-    /// 取某节点的子节点页；节点不存在时返回 `None`。
     pub fn page(&self, handle: u64, node: u32, offset: u32, limit: u32) -> Option<DocPageDto> {
         let target = self.nodes.get(node as usize)?;
         let limit = limit.clamp(1, PAGE_MAX);
@@ -190,7 +181,6 @@ impl DocArena {
         })
     }
 
-    /// 自检结果（测试与调试用；对外通过 [`Self::doc`] 返回）。
     pub fn checks(&self) -> &[DocCheckDto] {
         &self.checks
     }
@@ -220,7 +210,6 @@ impl DocArena {
     }
 }
 
-/// 建树器：所有方法都做节点上限保护，越界时只置 `truncated`。
 #[derive(Debug)]
 pub struct Builder {
     nodes: Vec<DocNode>,
@@ -327,7 +316,6 @@ impl Builder {
         }
     }
 
-    // 建树入口参数虽多，但都是一次性写入的节点字段；拆成 options struct 反而更难读。
     #[allow(clippy::too_many_arguments)]
     fn push(
         &mut self,
@@ -379,7 +367,6 @@ impl Builder {
     }
 }
 
-/// 按 UTF-8 字符边界截断；返回是否发生截断。
 fn clamp_string(text: &mut String) -> bool {
     if text.len() <= MAX_STRING {
         return false;

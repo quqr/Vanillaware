@@ -1,11 +1,3 @@
-//! 资源名解析：清单/名表里只有文件名，真实文件常在同级或兄弟目录。
-//!
-//! 解析顺序（由便宜到贵）：
-//! 1. 同目录与上溯 3 层目录直接拼路径；
-//! 2. 每个祖先做一次**有界**的文件名索引（深度 ≤ 2、条目上限 8000、大小写不敏感）。
-//!
-//! 第 2 步只在必要时建一次并缓存，单次 `graph()` 调用内复用。
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -26,7 +18,6 @@ impl Resolver {
         }
     }
 
-    /// 返回（候选路径, 是否真实存在）。
     pub fn resolve(&mut self, name: &str) -> (PathBuf, bool) {
         if name.is_empty() {
             return (self.base.clone(), false);
@@ -47,8 +38,6 @@ impl Resolver {
         }
     }
 
-    /// 逐层祖先建索引，**命中即停**：先付出小目录的代价，只有当名字确实不在
-    /// 近处时才继续往外走。
     fn ensure(&mut self, key: &str) {
         if self.index.as_ref().is_some_and(|index| index.contains_key(key)) {
             return;

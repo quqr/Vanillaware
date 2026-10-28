@@ -1,7 +1,3 @@
-//! 统一文档树：各格式把结构投影成 arena，前端按节点分页展开。
-//!
-//! 本模块只依赖字节与格式自身，不依赖 `catalog`；DTO 直接由命令层返回。
-
 pub mod acb;
 pub mod arena;
 pub mod asb;
@@ -47,7 +43,6 @@ pub use fms::FmsTextDto;
 
 use crate::Result;
 
-/// 从磁盘解析一个文件的文档树。
 pub fn parse_file(path: &Path, tag: Option<&str>) -> Result<DocArena> {
     let bytes = std::fs::read(path)?;
     let ext = path
@@ -57,7 +52,6 @@ pub fn parse_file(path: &Path, tag: Option<&str>) -> Result<DocArena> {
     parse_bytes(&bytes, &ext, tag)
 }
 
-/// 从内存字节解析；`ext` 决定分派，未知扩展名走通用 binary 视图。
 pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocArena> {
     match ext.to_ascii_lowercase().as_str() {
         "ftx" | "ftp" => Ok(ftx::build(bytes)),

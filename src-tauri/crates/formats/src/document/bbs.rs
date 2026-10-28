@@ -1,7 +1,3 @@
-//! UBBS 战斗背景装配单的结构视图（UO，152/152 闭合）。
-//!
-//! 依据 `uo_bbs.py`：头 0x338 + 9 个段偏移 + 名表/档位/物件/rec4..7/尾部表。
-
 use serde::Serialize;
 use std::path::Path;
 
@@ -58,7 +54,6 @@ pub struct BbsLayoutDto {
     pub routes: Vec<BbsRouteDto>,
 }
 
-/// 布局查看器的类型化投影（不做文档树的节点开销）。
 pub fn layout(bytes: &[u8]) -> BbsLayoutDto {
     let counts = if bytes.len() >= SEGMENTS_AT {
         read_counts(bytes)
@@ -147,7 +142,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < SEGMENTS_AT {
-        builder.warn("文件不足 0x380 字节");
+        builder.warn("file is shorter than 0x380 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -163,9 +158,9 @@ pub fn build(bytes: &[u8]) -> DocArena {
     );
     builder.check(
         "bbs.magic",
-        "魔数为 UBBS",
+        "magic is UBBS",
         magic == "UBBS",
-        Some(format!("读到 {magic}")),
+        Some(format!("read {magic}")),
     );
 
     let counts = read_counts(bytes);
@@ -189,7 +184,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let monotonic = offsets.windows(2).all(|pair| pair[0] <= pair[1]);
     builder.check(
         "bbs.offsets",
-        "9 个段偏移单调不减",
+        "the nine section offsets are non-decreasing",
         monotonic,
         Some(format!("{offsets:?}")),
     );
@@ -232,7 +227,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "bbs.closed",
-        "尾部表精确闭合到 EOF",
+        "trailing tables close exactly at EOF",
         end == bytes.len(),
         Some(format!("{end:#x} vs {:#x}", bytes.len())),
     );
@@ -309,7 +304,7 @@ fn build_names(
     for index in 0..shown {
         let at = offset as usize + index as usize * 32;
         let Some(raw) = bytes.get(at..at + 32) else {
-            builder.warn(format!("{prefix} 名表 {index} 越界"));
+            builder.warn(format!("{prefix} name table {index} out of range"));
             break;
         };
         let name = slot_utf8(raw);
@@ -482,10 +477,6 @@ fn hex32(bytes: &[u8], at: usize) -> String {
         .unwrap_or_else(|| "—".into())
 }
 
-/// 引用图：装配单 → 两张名表指向的 mbs / ftx。
-///
-/// 名表里只有文件名（如 `BGBtRoad_g.mbs`），引擎按 `BattleBG/` 同目录加载，
-/// 所以这里以同目录为主，解析不到再用有界索引兜底。
 pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let mut resolver = Resolver::new(base);

@@ -1,14 +1,7 @@
-//! BC3 / BC4 解码。
-//!
-//! 逐行移植自 `VanillawareConverter/FTEXConverter/S3tcTexture.cs`。
-//! **故意保留**原实现的偏差（例如 RGB565 的绿色通道没有回填低位、插值使用
-//! `Math.Round` 的银行家舍入），否则无法与旧工具的产物逐字节对齐。
-
 fn read_u16(data: &[u8], pos: usize) -> u16 {
     u16::from(data[pos]) | (u16::from(data[pos + 1]) << 8)
 }
 
-/// C# `Math.Round(double)` 默认是 MidpointRounding.ToEven。
 fn round_half_even(v: f64) -> i32 {
     v.round_ties_even() as i32
 }
@@ -108,7 +101,6 @@ fn bc1_color(data: &[u8], pos: usize, bc: u8) -> [[u8; 4]; 16] {
     out
 }
 
-/// BC3（= DXT5）：16 字节/块，输出 RGBA8，每块 16 像素 × 4 字节。
 pub fn decode_bc3(data: &[u8]) -> Vec<u8> {
     let blocks = data.len() / 16;
     let mut out = Vec::with_capacity(blocks * 64);
@@ -133,7 +125,6 @@ pub fn decode_bc3(data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// BC4：8 字节/块，输出**单通道**（每像素 1 字节），与 C# 的 `Bc4` 一致。
 pub fn decode_bc4(data: &[u8]) -> Vec<u8> {
     let blocks = data.len() / 8;
     let mut out = Vec::with_capacity(blocks * 16);

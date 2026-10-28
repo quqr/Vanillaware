@@ -1,7 +1,3 @@
-//! 未解明格式的通用视图：头部 + 前 16 个 u32 + 可打印字符串。
-//!
-//! 不冒充已解格式：字段名只描述「在哪读到了什么」。
-
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 
@@ -12,7 +8,7 @@ pub fn build(bytes: &[u8], ext: &str) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < 4 {
-        builder.warn("文件不足 4 字节，无法读取魔数");
+        builder.warn("file is shorter than 4 bytes, no magic to read");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -27,7 +23,7 @@ pub fn build(bytes: &[u8], ext: &str) -> DocArena {
     let count = (bytes.len() / 4).min(16);
     for index in 0..count {
         let Some(value) = rdr::u32_at(bytes, index * 4) else {
-            builder.warn(format!("u32 表在 0x{:x} 处越界", index * 4));
+            builder.warn(format!("u32 table out of range at 0x{:x}", index * 4));
             break;
         };
         let key = format!("[{index}]");

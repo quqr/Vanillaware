@@ -1,21 +1,11 @@
-//! 内容视图投影。
-//!
-//! 文档树回答「文件里有什么字段」，这一层回答「文件里是什么东西」：
-//! 调试库是几千条命令、语音表是一张标志位图、节点网络是一簇位模式、图鉴是一段可读源码。
-//!
-//! 这里只产原始数据（表格 / 灰度位图 / 折线 / 文本），PNG 编码在 `media`。
-
 use super::document::rdr;
 
-/// 掩码位图横向分段上限：条数再多也只折成这么多列。
 const MAX_BIT_COLUMNS: usize = 768;
 
-/// 一张表。
 pub struct Section {
     pub title: String,
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
-    /// 实际总行数（`rows` 可能被截断）。
     pub total: u64,
 }
 
@@ -30,9 +20,6 @@ impl Section {
     }
 }
 
-/// 把「每行 width 位的掩码流」折成横向位图：**宽 = 条目分段，高 = 位序号**。
-///
-/// 条目多的时候竖着排会变成一条细线，横过来才看得出「哪一段出现了哪些位」。
 fn fold_bits(values: &[u8], width: usize, max_columns: usize) -> (Vec<u8>, usize, usize) {
     let rows = values.len() / width.max(1);
     if rows == 0 {
@@ -51,7 +38,6 @@ fn fold_bits(values: &[u8], width: usize, max_columns: usize) -> (Vec<u8>, usize
     (out, columns, width)
 }
 
-/// 灰度位图（0/255），一行一个样本。
 pub struct GrayMap {
     pub width: u32,
     pub height: u32,
@@ -59,14 +45,12 @@ pub struct GrayMap {
     pub legend: String,
 }
 
-/// 单条折线。
 pub struct Series {
     pub label: String,
     pub points: Vec<f32>,
     pub note: Option<String>,
 }
 
-/// 投影结果。
 pub struct Projection {
     pub title: String,
     pub note: Option<String>,
@@ -89,7 +73,6 @@ impl Projection {
     }
 }
 
-/// 按扩展名投影；没有内容视图的格式返回 `None`。
 pub fn project(bytes: &[u8], ext: &str) -> Option<Projection> {
     match ext {
         "drg" => Some(drg(bytes)),
@@ -110,7 +93,6 @@ pub fn project(bytes: &[u8], ext: &str) -> Option<Projection> {
     }
 }
 
-/// 位图行优先：每个样本占 `width` 个字节（值是 0/255）。
 fn push_bits(values: &mut Vec<u8>, word: u64, width: u32) {
     for bit in 0..width {
         let on = (word >> (width - 1 - bit)) & 1 == 1;
@@ -118,13 +100,11 @@ fn push_bits(values: &mut Vec<u8>, word: u64, width: u32) {
     }
 }
 
-// ─── DRG：调试参数库 ───────────────────────────────
-
 fn drg(bytes: &[u8]) -> Projection {
     let db_count = rdr::u32_at(bytes, 4).unwrap_or(0) as usize;
     let cmd_count = rdr::u32_at(bytes, 8).unwrap_or(0) as usize;
-    let mut out = Projection::new("DbReg 调试参数库");
-    out.note = Some(format!("{db_count} 个数据库 / {cmd_count} 条命令"));
+    let mut out = Projection::new("DbReg debug parameter registry");
+    out.note = Some(format!("{db_count} databases / {cmd_count} commands"));
 
     let mut rows = Vec::new();
     for index in 0..db_count.min(200) {
@@ -148,8 +128,8 @@ fn drg(bytes: &[u8]) -> Projection {
     }
     if !rows.is_empty() {
         out.sections.push(Section::new(
-            "数据库",
-            &["#", "原始路径", "名称", "标签", "u32 ×4"],
+            "Databases",
+            &["#", "raw path", "name", "label", "u32 ×4"],
             rows,
             db_count as u64,
         ));
@@ -172,38 +152,35 @@ fn drg(bytes: &[u8]) -> Projection {
             ]);
         }
         out.sections.push(Section::new(
-            "命令",
-            &["#", "命令名", "说明"],
+            "Commands",
+            &["#", "command", "description"],
             rows,
             cmd_count as u64,
         ));
     } else if bytes.len() > 0x38 {
-        // DbReg.drg 没有记录表，体是一串 f32（6546 个）。
         let count = (bytes.len() - 0x38) / 4;
         let points: Vec<f32> = (0..count.min(4096))
             .filter_map(|index| rdr::f32_at(bytes, 0x38 + index * 4))
             .filter(|value| value.is_finite())
             .collect();
-        out.note = Some(format!("没有数据库/命令记录；体是 {count} 个 f32"));
+        out.note = Some(format!("no database or command records; body is {count} f32 values"));
         out.series = Some(Series {
-            label: "f32 值".to_string(),
+            label: "f32 values".to_string(),
             points,
-            note: Some("按文件顺序".to_string()),
+            note: Some("file order".to_string()),
         });
     }
     out
 }
 
-// ─── VS2：语音发声表 ───────────────────────────────
-
 fn vs2(bytes: &[u8]) -> Projection {
     let count = rdr::u32_at(bytes, 0).unwrap_or(0) as usize;
-    let mut out = Projection::new("VoiceSpeak 语音表");
+    let mut out = Projection::new("VoiceSpeak voice table");
     let ids_at = 0x10;
     let mask_at = ids_at + count * 4;
     let expected = mask_at + count * 8;
     out.note = Some(format!(
-        "{count} 条；16 + {count}×4 + {count}×8 = {expected}（文件 {}）",
+        "{count} entries; 16 + {count}×4 + {count}×8 = {expected} (file {})",
         bytes.len()
     ));
 
@@ -225,8 +202,8 @@ fn vs2(bytes: &[u8]) -> Projection {
         }
     }
     out.sections.push(Section::new(
-        "条目",
-        &["#", "语音 id", "标志位", "置位数"],
+        "Entries",
+        &["#", "voice id", "flags", "bits set"],
         rows,
         count as u64,
     ));
@@ -236,20 +213,18 @@ fn vs2(bytes: &[u8]) -> Projection {
         height: bits as u32,
         values,
         legend: format!(
-            "横轴 = {count} 条折成的 {columns} 段序号，纵轴 = 标志位 63（上）..0（下）；白 = 该段内出现过"
+            "x = {columns} segments over {count} entries, y = flag bit 63 (top) .. 0 (bottom); white means the bit was set in that segment"
         ),
     });
     out
 }
 
-// ─── NND：节点网络 ─────────────────────────────────
-
 fn nnd(bytes: &[u8]) -> Projection {
     let words = rdr::u32_at(bytes, 4).unwrap_or(0) as usize;
     let units = (words / 3).min(200_000);
-    let mut out = Projection::new("NodeNetwork 节点网络");
+    let mut out = Projection::new("NodeNetwork");
     out.note = Some(format!(
-        "{units} 组三字；第三字按 32 位展开，第二字是数值序列"
+        "{units} triples; the third word expands to 32 bits, the second is a numeric series"
     ));
 
     let mut head = Vec::new();
@@ -262,7 +237,7 @@ fn nnd(bytes: &[u8]) -> Projection {
         ]);
     }
     out.sections
-        .push(Section::new("头部", &["偏移", "值"], head, 6));
+        .push(Section::new("Header", &["offset", "value"], head, 6));
 
     let mut values = Vec::with_capacity(units * 32);
     let mut series = Vec::with_capacity(units);
@@ -278,13 +253,13 @@ fn nnd(bytes: &[u8]) -> Projection {
         height: bits as u32,
         values,
         legend: format!(
-            "横轴 = {units} 组折成的 {columns} 段序号，纵轴 = 第三字 31（上）..0（下）；白 = 该段内出现过"
+            "x = {columns} segments over {units} triples, y = third word bit 31 (top) .. 0 (bottom); white means the bit was set in that segment"
         ),
     });
     out.series = Some(Series {
-        label: "第二字".to_string(),
+        label: "second word".to_string(),
         points: series,
-        note: Some("按组序号；取值 0～128 的浮点".to_string()),
+        note: Some("by group index; float in 0..128".to_string()),
     });
 
     let names = nnd_tail_names(bytes, 0x18 + words * 4);
@@ -296,12 +271,11 @@ fn nnd(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections
-            .push(Section::new("尾部地名", &["#", "名字"], rows, total));
+            .push(Section::new("Trailing place names", &["#", "name"], rows, total));
     }
     out
 }
 
-/// 尾部 64 字节名字槽（前导区可能是几百个索引字，所以扫 8 KB 窗口）。
 fn nnd_tail_names(bytes: &[u8], from: usize) -> Vec<String> {
     if from >= bytes.len() {
         return Vec::new();
@@ -334,12 +308,9 @@ fn nnd_tail_names(bytes: &[u8], from: usize) -> Vec<String> {
     best
 }
 
-// ─── FSB：场景包（13 侧动画舞台）───────────────────
-
 fn fsb(bytes: &[u8]) -> Projection {
-    let mut out = Projection::new("FSB 场景包");
+    let mut out = Projection::new("FSB scene package");
 
-    // 块链：`magic(4) + u32 块长`，首尾相接走到 EOF。
     let mut blocks: Vec<(&[u8], usize, usize)> = Vec::new();
     let mut pos = 0usize;
     while pos + 8 <= bytes.len() {
@@ -352,7 +323,7 @@ fn fsb(bytes: &[u8]) -> Projection {
         pos += size;
     }
     out.note = Some(format!(
-        "{} 个块，走到 {pos} 字节（共 {}）",
+        "{} chunks, stopped at {pos} of {} bytes",
         blocks.len(),
         bytes.len()
     ));
@@ -369,10 +340,9 @@ fn fsb(bytes: &[u8]) -> Projection {
             b"HEAD" => {
                 let version = rdr::u32_at(bytes, body).unwrap_or(0);
                 let scale = rdr::f32_at(bytes, body + 4).unwrap_or(0.0);
-                format!("版本 {version:#04x} / 常量 {scale:.3}")
+                format!("version {version:#04x} / constant {scale:.3}")
             }
             b"RESL" => {
-                // u32 count，之后每条 = u32 长度（含补零）+ 名字。
                 let count = rdr::u32_at(bytes, body).unwrap_or(0) as usize;
                 let mut cursor = body + 4;
                 for _ in 0..count.min(256) {
@@ -388,10 +358,9 @@ fn fsb(bytes: &[u8]) -> Projection {
                     resources.push(String::from_utf8_lossy(text).to_string());
                     cursor += 4 + len;
                 }
-                format!("{count} 个资源")
+                format!("{count} resources")
             }
             b"CTLG" => {
-                // u32 count，之后每条 4 个 u32。
                 let count = rdr::u32_at(bytes, body).unwrap_or(0) as usize;
                 for index in 0..count.min(512) {
                     let row = body + 4 + index * 16;
@@ -406,13 +375,13 @@ fn fsb(bytes: &[u8]) -> Projection {
                         rdr::u32_at(bytes, row + 12).unwrap_or(0).to_string(),
                     ]);
                 }
-                format!("{count} 条")
+                format!("{count} entries")
             }
             b"SCNL" => {
                 let count = rdr::u32_at(bytes, body).unwrap_or(0);
                 let stride = rdr::u32_at(bytes, body + 4).unwrap_or(0);
                 scene_note = format!(
-                    "{} 段 × {stride} 字节；首段名 {}",
+                    "{} segments × {stride} bytes; first segment {}",
                     count,
                     rdr::c_string(&bytes[(body + 8).min(end)..(body + 72).min(end)])
                 );
@@ -429,8 +398,8 @@ fn fsb(bytes: &[u8]) -> Projection {
     }
 
     out.sections.push(Section::new(
-        "块",
-        &["块", "偏移", "大小", "摘要"],
+        "Chunks",
+        &["chunk", "offset", "size", "summary"],
         table,
         blocks.len() as u64,
     ));
@@ -443,14 +412,14 @@ fn fsb(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections
-            .push(Section::new("外部资源", &["#", "文件名"], rows, total));
+            .push(Section::new("External resources", &["#", "file name"], rows, total));
     }
 
     if !catalog.is_empty() {
         let total = catalog.len() as u64;
         out.sections.push(Section::new(
-            "目录",
-            &["#", "字段 1", "字段 2", "字段 3", "索引"],
+            "Directories",
+            &["#", "field 1", "field 2", "field 3", "index"],
             catalog,
             total,
         ));
@@ -458,24 +427,22 @@ fn fsb(bytes: &[u8]) -> Projection {
 
     if !scene_note.is_empty() {
         out.sections.push(Section::new(
-            "场景",
-            &["项", "值"],
-            vec![vec!["说明".to_string(), scene_note]],
+            "Scene",
+            &["item", "value"],
+            vec![vec!["note".to_string(), scene_note]],
             1,
         ));
     }
     out
 }
 
-// ─── OEB：13 侧的 NPC 摆位 ─────────────────────────
-
 fn oeb(bytes: &[u8]) -> Projection {
     use super::document::oeb;
     let slots = oeb::slots(bytes);
     let resources = oeb::resources(bytes);
-    let mut out = Projection::new("OEB 角色摆位");
+    let mut out = Projection::new("OEB character placement");
     out.note = Some(format!(
-        "{} 个站位 / {} 个外部资源（.mbs 与 .ftx 成对）",
+        "{} placements / {} external resources (.mbs and .ftx pair up)",
         slots.len(),
         resources.len()
     ));
@@ -496,13 +463,12 @@ fn oeb(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections.push(Section::new(
-            "站位",
-            &["名字", "角色", "X", "Y", "Z", "缩放"],
+            "Placements",
+            &["name", "character", "X", "Y", "Z", "scale"],
             rows,
             total,
         ));
 
-        // 俯视散点：横轴 = X，纵轴 = Y（与 .osb 舞台同一套单位）。
         let min_x = slots.iter().map(|s| s.position[0]).fold(f32::MAX, f32::min);
         let max_x = slots.iter().map(|s| s.position[0]).fold(f32::MIN, f32::max);
         let min_y = slots.iter().map(|s| s.position[1]).fold(f32::MAX, f32::min);
@@ -512,7 +478,6 @@ fn oeb(bytes: &[u8]) -> Projection {
         for slot in &slots {
             let x = scale(slot.position[0], min_x, max_x, size);
             let y = scale(slot.position[1], min_y, max_y, size);
-            // 点画成十字，单像素在缩略图上会看不见。
             for (dx, dy) in [(0i32, 0i32), (1, 0), (-1, 0), (0, 1), (0, -1)] {
                 let px = (x as i32 + dx).clamp(0, size as i32 - 1) as usize;
                 let py = (y as i32 + dy).clamp(0, size as i32 - 1) as usize;
@@ -524,7 +489,7 @@ fn oeb(bytes: &[u8]) -> Projection {
             height: size as u32,
             values,
             legend: format!(
-                "站位俯视图：横轴 X（{min_x:.0}~{max_x:.0}），纵轴 Y（{min_y:.0}~{max_y:.0}），白点 = 一个角色"
+                "top view: x = X ({min_x:.0}..{max_x:.0}), y = Y ({min_y:.0}..{max_y:.0}); white = one character"
             ),
         });
     }
@@ -537,7 +502,7 @@ fn oeb(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections
-            .push(Section::new("资源", &["#", "路径"], rows, total));
+            .push(Section::new("Resources", &["#", "path"], rows, total));
     }
     out
 }
@@ -550,15 +515,13 @@ fn scale(value: f32, low: f32, high: f32, size: usize) -> usize {
     ((1.0 - ratio) * (size - 1) as f32) as usize
 }
 
-// ─── ORB：13 侧的轮次镜头 ──────────────────────────
-
 fn orb(bytes: &[u8]) -> Projection {
     use super::document::orb;
     let cameras = orb::cameras(bytes);
     let resources = orb::resources(bytes);
-    let mut out = Projection::new("ORB 轮次镜头");
+    let mut out = Projection::new("ORB round cameras");
     out.note = Some(format!(
-        "{} 次镜头 / {} 个资源路径",
+        "{} cameras / {} resource paths",
         cameras.len(),
         resources.len()
     ));
@@ -580,8 +543,8 @@ fn orb(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections.push(Section::new(
-            "镜头",
-            &["#", "舞台", "序号", "X", "Y", "Z"],
+            "Cameras",
+            &["#", "stage", "index", "X", "Y", "Z"],
             rows,
             total,
         ));
@@ -592,7 +555,6 @@ fn orb(bytes: &[u8]) -> Projection {
             .iter()
             .enumerate()
             .map(|(index, path)| {
-                // 资源池里存的是完整工程路径，只显示 Data\ 之后的部分。
                 let short = path
                     .rsplit_once("Data\\")
                     .map(|(_, rest)| rest.to_string())
@@ -602,8 +564,8 @@ fn orb(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections.push(Section::new(
-            "资源",
-            &["#", "相对路径", "原始路径"],
+            "Resources",
+            &["#", "relative path", "raw path"],
             rows,
             total,
         ));
@@ -611,41 +573,38 @@ fn orb(bytes: &[u8]) -> Projection {
     out
 }
 
-// ─── BST：13 侧的战斗关卡 ──────────────────────────
-
 fn bst(bytes: &[u8]) -> Projection {
     use super::document::bst;
     let stage = bst::parse(bytes);
-    let mut out = Projection::new("BST 战斗关卡");
+    let mut out = Projection::new("BST battle stage");
 
     out.note = Some(format!(
-        "{} 条记录 / {} 块碰撞板 / {} 块地形",
+        "{} records / {} collision plates / {} terrain blocks",
         stage.records.len(),
         stage.plates.len(),
         stage.quads.len()
     ));
 
     let head = vec![
-        vec!["魔数".to_string(), rdr::ascii(&bytes[..4.min(bytes.len())])],
+        vec!["magic".to_string(), rdr::ascii(&bytes[..4.min(bytes.len())])],
         vec![
-            "关卡计数".to_string(),
+            "stage counts".to_string(),
             rdr::u32_at(bytes, 0x10).unwrap_or(0).to_string(),
         ],
-        vec!["资源".to_string(), stage.names.join(" / ")],
-        vec!["记录数".to_string(), stage.records.len().to_string()],
+        vec!["Resources".to_string(), stage.names.join(" / ")],
+        vec!["records".to_string(), stage.records.len().to_string()],
         vec![
-            "闭合".to_string(),
+            "closure".to_string(),
             if stage.unknown_tag.is_none() && stage.end == bytes.len() {
-                format!("值流读到 EOF（{:#x}）", stage.end)
+                format!("value stream reached EOF ({:#x})", stage.end)
             } else {
-                format!("停在 {:#x} / {:#x}", stage.end, bytes.len())
+                format!("stopped at {:#x} / {:#x}", stage.end, bytes.len())
             },
         ],
     ];
     out.sections
-        .push(Section::new("头部", &["项", "值"], head, 5));
+        .push(Section::new("Header", &["item", "value"], head, 5));
 
-    // 碰撞板：可站立的一小块地面，带角点索引。
     if !stage.plates.is_empty() {
         let rows: Vec<Vec<String>> = stage
             .plates
@@ -667,14 +626,13 @@ fn bst(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections.push(Section::new(
-            "碰撞板",
-            &["id", "X", "Z", "角点数", "角点索引"],
+            "Collision plates",
+            &["id", "X", "Z", "corner count", "corner indices"],
             rows,
             total,
         ));
     }
 
-    // 地形块：四角 + 名字。
     if !stage.quads.is_empty() {
         let rows: Vec<Vec<String>> = stage
             .quads
@@ -691,14 +649,13 @@ fn bst(bytes: &[u8]) -> Projection {
             .collect();
         let total = rows.len() as u64;
         out.sections.push(Section::new(
-            "地形块",
-            &["名字", "角 0", "角 1", "角 2", "角 3"],
+            "Terrain blocks",
+            &["name", "corner 0", "corner 1", "corner 2", "corner 3"],
             rows,
             total,
         ));
     }
 
-    // 俯视图：把地形块的四条边连起来，再点上碰撞板中心。
     let mut xs: Vec<f32> = Vec::new();
     let mut zs: Vec<f32> = Vec::new();
     for quad in &stage.quads {
@@ -727,7 +684,6 @@ fn bst(bytes: &[u8]) -> Projection {
         let span_z = (max_z - min_z).max(1.0);
         let project = |x: f32, z: f32| -> (i32, i32) {
             let px = ((x - min_x) / span_x * (size - 1) as f32) as i32;
-            // 纵轴反转：Z 小的画在上面。
             let py = ((z - min_z) / span_z * (size - 1) as f32) as i32;
             (px.clamp(0, size as i32 - 1), py.clamp(0, size as i32 - 1))
         };
@@ -769,20 +725,18 @@ fn bst(bytes: &[u8]) -> Projection {
             height: size as u32,
             values,
             legend: format!(
-                "俯视图（横轴 X {min_x:.0}～{max_x:.0}，纵轴 Z {min_z:.0}～{max_z:.0}）；灰线 = 地形块轮廓，白点 = 碰撞板中心"
+                "top view (x = X {min_x:.0}..{max_x:.0}, y = Z {min_z:.0}..{max_z:.0}); grey = terrain outline, white = plate centre"
             ),
         });
     }
     out
 }
 
-// ─── ACF：CRI 配置表 ───────────────────────────────
-
 fn acf(bytes: &[u8]) -> Projection {
     use super::document::utf;
-    let mut out = Projection::new("ACF 配置表");
+    let mut out = Projection::new("ACF config tables");
     let tables = utf::scan_tables(bytes);
-    out.note = Some(format!("{} 张 @UTF 表", tables.len()));
+    out.note = Some(format!("{} @UTF tables", tables.len()));
     for (index, table) in tables.iter().take(6).enumerate() {
         let columns: Vec<String> = table
             .columns
@@ -805,7 +759,7 @@ fn acf(bytes: &[u8]) -> Projection {
             rows.push(cells);
         }
         out.sections.push(Section::new(
-            &format!("表 {index} @{:#x}", table.at),
+            &format!("table {index} @{:#x}", table.at),
             &columns.iter().map(String::as_str).collect::<Vec<_>>(),
             rows,
             table.row_count as u64,
@@ -814,13 +768,11 @@ fn acf(bytes: &[u8]) -> Projection {
     out
 }
 
-// ─── UFB：大地图图层装配 ───────────────────────────
-
 fn ufb(bytes: &[u8]) -> Projection {
     const HEAD: usize = 0x88;
-    let mut out = Projection::new("UFB 大地图图层");
+    let mut out = Projection::new("UFB world map layers");
     if bytes.len() < HEAD {
-        out.note = Some("文件不足 0x88 字节".to_string());
+        out.note = Some("file is shorter than 0x88 bytes".to_string());
         return out;
     }
     let count_a = rdr::u32_at(bytes, 0x40).unwrap_or(0) as usize;
@@ -835,10 +787,9 @@ fn ufb(bytes: &[u8]) -> Projection {
         ]);
     }
     out.sections
-        .push(Section::new("头部计数", &["偏移", "值"], head, 12));
-    out.note = Some(format!("{count_a} 条记录 / {grid_count} 个网格"));
+        .push(Section::new("Header counts", &["offset", "value"], head, 12));
+    out.note = Some(format!("{count_a} records / {grid_count} grids"));
 
-    // 记录区：0x24 头 + 层 + 扩展块 + 组。
     let mut cursor = HEAD;
     let mut layers_total = 0usize;
     for _ in 0..count_a {
@@ -859,17 +810,16 @@ fn ufb(bytes: &[u8]) -> Projection {
         }
     }
     out.sections.push(Section::new(
-        "记录区",
-        &["项", "值"],
+        "Record area",
+        &["item", "value"],
         vec![
-            vec!["记录数".to_string(), count_a.to_string()],
-            vec!["层总数".to_string(), layers_total.to_string()],
-            vec!["记录区结束".to_string(), format!("{cursor:#x}")],
+            vec!["records".to_string(), count_a.to_string()],
+            vec!["total layers".to_string(), layers_total.to_string()],
+            vec!["record area end".to_string(), format!("{cursor:#x}")],
         ],
         3,
     ));
 
-    // 网格区：0x3c 头 + w*h*4。
     let mut grids = Vec::new();
     let mut start = cursor;
     let mut first: Option<(usize, usize, usize, usize, usize)> = None;
@@ -898,13 +848,12 @@ fn ufb(bytes: &[u8]) -> Projection {
     }
     let total = grids.len() as u64;
     out.sections.push(Section::new(
-        "网格",
-        &["#", "起点", "终点", "尺寸", "数据偏移"],
+        "Grids",
+        &["#", "start", "end", "size", "data offset"],
         grids,
         total,
     ));
 
-    // 首个网格画热力图：取 u32 低 8 位，超过 512 就抽样。
     if let Some((data, width, height, _, _)) = first {
         let step_x = width.div_ceil(512).max(1);
         let step_y = height.div_ceil(512).max(1);
@@ -922,7 +871,6 @@ fn ufb(bytes: &[u8]) -> Projection {
                 raw.push(word);
             }
         }
-        // 值域拉满；全域同值时退化成按低 8 位看位模式。
         let span = high.saturating_sub(low);
         let values: Vec<u8> = raw
             .iter()
@@ -939,33 +887,31 @@ fn ufb(bytes: &[u8]) -> Projection {
             height: out_height,
             values,
             legend: format!(
-                "首个网格 {width}×{height}，取样 1/{step_x}×1/{step_y}；灰度 = u32 归一化（{low:#x}～{high:#x}）"
+                "first grid {width}×{height}, sampled 1/{step_x}×1/{step_y}; grey = u32 normalised ({low:#x}..{high:#x})"
             ),
         });
     }
     out
 }
 
-// ─── UCB：大地图单元 ───────────────────────────────
-
 fn ucb(bytes: &[u8]) -> Projection {
     const RECORD: usize = 0x20;
     const GROUP_SIZE: usize = 2199;
     let records = bytes.len() / RECORD;
-    let mut out = Projection::new("UCB 大地图单元");
+    let mut out = Projection::new("UCB world map cells");
     out.note = Some(format!(
-        "{records} 条 × 0x20；{} 组 × {GROUP_SIZE} 条",
+        "{records} × 0x20; {} groups × {GROUP_SIZE} records",
         records / GROUP_SIZE
     ));
 
     let head = vec![
-        vec!["记录数".to_string(), records.to_string()],
-        vec!["组数".to_string(), (records / GROUP_SIZE).to_string()],
-        vec!["每组条数".to_string(), GROUP_SIZE.to_string()],
-        vec!["文件长".to_string(), bytes.len().to_string()],
+        vec!["records".to_string(), records.to_string()],
+        vec!["groups".to_string(), (records / GROUP_SIZE).to_string()],
+        vec!["records per group".to_string(), GROUP_SIZE.to_string()],
+        vec!["file size".to_string(), bytes.len().to_string()],
     ];
     out.sections
-        .push(Section::new("规模", &["项", "值"], head, 4));
+        .push(Section::new("Scale", &["item", "value"], head, 4));
 
     let mut rows = Vec::new();
     for index in 0..records.min(64) {
@@ -979,13 +925,12 @@ fn ucb(bytes: &[u8]) -> Projection {
         ]);
     }
     out.sections.push(Section::new(
-        "前 64 条",
-        &["#", "区内索引", "组号", "+0x08", "+0x0c"],
+        "first 64",
+        &["#", "index in block", "group", "+0x08", "+0x0c"],
         rows,
         64,
     ));
 
-    // 地图：横轴 = 组内下标（2199），纵轴 = 组号（1311），灰度 = `+0x08` 的高位类别。
     let groups = records / GROUP_SIZE;
     if groups > 0 {
         let step_x = GROUP_SIZE.div_ceil(512).max(1);
@@ -1002,8 +947,6 @@ fn ucb(bytes: &[u8]) -> Projection {
                 classes.push(kind as u8);
             }
         }
-        // 类别是小整数（0/1/2/5/6/15/26/36…），线性拉满会把 1/2 压成黑，
-        // 开方后低类别也能看出轮廓：0 仍是黑（世界外），1 → 40，36 → 245。
         let span = high.max(1) as f64;
         let values = classes
             .iter()
@@ -1014,17 +957,15 @@ fn ucb(bytes: &[u8]) -> Projection {
             height: out_height as u32,
             values,
             legend: format!(
-                "横轴 = 组内下标 {GROUP_SIZE}，纵轴 = 组号 {groups}；灰度 = `+0x08` 第 22 位起的类别字节（0～{high}）"
+                "x = index within a group ({GROUP_SIZE}), y = group {groups}; grey = category byte from bit 22 of `+0x08` (0..{high})"
             ),
         });
     }
     out
 }
 
-// ─── SCB：图鉴脚本 ─────────────────────────────────
-
 fn scb(bytes: &[u8]) -> Projection {
-    let mut out = Projection::new("SCB 图鉴脚本");
+    let mut out = Projection::new("SCB compendium script");
     let count = rdr::u32_at(bytes, 0).unwrap_or(0) as usize;
     let mut tokens: Vec<String> = Vec::new();
     let mut cursor = 4;
@@ -1041,9 +982,8 @@ fn scb(bytes: &[u8]) -> Projection {
         tokens.push(String::from_utf8_lossy(text).to_string());
         cursor += 4 + len;
     }
-    out.note = Some(format!("{count} 个令牌；按大括号缩进还原成源码"));
+    out.note = Some(format!("{count} tokens; braces drive the indentation"));
 
-    // 令牌流 → 可读文本：`{` 换行缩进，`;` 换行。
     let mut lines: Vec<String> = Vec::new();
     let mut depth = 0usize;
     let mut line = String::new();
@@ -1087,26 +1027,22 @@ fn scb(bytes: &[u8]) -> Projection {
     out
 }
 
-// ─── INC：开发期枚举表 ─────────────────────────────
-
 fn inc(bytes: &[u8]) -> Projection {
     let text = String::from_utf8_lossy(bytes);
     let lines: Vec<String> = text.lines().take(20_000).map(str::to_string).collect();
-    let mut out = Projection::new("INC 枚举表");
-    out.note = Some(format!("{} 行", text.lines().count()));
+    let mut out = Projection::new("INC enum table");
+    out.note = Some(format!("{} lines", text.lines().count()));
     out.text = Some(lines);
     out
 }
 
-// ─── MPD / CTB：记录表 ─────────────────────────────
-
 fn mpd(bytes: &[u8]) -> Projection {
     let count = rdr::u32_at(bytes, 4).unwrap_or(0);
-    let mut out = Projection::new("MPD 四边形记录");
-    out.note = Some(format!("头 0x20 + {count} 条 × 0xA0"));
+    let mut out = Projection::new("MPD quad records");
+    out.note = Some(format!("header 0x20 + {count} × 0xA0"));
     let rows = record_rows(bytes, 0x20, 0xa0, count as usize, 500);
     out.sections.push(Section::new(
-        "记录",
+        "Records",
         &["#", "u32 ×6", "f32 ×6"],
         rows,
         count as u64,
@@ -1115,8 +1051,8 @@ fn mpd(bytes: &[u8]) -> Projection {
 }
 
 fn ctb(bytes: &[u8]) -> Projection {
-    let mut out = Projection::new("CTB 战斗图标动画");
-    out.note = Some("0x58 头 + 7 节（clip 记录 + 6 段定长）".to_string());
+    let mut out = Projection::new("CTB battle icon animation");
+    out.note = Some("0x58 header + 7 sections (clip records + 6 fixed-size blocks)".to_string());
     let strides = [0x58usize, 0x20, 0x0c, 0x18, 0x04, 0x01, 0x0c];
     let mut summary = Vec::new();
     let mut cursor = 0x58;
@@ -1140,18 +1076,17 @@ fn ctb(bytes: &[u8]) -> Projection {
         ]);
     }
     out.sections.push(Section::new(
-        "节",
-        &["#", "步长", "条数", "结束偏移"],
+        "Sections",
+        &["#", "stride", "count", "end offset"],
         summary,
         7,
     ));
     let rows = record_rows(bytes, 0x58, 0x58, 200, 8);
     out.sections
-        .push(Section::new("样本", &["#", "u32 ×4", "f32 ×4"], rows, 32));
+        .push(Section::new("Sample", &["#", "u32 ×4", "f32 ×4"], rows, 32));
     out
 }
 
-/// 通用记录表：前 6 个 u32 + 前 6 个 f32（按 stride 走）。
 fn record_rows(
     bytes: &[u8],
     start: usize,
@@ -1175,7 +1110,6 @@ fn record_rows(
         let mut floats = String::new();
         for word in 0..6 {
             let value = rdr::f32_at(bytes, at + word * 4).unwrap_or(0.0);
-            // 同一个槽位在别的记录里可能是整数或字符串，超出合理范围就当作「不是浮点」。
             if value.is_finite() && value.abs() < 1.0e6 {
                 floats.push_str(&format!("{value:>10.3} "));
             } else {

@@ -23,7 +23,7 @@ fn reads_tokens_and_builds_tree() {
         "{",
         "Name",
         "(",
-        "\"鞍部 十郎\"",
+        "\"Sattel Jūrō\"",
         ")",
         ";",
         "Scale",
@@ -45,7 +45,7 @@ fn reads_tokens_and_builds_tree() {
         .iter()
         .find(|item| item.id == "scb.eof")
         .expect("eof check");
-    assert!(check.ok, "令牌流应精确到 EOF");
+    assert!(check.ok, "the token stream must end exactly at EOF");
 }
 
 #[test]

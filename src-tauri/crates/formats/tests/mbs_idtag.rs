@@ -1,8 +1,6 @@
 use formats::mbs::idtag::*;
 use serde_json::json;
 
-/// Unicorn Overlord 的实测锚点：`Copyright` 空值导致其后 `Credit` 被吞，
-/// 生成重复键 `""`，`json_decode` 保留后写入的 `"Credit"`。
 #[test]
 fn logo_tag_matches_php() {
     let tag = lookup("unicorn overlord").expect("unicorn overlord");
@@ -26,7 +24,6 @@ fn logo_tag_matches_php() {
     );
 }
 
-/// 非空值走列表分支：`Copyright [ … ]` 要摊成字符串数组。
 #[test]
 fn array_and_object_nesting() {
     let tag = lookup("grim grimoire").expect("grim grimoire");
@@ -43,7 +40,6 @@ fn array_and_object_nesting() {
     assert_eq!(root["comment"], json!([]));
 }
 
-/// 名字里带冒号/撇号的值要能整体读出。
 #[test]
 fn punctuation_inside_values() {
     let tag = lookup("13 sentinels").expect("13 sentinels");

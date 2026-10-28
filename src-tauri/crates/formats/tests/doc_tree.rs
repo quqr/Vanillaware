@@ -11,7 +11,6 @@ fn binary_view_is_truncation_safe() {
 
 #[test]
 fn nnd_view_reads_header_units_and_names() {
-    // 头 0x18 + 2 组（6 个字）+ 尾部一个 64 字节名字槽
     let mut bytes = vec![0u8; 0x18 + 24 + 68];
     bytes[0..4].copy_from_slice(&2u32.to_le_bytes());
     bytes[4..8].copy_from_slice(&6u32.to_le_bytes());
@@ -25,7 +24,7 @@ fn nnd_view_reads_header_units_and_names() {
 
     let arena = parse_bytes(&bytes, "nnd", None).expect("nnd");
     let page = arena.page(1, arena.root(), 0, 100).unwrap();
-    assert!(page.total >= 4, "应含 header / summary / units / tail");
+    assert!(page.total >= 4, "must contain header / summary / units / tail");
     let checks = arena.checks();
     assert!(checks
         .iter()
@@ -39,9 +38,9 @@ fn nnd_view_reads_header_units_and_names() {
         .iter()
         .find(|node| node.name.starts_with("Units ("))
         .map(|node| node.id)
-        .expect("Units 分组");
+        .expect("Units group");
     let first = arena.page(1, units, 0, 10).unwrap();
-    assert_eq!(first.total, 2, "两组记录");
+    assert_eq!(first.total, 2, "two groups of records");
     let unit = first.items[0].id;
     let fields: Vec<String> = arena
         .page(1, unit, 0, 10)
@@ -51,7 +50,7 @@ fn nnd_view_reads_header_units_and_names() {
         .map(|node| node.name.clone())
         .collect();
     for key in ["w0", "w1", "w1f", "w2"] {
-        assert!(fields.iter().any(|name| name == key), "缺少字段 {key}");
+        assert!(fields.iter().any(|name| name == key), "missing field {key}");
     }
 }
 
@@ -108,7 +107,6 @@ fn osb_view_walks_empty_scene() {
     bytes[..4].copy_from_slice(b"OSB\0");
     bytes[4..8].copy_from_slice(&1u32.to_le_bytes());
     bytes[0x14..0x18].copy_from_slice(&0x18u32.to_le_bytes());
-    // 场景根：type 2, body 0x52, children 0, pad。
     bytes[0x28..0x2c].copy_from_slice(&2u32.to_le_bytes());
     bytes[0x2c..0x30].copy_from_slice(&0x52u32.to_le_bytes());
 
@@ -116,7 +114,6 @@ fn osb_view_walks_empty_scene() {
     assert!(arena.total_nodes() > 3);
 }
 
-/// 造一个最小 bundle：1 个资源名 + 1 个节点（caption + label + group）。
 fn build_bundle(
     magic: &[u8],
     type_id: u32,
@@ -129,16 +126,15 @@ fn build_bundle(
     body[0x40..0x40 + label.len()].copy_from_slice(label.as_bytes());
     body[0x50..0x52].copy_from_slice(&7u16.to_le_bytes());
 
-    // 偏移表占 0x18..0x1c，名字从 0x1c 开始（相对 0x10 的偏移就是 0x0c）。
     let name = b"Character/a.mbs\0";
     let pool_size = 0x0c + name.len();
     let mut bytes = Vec::new();
     bytes.extend_from_slice(magic);
     bytes.extend_from_slice(&4u32.to_le_bytes());
     bytes.extend_from_slice(&[0u8; 8]);
-    bytes.extend_from_slice(&1u32.to_le_bytes()); // 资源数
+    bytes.extend_from_slice(&1u32.to_le_bytes());
     bytes.extend_from_slice(&(pool_size as u32).to_le_bytes());
-    bytes.extend_from_slice(&0x0cu32.to_le_bytes()); // 相对 0x10 的偏移
+    bytes.extend_from_slice(&0x0cu32.to_le_bytes());
     bytes.extend_from_slice(name);
     bytes.extend_from_slice(&type_id.to_le_bytes());
     bytes.extend_from_slice(&(body.len() as u32).to_le_bytes());
@@ -150,7 +146,6 @@ fn build_bundle(
 
 #[test]
 fn oeb_bundle_closes_and_reads_slots() {
-    // 槽位 body 固定 228 字节，0x52 起是 scale(2) + position(3)。
     let mut bytes = build_bundle(b"OEB\0", 28, "SLOT01", "JK01A", 228);
     let body = 0x10 + 0x0c + b"Character/a.mbs\0".len() + 0x10;
     let floats = [1.0f32, 1.0, 100.0, -200.0, -30.0];
@@ -164,7 +159,7 @@ fn oeb_bundle_closes_and_reads_slots() {
     for id in ["bundle.magic", "bundle.closed"] {
         assert!(
             checks.iter().all(|check| check.id != id || check.ok),
-            "{id} 不成立"
+            "{id} does not hold"
         );
     }
 
@@ -188,7 +183,6 @@ fn orb_bundle_lists_cameras() {
 
 #[test]
 fn bst_reads_stage_header() {
-    // 头部 0x16 之后是值流：两个字符串 + END。
     let mut bytes = vec![0u8; 0x16];
     bytes[..4].copy_from_slice(b"BBST");
     bytes[0x10..0x14].copy_from_slice(&118u32.to_le_bytes());
@@ -207,7 +201,7 @@ fn bst_reads_stage_header() {
     for id in ["bst.magic", "bst.names", "bst.closed"] {
         assert!(
             checks.iter().all(|check| check.id != id || check.ok),
-            "{id} 不成立"
+            "{id} does not hold"
         );
     }
     assert_eq!(

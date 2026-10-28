@@ -1,26 +1,6 @@
-//! DRG 调试参数库（`DbReg/*.drg`，UO 侧 2 个）。
-//!
-//! 这是**开发期**的参数注册表，不是运行时玩法数据：记录里留着原始工程路径
-//! （`C:/Project2/Unicorn/Soft/DbReg/Debug.txt`）。两个文件共用同一个头：
-//!
 //! ```text
 //! +0x00  "DRG\0"
-//! +0x04  u32 数据库数      +0x08 u32 命令数
-//! +0x18  u32 命令区偏移    +0x28 u32 标签长度上限（63）
-//! +0x38  数据库记录 × 数据库数，每条 0x90：
-//!          +0x00 char[64] 原始工程路径
-//!          +0x40 char[32] 名称（DEBUG / LOCAL / …）
-//!          +0x60 char[32] 标签（UTF-8 日文）
-//!          +0x80 u32 ×4   未定语义（原样展示）
-//! 命令区 = 命令偏移 + 0x10（16 字节全 0 的对齐头）起，每条 0xD0：
-//!          +0x00 char[64] 命令名（ALL_OFF / ALL_RESTORE / …）
-//!          +0x40 char[144] 说明（UTF-8 日文）
 //! ```
-//!
-//! `DbRegDb.drg` 上三条算术闭合：`96 × 0x90` 覆盖到命令区偏移附近、
-//! `6559 × 0xD0` 正好到 EOF 前 0x10（末条被截短 0x10 字节，如实标注）。
-//! `DbReg.drg` 没有数据库/命令（两个计数都是 0），体是 f32 值表：
-//! `(文件长 − 0x38) % 4 == 0`，正好 6546 个。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -39,7 +19,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER || bytes.get(..4) != Some(b"DRG\0") {
-        builder.warn("魔数不是 DRG\\0 或文件不足 0x38 字节");
+        builder.warn("magic is not DRG\\0, or the file is shorter than 0x38 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -56,13 +36,12 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(header, "commandOffset", format!("0x{cmd_offset:x}"));
     builder.field(header, "maxLabel", max_label.to_string());
 
-    // --- 数据库表 ---
     let dbs = builder.array(root, Some("databases"), format!("Databases ({db_count})"));
     let mut db_end = HEADER;
     for index in 0..db_count.min(MAX_DBS_SHOWN) {
         let at = HEADER + index * DB_RECORD;
         if at + DB_RECORD > bytes.len() {
-            builder.warn(format!("数据库[{index}] 越界"));
+            builder.warn(format!("database[{index}] out of range"));
             break;
         }
         let path = text::utf8_or_sjis(&bytes[at..at + 64]);
@@ -83,7 +62,6 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.truncate();
     }
 
-    // --- 命令表 ---
     let cmds = builder.array(root, Some("commands"), format!("Commands ({cmd_count})"));
     let cmd_start = cmd_offset.saturating_add(0x10);
     let mut cmd_end = cmd_start;
@@ -106,37 +84,34 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.truncate();
     }
 
-    // 全量走一遍只算算术闭合，不建节点。
     let full_cmd_end = cmd_start + cmd_count * CMD_RECORD;
     let short = full_cmd_end.saturating_sub(bytes.len());
 
     builder.check(
         "drg.db_table",
-        "数据库表步长 0x90 不越界",
+        "database table stride 0x90 stays inside the file",
         HEADER + db_count * DB_RECORD <= bytes.len(),
-        Some(format!("结束 0x{:x}", HEADER + db_count * DB_RECORD)),
+        Some(format!("ends at 0x{:x}", HEADER + db_count * DB_RECORD)),
     );
-    // 命令区偏移 = 数据库表末尾 − 0x10：末尾记录的尾字段被命令区头覆盖 16 字节。
     builder.check(
         "drg.command_offset",
-        "命令区（偏移 + 0x10）与数据库表末尾对齐",
+        "command area (offset + 0x10) aligns with the database table end",
         cmd_count == 0 || cmd_start == HEADER + db_count * DB_RECORD,
         Some(format!(
-            "{cmd_start:#x} / 数据库表末尾 {:#x}",
+            "{cmd_start:#x} / database table ends at {:#x}",
             HEADER + db_count * DB_RECORD
         )),
     );
     builder.check(
         "drg.commands",
-        "命令表覆盖到 EOF（末条允许短 0x10）",
+        "command table reaches EOF (the last entry may be 0x10 short)",
         short <= 0x10,
         Some(format!(
-            "{} 条 × 0xD0 结束于 {:#x}，超出文件 {short} 字节",
+            "{} × 0xD0 ends at {:#x}, {short} bytes past the file",
             cmd_count, full_cmd_end
         )),
     );
 
-    // 没有命令时，体是 f32 值表（DbReg.drg）。
     if cmd_count == 0 && db_count == 0 {
         let body = bytes.len().saturating_sub(HEADER);
         let count = body / 4;
@@ -158,9 +133,9 @@ pub fn build(bytes: &[u8]) -> DocArena {
         }
         builder.check(
             "drg.values",
-            "体长度被 4 整除（f32 值表）",
+            "body length is divisible by 4 (f32 value table)",
             body.is_multiple_of(4),
-            Some(format!("{body} 字节 → {count} 个 f32")),
+            Some(format!("{body} bytes -> {count} f32")),
         );
     }
 

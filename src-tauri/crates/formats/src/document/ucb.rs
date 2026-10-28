@@ -1,18 +1,5 @@
-//! UCB 大地图碰撞/网格单元（`FieldBG/Field.ucb`）。
-//!
-//! 定长记录流，**每条 0x20 字节**：
-//!
 //! ```text
-//! +0x00 u32 区内索引（每个组内从 0 连续递增）
-//! +0x04 u32 组号（0 起，组内条数恒定）
-//! +0x08 u32 类型/模式常量（组 0 为 0x008105f1，其余组同）
-//! +0x0c u32 掩码（恒为 0xff000000）
-//! +0x10 u32 ×4 恒 0（预留）
 //! ```
-//!
-//! 本语料的闭合判据：`1311 组 × 2199 条 × 0x20 = 92 252 448 = 文件长度`。
-//! 三件事在这里校验：文件长度被 0x20 整除、总条数被组容量整除、
-//! 索引与组号满足 `index % 2199` / `index / 2199`。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -27,7 +14,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < RECORD {
-        builder.warn("文件不足一条记录（0x20 字节）");
+        builder.warn("file is shorter than one record (0x20 bytes)");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -45,18 +32,17 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "ucb.align",
-        "文件长度被 0x20 整除",
+        "the file length is divisible by 0x20",
         aligned,
         Some(format!("{} % 0x20 = {}", bytes.len(), bytes.len() % RECORD)),
     );
     builder.check(
         "ucb.groups",
-        "总条数被组容量 2199 整除",
+        "the record count is divisible by the group size 2199",
         exact,
         Some(format!("{count} % {GROUP_SIZE} = {}", count % GROUP_SIZE)),
     );
 
-    // 索引/组号一致性（全量扫，代价是每 32 字节读两个 u32）。
     let mut index_ok = 0usize;
     let mut group_ok = 0usize;
     let mut types: Vec<u32> = Vec::new();
@@ -82,13 +68,13 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "ucb.index",
-        "区内索引 == 序号 % 2199",
+        "index within a group equals sequence % 2199",
         index_ok == count,
         Some(format!("{index_ok}/{count}")),
     );
     builder.check(
         "ucb.group",
-        "组号 == 序号 / 2199",
+        "group equals sequence / 2199",
         group_ok == count,
         Some(format!("{group_ok}/{count}")),
     );
@@ -99,7 +85,6 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.field(summary, &format!("type[{index}]"), format!("0x{kind:08x}"));
     }
 
-    // 组表：只列组首记录，1311 组足够看出「一组 2199 条」的规律。
     let list = builder.array(root, Some("groups"), format!("Groups ({groups})"));
     for group in 0..groups.min(MAX_SHOWN) {
         let at = group * GROUP_SIZE * RECORD;

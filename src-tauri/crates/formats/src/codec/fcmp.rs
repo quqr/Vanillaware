@@ -1,15 +1,9 @@
-//! FCMP 容器解压（LZSS 变体）。
-//!
-//! 逐行移植自 `VanillawareConverter/FTEXConverter/FcmpDecoder.cs`：
-//! 12 位字典窗口预先定位在 `0xFEE`，标志位从低到高消费。
-
 use crate::Error;
 
 pub fn is_fcmp(data: &[u8]) -> bool {
     data.len() >= 4 && &data[..4] == b"FCMP"
 }
 
-/// 解压 FCMP。失败时返回空 `Vec`（与原实现一致，不抛异常）。
 pub fn decode(data: &[u8]) -> Result<Vec<u8>, Error> {
     if data.len() < 0x10 || !is_fcmp(data) {
         return Ok(Vec::new());

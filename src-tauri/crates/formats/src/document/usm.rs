@@ -1,17 +1,6 @@
-//! USM 影片容器（`.usm`，CRI Sofdec2）。
-//!
 //! ```text
 //! +0x00  "CRID"
-//! +0x04  u32 头长（大端）——数据区从 头长+8 开始
-//! +0x08  u32 版本
-//! +0x20  "@UTF" 元数据表（流清单：crid / sfv / sfa …）
-//! 头部之后：块链
-//!   块 = { char[4] 魔数（"@SFV"/"@SFA"/"@ALP"/"@END"）, u32 块长（大端）, 0x18 字节参数, 载荷 }
-//!   下一块 = 当前偏移 + 块长（向上 0x20 对齐）
 //! ```
-//!
-//! 全部 9 个 `.usm` 都在「块链末尾 == 文件长度」上闭合成 0 slack；
-//! 视频/音频载荷是 MPEG-TS 里的私有帧，不在这里解码。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -80,7 +69,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     let Some(header) = parse(bytes) else {
-        builder.warn("不是 USM：CRID 头或块链不闭合");
+        builder.warn("not USM: bad CRID header or the chunk chain does not close");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     };
@@ -99,7 +88,6 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(head, "version", format!("0x{:08x}", header.version));
     builder.field(head, "chunks", header.chunks.len().to_string());
 
-    // 头里的 @UTF 元数据表：流清单与编码参数都在这里。
     if let Some(table) = utf::parse_table(bytes, 0x20) {
         let meta = builder.group(root, Some("metadata"), "Metadata");
         builder.field(meta, "columns", table.columns.len().to_string());
@@ -129,13 +117,13 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "usm.chain",
-        "块链末尾 == 文件长度",
+        "the chunk chain ends at the file length",
         header.end == bytes.len(),
         Some(format!("{:#x} / {:#x}", header.end, bytes.len())),
     );
     builder.check(
         "usm.header",
-        "头长在文件内且 ≥ 0x20",
+        "header length lies inside the file and is at least 0x20",
         header.header_size >= 0x20 && header.header_size <= bytes.len(),
         Some(format!("{:#x}", header.header_size)),
     );

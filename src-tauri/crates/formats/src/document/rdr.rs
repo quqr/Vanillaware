@@ -1,7 +1,3 @@
-//! 文档树用的最小读取器：只做带边界检查的小端整数与展示格式化。
-//!
-//! 不引入 byteorder / nom；格式解析的边界错误由调用方转成 `warn` / `check`。
-
 pub fn f32_at(bytes: &[u8], at: usize) -> Option<f32> {
     u32_at(bytes, at).map(f32::from_bits)
 }
@@ -74,7 +70,6 @@ pub fn ascii(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// 以 NUL 截断的 UTF-8 字符串（日文标签；非 UTF-8 字节替换成 U+FFFD）。
 pub fn utf8_string(bytes: &[u8]) -> String {
     let end = bytes
         .iter()
@@ -83,7 +78,6 @@ pub fn utf8_string(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..end]).trim().to_string()
 }
 
-/// 以 NUL 截断的可打印字符串（Shift-JIS 尚未解码，保留原始字节）。
 pub fn c_string(bytes: &[u8]) -> String {
     let end = bytes
         .iter()

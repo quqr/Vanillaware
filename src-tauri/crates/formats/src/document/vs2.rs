@@ -1,15 +1,5 @@
-//! VS2 语音发声表（`Sound/VoiceSpeak.vs2`，UO 侧 1 个）。
-//!
 //! ```text
-//! +0x00 u32 条目数 N
-//! +0x04 u32 ×3 = 0（保留）
-//! +0x10 u32 id[N]        —— 单调不减的语音 id（1000101 起，按段跳号）
-//! +0x10+4N  u64 mask[N]  —— 每条 8 字节标志位（如 0x00000000feff0fff）
 //! ```
-//!
-//! 闭合判据：`16 + N × 4 + N × 8 == 文件长度`（本语料 N = 17280，
-//! 16 + 69120 + 138240 = 207376，正好等于文件大小），且 id 段单调不减。
-//! 标志位的确切含义要在音频系统里追，这里按位原样呈现，并给出置位数。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -23,7 +13,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER {
-        builder.warn("文件不足 0x10 字节");
+        builder.warn("file is shorter than 0x10 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -40,7 +30,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let expected = HEADER + count * 12;
     builder.check(
         "vs2.size",
-        "16 + N × 12 == 文件长度",
+        "16 + N × 12 equals the file length",
         expected == bytes.len(),
         Some(format!("{expected} / {}", bytes.len())),
     );
@@ -70,9 +60,9 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     builder.check(
         "vs2.ids",
-        "id 段单调不减",
+        "the id section is non-decreasing",
         monotonic,
-        Some(format!("{} 条", count)),
+        Some(format!("{} entries", count)),
     );
 
     let summary = builder.group(root, Some("summary"), "Summary");

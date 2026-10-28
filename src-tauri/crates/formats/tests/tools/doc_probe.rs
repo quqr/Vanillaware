@@ -1,7 +1,3 @@
-//! 语料抽样探针：`cargo run -p formats --example doc_probe -- <file>...`
-//!
-//! 打印每个文件的节点数与全部校验项，用来在真实语料上复核解析闭合。
-
 use std::path::Path;
 
 fn main() {

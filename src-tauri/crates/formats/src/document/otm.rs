@@ -1,5 +1,3 @@
-//! OTBM 模型事件表：0x78 头 + A/B/C 三级索引。
-
 use std::path::Path;
 
 use super::arena::{Builder, DocArena, DocMark};
@@ -21,7 +19,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER {
-        builder.warn("文件不足 0x78 字节");
+        builder.warn("file is shorter than 0x78 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -53,10 +51,10 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(header, "offB", format!("0x{off_b:x}"));
     builder.field(header, "offC", format!("0x{off_c:x}"));
 
-    builder.check("otm.magic", "魔数为 OTBM", magic == "OTBM", Some(format!("读到 {magic}")));
+    builder.check("otm.magic", "magic is OTBM", magic == "OTBM", Some(format!("read {magic}")));
     builder.check(
         "otm.size",
-        "dataSize == 文件长 − 0x78",
+        "dataSize equals the file length minus 0x78",
         data_size as usize == bytes.len() - HEADER,
         Some(format!("{data_size:#x} vs {:#x}", bytes.len() - HEADER)),
     );
@@ -85,7 +83,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let section_c_end = off_c + count_c as u64 * C_RECORD as u64;
     builder.check(
         "otm.sections",
-        "C 段末尾在文件内",
+        "the C section ends inside the file",
         section_c_end <= bytes.len() as u64,
         Some(format!("{section_c_end:#x} vs {:#x}", bytes.len())),
     );
@@ -147,10 +145,6 @@ fn build_c(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count: u
     }
 }
 
-/// 引用图：资源清单 → 头里登记的资源（实测是 `.MBS` 或 `.FSB`，全大写）。
-///
-/// 目标文件通常不在 OTM 目录，而在兄弟目录（`BattleEvent/`、`bg/`），
-/// 因此走 [`Resolver`] 的有界索引。
 pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let mut resolver = Resolver::new(base);

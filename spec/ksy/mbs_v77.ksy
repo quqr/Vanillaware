@@ -15,7 +15,7 @@ doc: |
     3. 按固定步长读记录；记录之间靠索引互引（s4->s0/s1/s2，s5->s3，s6->s4/s5）。
 
   分节表（sp_at / count_at / count_bytes / stride）的权威落地是
-  crates/formats/src/mbs/profile.rs，它逐行抄自 PHP 的 $gp_data 表。
+  formats/src/mbs/profile.rs, transcribed line by line from the PHP $gp_data table.
   本文件只描述「记录长什么样」：s0..sb 的 sp 位置三版本一致（0x0b0 + 8*i），
   而 count 的位置与宽度随版本变化，故由调用方（Rust 侧读 profile.rs）
   通过 params 传入，避免在 ksy 里复刻版本分支。

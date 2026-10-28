@@ -1,6 +1,5 @@
 use formats::mbs::profile::*;
 
-/// v77 与 v76/v72 的关键差异：s0..s4 的 count 宽度为 4，s4 步长相异。
 #[test]
 fn version_differences() {
     let v77 = lookup("swi_unic").expect("swi_unic");
@@ -17,10 +16,9 @@ fn version_differences() {
     assert!(lookup("ps3_odin").expect("ps3_odin").big_endian);
     assert!(!v77.big_endian);
 
-    assert!(lookup("nds_kuma").is_none(), "ver66 不在本轮范围");
+    assert!(lookup("nds_kuma").is_none(), "ver66 is out of scope here");
 }
 
-/// `kind` 决定 s4 走哪份记录定义，`version` 决定自校验的期望值。
 #[test]
 fn kind_and_version_track_generation() {
     let v77 = lookup("swi_unic").expect("swi_unic");
@@ -35,13 +33,10 @@ fn kind_and_version_track_generation() {
     assert_eq!(v72.id3, "ps3 odin sphere");
 }
 
-/// count 的读取宽度随版本变化：v77 的 s0 是 4 字节，v76 是 2 字节。
 #[test]
 fn read_counts_respects_width() {
     let mut data = vec![0u8; 0x120];
-    // v77 s0 的 count 在 0x54，宽 4。
     data[0x54..0x58].copy_from_slice(&7u32.to_le_bytes());
-    // v77 s5 的 count 在 0x64，宽 2。
     data[0x64..0x66].copy_from_slice(&3u16.to_le_bytes());
 
     let v77 = lookup("swi_unic").expect("swi_unic");
@@ -49,5 +44,5 @@ fn read_counts_respects_width() {
     assert_eq!(counts[0], 7);
     assert_eq!(counts[5], 3);
 
-    assert!(v77.read_counts(&data[..0x40]).is_err(), "截断文件应报错");
+    assert!(v77.read_counts(&data[..0x40]).is_err(), "a truncated file must fail");
 }

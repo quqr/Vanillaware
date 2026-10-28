@@ -10,7 +10,6 @@ fn rejects_short_file() {
 
 #[test]
 fn checks_alignment_and_grouping() {
-    // 两组（满足 2199 整除）但组号/索引全 0，组号校验应失败。
     let bytes = vec![0u8; RECORD * GROUP_SIZE * 2];
     let arena = build(&bytes);
     let checks: Vec<_> = arena

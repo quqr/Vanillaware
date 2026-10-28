@@ -1,5 +1,3 @@
-//! CTB（SILK 战斗图标动画）：0x58 头 + 7 节。
-
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 use super::text;
@@ -7,7 +5,6 @@ use super::text;
 const HEADER: usize = 0x58;
 const MAX_RECORDS: u32 = 4096;
 
-/// 七节的记录步长：0 = clip 记录，1..6 = 定长记录。
 const STRIDES: [usize; 7] = [0x58, 0x20, 0x0c, 0x18, 0x04, 0x01, 0x0c];
 
 pub fn build(bytes: &[u8]) -> DocArena {
@@ -17,7 +14,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER {
-        builder.warn("文件不足 0x58 字节");
+        builder.warn("file is shorter than 0x58 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -46,12 +43,12 @@ pub fn build(bytes: &[u8]) -> DocArena {
         let size_ok = offset == 0 || end <= bytes.len() as u64;
         builder.check(
             &format!("ctb.{name}"),
-            format!("{name} 区间在文件内"),
+            format!("{name} range lies inside the file"),
             size_ok,
             Some(format!("off={offset:#x} count={count} stride={stride:#x}")),
         );
         if !size_ok {
-            builder.warn(format!("{name} 区间越界"));
+            builder.warn(format!("{name} range out of bounds"));
         }
 
         match index {

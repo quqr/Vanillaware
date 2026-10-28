@@ -1,5 +1,3 @@
-//! 跨文件引用图：合成样本单测 + 真实语料解析率（默认忽略）。
-//!
 //! ```text
 //! cargo test -p formats --test doc_graph -- --ignored --nocapture
 //! ```
@@ -20,12 +18,11 @@ fn slot(bytes: &mut [u8], at: usize, text: &str) {
     bytes[at..at + raw.len()].copy_from_slice(raw);
 }
 
-/// 最小 UBBS：两张名表各 1 条。
 fn synthetic_bbs() -> Vec<u8> {
     let mut bytes = vec![0u8; 0x400];
     bytes[..4].copy_from_slice(b"UBBS");
-    bytes[0x20..0x22].copy_from_slice(&1u16.to_le_bytes()); // mbs 数
-    bytes[0x22..0x24].copy_from_slice(&1u16.to_le_bytes()); // ftx 数
+    bytes[0x20..0x22].copy_from_slice(&1u16.to_le_bytes());
+    bytes[0x22..0x24].copy_from_slice(&1u16.to_le_bytes());
     for (index, offset) in [0x380u64, 0x3a0].iter().enumerate() {
         let at = 0x338 + index * 8;
         bytes[at..at + 8].copy_from_slice(&offset.to_le_bytes());
@@ -43,22 +40,22 @@ fn bbs_graph_resolves_sibling_files() {
     std::fs::write(&path, synthetic_bbs()).unwrap();
 
     let graph = document::bbs::graph(&synthetic_bbs(), &path);
-    assert_eq!(graph.nodes.len(), 3, "文件 + mbs + ftx");
+    assert_eq!(graph.nodes.len(), 3, "file + mbs + ftx");
     assert_eq!(graph.edges.len(), 2);
 
     let mbs = graph
         .nodes
         .iter()
         .find(|node| node.label == "Target.mbs")
-        .expect("mbs 节点");
-    assert_eq!(mbs.status.as_deref(), Some("resolved"), "同目录应命中");
+        .expect("mbs node");
+    assert_eq!(mbs.status.as_deref(), Some("resolved"), "a same-directory lookup must hit");
 
     let ftx = graph
         .nodes
         .iter()
         .find(|node| node.label == "Target.ftx")
-        .expect("ftx 节点");
-    assert_eq!(ftx.status.as_deref(), Some("missing"), "缺文件应标 missing");
+        .expect("ftx node");
+    assert_eq!(ftx.status.as_deref(), Some("missing"), "a missing file must be flagged missing");
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -98,7 +95,7 @@ fn walk(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 }
 
 #[test]
-#[ignore = "需要本机 UNICORN OVERLORD 语料"]
+#[ignore = "requires the local UNICORN OVERLORD extraction"]
 fn corpus_bbs_names_resolve() {
     let root = std::env::var("CORPUS_UO")
         .map(PathBuf::from)
@@ -107,7 +104,7 @@ fn corpus_bbs_names_resolve() {
     let mut files = Vec::new();
     walk(&root, "bbs", &mut files);
     if files.is_empty() {
-        eprintln!("跳过：{} 下没有 .bbs", root.display());
+        eprintln!("skipped: no .bbs under {}", root.display());
         return;
     }
 
@@ -125,13 +122,13 @@ fn corpus_bbs_names_resolve() {
     }
 
     let ratio = resolved as f64 / total as f64;
-    eprintln!("bbs 名表解析 {resolved}/{total} = {:.1}%", ratio * 100.0);
+    eprintln!("bbs name table resolution {resolved}/{total} = {:.1}%", ratio * 100.0);
     assert!(total > 0);
-    assert!(ratio >= 0.95, "同目录命中率应 ≥95%");
+    assert!(ratio >= 0.95, "the same-directory hit rate must be at least 95%");
 }
 
 #[test]
-#[ignore = "需要本机 13 Sentinels 语料"]
+#[ignore = "requires the local 13 Sentinels corpus"]
 fn corpus_otm_header_resource_resolves() {
     let root = std::env::var("CORPUS_13")
         .map(PathBuf::from)
@@ -140,7 +137,7 @@ fn corpus_otm_header_resource_resolves() {
     let mut files = Vec::new();
     walk(&root, "otm", &mut files);
     if files.is_empty() {
-        eprintln!("跳过：{} 下没有 .otm", root.display());
+        eprintln!("skipped: no .otm under {}", root.display());
         return;
     }
 
@@ -158,7 +155,7 @@ fn corpus_otm_header_resource_resolves() {
     }
 
     let ratio = resolved as f64 / total as f64;
-    eprintln!("otm 清单资源解析 {resolved}/{total} = {:.1}%", ratio * 100.0);
+    eprintln!("otm manifest resolution {resolved}/{total} = {:.1}%", ratio * 100.0);
     assert!(total > 0);
-    assert!(ratio >= 0.90, "有界索引应能找到兄弟目录里的资源");
+    assert!(ratio >= 0.90, "the bounded index must find resources in sibling directories");
 }

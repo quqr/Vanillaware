@@ -1,31 +1,14 @@
-//! 13 Sentinels 的 **bundle 容器**：`.osb` / `.oeb` / `.orb` 共用同一套布局。
-//!
 //! ```text
 //! +0x00  char[4] magic        "OSB\0" / "OEB\0" / "ORB\0"
-//! +0x04  u32     version      恒为 4
-//! +0x08  u32     未定（恒 0）
-//! +0x0c  u32     未定（恒 0）
 //! +0x10  u32     resourceCount
-//! +0x14  u32     poolSize     —— 资源池总长
-//! +0x18  u32     offset[N]    —— 相对 0x10 的偏移，首项恒等于表尾
-//! 0x10+poolSize  ...           节点树（顺序排列，childCount 指定子树条数）
 //! ```
-//!
-//! 节点 = `16 字节头 + body`：
-//!
 //! ```text
-//! +0x00 u32 type          节点类型（每个 bundle 有自己的编号表）
-//! +0x04 u32 bodySize      恒为 0x52 起（0x52 = Caption(0x40) + Label(0x10) + Group(u16)）
 //! +0x08 u32 childCount
-//! +0x0c u32 填充
 //! +0x10 body:
 //!        +0x00 char[0x40] caption   Shift-JIS
 //!        +0x40 char[0x10] label     Shift-JIS
 //!        +0x50 u16        group
 //! ```
-//!
-//! **闭合判据**：`0x10 + poolSize + Σ(0x10 + bodySize)` 恰好等于文件长度。
-//! 实测 OSB 94/94、OEB 107/107、ORB 15/15 全部精确闭合。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::{rdr, text};
@@ -37,42 +20,33 @@ const MAX_NODES: usize = 60_000;
 const MAX_CHILDREN: u32 = 4096;
 const MAX_RESOURCES: u32 = 8192;
 
-/// 一种 bundle 的元信息。
 pub struct Spec {
     pub magic: &'static [u8],
     pub title: &'static str,
-    /// 节点类型编号 → 名字。
     pub types: &'static [(u32, &'static str)],
 }
 
-/// 树里的一个节点（文档视图与内容投影共用）。
 pub struct Node {
     pub at: usize,
     pub type_id: u32,
     pub body_at: usize,
     pub body_size: usize,
     pub child_count: u32,
-    /// 在 `nodes` 里的父下标；根为 `None`。
     pub parent: Option<usize>,
     pub caption: String,
     pub label: String,
     pub group: u16,
 }
 
-/// 解析出来的容器。
 pub struct Bundle {
     pub version: u32,
     pub resources: Vec<String>,
-    /// 节点树起点。
     pub tree_at: usize,
-    /// 顺序遍历出来的节点（父子关系由 `parent` 表达）。
     pub nodes: Vec<Node>,
-    /// 遍历结束位置；等于文件长度即闭合。
     pub end: usize,
     pub children_of: Vec<Vec<usize>>,
 }
 
-/// 解析容器；魔数不符或结构越界时返回 `None`。
 pub fn parse(bytes: &[u8], spec: &Spec) -> Option<Bundle> {
     if bytes.len() < 0x18 || &bytes[..4] != spec.magic {
         return None;
@@ -201,14 +175,13 @@ fn type_name(spec: &Spec, type_id: u32) -> &'static str {
         .unwrap_or("node")
 }
 
-/// 把容器投影成文档树。
 pub fn build(bytes: &[u8], spec: &Spec) -> DocArena {
     let mut builder = Builder::new();
     let root = builder.root(spec.title);
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < 0x18 {
-        builder.warn("文件不足 0x18 字节");
+        builder.warn("file is shorter than 0x18 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -228,25 +201,25 @@ pub fn build(bytes: &[u8], spec: &Spec) -> DocArena {
 
     builder.check(
         "bundle.magic",
-        "魔数符合",
+        "magic matches",
         magic_ok,
         Some(rdr::hex(&bytes[..4])),
     );
     builder.check(
         "bundle.tree",
-        "节点树起点落在文件内",
+        "the node tree starts inside the file",
         tree_at <= bytes.len() as u64,
         Some(format!("{tree_at:#x} vs {:#x}", bytes.len())),
     );
 
     let Some(bundle) = parse(bytes, spec) else {
-        builder.warn("容器结构不成立，只做头部转储");
+        builder.warn("container structure does not hold, dumping the header only");
         builder.mark(root, DocMark::Error);
         builder.check(
             "bundle.closed",
-            "资源池 + 节点树恰好到 EOF",
+            "resource pool plus node tree end exactly at EOF",
             false,
-            Some("解析失败".to_string()),
+            Some("parse failed".to_string()),
         );
         return builder.finish();
     };
@@ -267,7 +240,6 @@ pub fn build(bytes: &[u8], spec: &Spec) -> DocArena {
     }
 
     let tree = builder.group(root, Some("tree"), format!("Tree ({})", bundle.nodes.len()));
-    // `walk` 是前序遍历，父下标恒小于子下标，所以一遍扫下去就能拿到父句柄。
     let mut handles: Vec<u32> = Vec::with_capacity(bundle.nodes.len());
     for node in bundle.nodes.iter() {
         let parent = node
@@ -301,7 +273,7 @@ pub fn build(bytes: &[u8], spec: &Spec) -> DocArena {
 
     builder.check(
         "bundle.closed",
-        "资源池 + 节点树恰好到 EOF",
+        "resource pool plus node tree end exactly at EOF",
         bundle.end == bytes.len(),
         Some(format!("{:#x} / {:#x}", bundle.end, bytes.len())),
     );

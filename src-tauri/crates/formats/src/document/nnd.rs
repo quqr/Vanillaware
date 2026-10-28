@@ -1,29 +1,8 @@
-//! NND 世界节点网络（`NodeNetworkData/`，UO 语料 302 个）。
-//!
 //! ```text
-//! +0x00  u32  version    恒为 2
-//! +0x04  u32  wordCount  载荷的 u32 个数；实测恒为 3 的倍数
-//! +0x08  u32  field2     语义未定，原样展示
 //! +0x0c  u32  field3
 //! +0x10  u32  field4
 //! +0x14  u32  field5
-//! +0x18  ...  载荷：wordCount 个 u32，即 wordCount/3 组、每组 12 字节
-//! ...         尾部（可选）：前导字 → 64 字节名字槽 × N → 表体
 //! ```
-//!
-//! **载荷**三字一组的语义没有闭合：`w0` 绝大多数是 0/1，但少量记录出现
-//! 700～800 的取值且第 2 字解不出合理浮点，说明记录边界在这批样本上有变体。
-//! 所以这里只给 `w0/w1/w1f/w2` 四个位置名，不臆造字段含义。
-//!
-//! **尾部**是两段：先若干 u32 前导字，再 `N × 64` 字节的 UTF-8 名字槽
-//! （`Gate_D01`、`Z_1通常_廃墟碑CB11` 这类地名），最后是表体。表体有两种形态，
-//! 按「账要正好平」自动判别：
-//!
-//! * **连接对**：`头字（4～24 B）+ count × 8 B`，头里必有一个字等于 count；
-//! * **值数组**：整段按 u32 排列（出现 8 字节对不齐时走这条）。
-//!
-//! 两条都只做**字节归属**：每个字节都要落到「前导字 / 名字槽 / 表体」之一，
-//! 落到哪里就在 check 里写明，不把 8 字节对硬说成边。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
@@ -45,7 +24,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(root, "size", bytes.len().to_string());
 
     if bytes.len() < HEADER {
-        builder.warn("文件不足 0x18 字节");
+        builder.warn("file is shorter than 0x18 bytes");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
@@ -70,11 +49,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
         "nnd.version",
         "version == 2",
         version == 2,
-        Some(format!("读到 {version}")),
+        Some(format!("read {version}")),
     );
     builder.check(
         "nnd.units",
-        "wordCount % 3 == 0（载荷按 3 字一组）",
+        "wordCount % 3 == 0 (the payload is grouped in threes)",
         word_count.is_multiple_of(3),
         Some(format!("wordCount = {word_count}")),
     );
@@ -82,15 +61,14 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let payload_end = HEADER as u64 + word_count as u64 * 4;
     builder.check(
         "nnd.payload",
-        "载荷不越界",
+        "the payload stays inside the file",
         payload_end <= bytes.len() as u64,
-        Some(format!("结束于 {payload_end:#x} / 文件 {:#x}", bytes.len())),
+        Some(format!("ends at {payload_end:#x} / file {:#x}", bytes.len())),
     );
 
     let units = (word_count / 3) as usize;
     let body_end = (payload_end as usize).min(bytes.len());
 
-    // --- 全量统计：不必翻几万组也能看清载荷形态 ---
     let stats = summarize(bytes, HEADER, units, body_end);
     let summary = builder.group(root, Some("summary"), "Summary");
     builder.field(summary, "w0 == 0", stats.w0_zero.to_string());
@@ -103,12 +81,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
     );
     builder.field(
         summary,
-        "w1 非规格化",
+        "w1 is subnormal",
         format!("{} / {}", stats.f_denormal, stats.checked),
     );
     builder.field(summary, "w2", format!("{} .. {}", stats.c_min, stats.c_max));
 
-    // --- 载荷：只展开前 MAX_UNITS 组 ---
     let array = builder.array(root, Some("units"), format!("Units ({units})"));
     for index in 0..units.min(MAX_UNITS) {
         let at = HEADER + index * UNIT;
@@ -132,7 +109,6 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.truncate();
     }
 
-    // --- 尾部 ---
     if body_end < bytes.len() {
         let tail = &bytes[body_end..];
         let group = builder.group(root, Some("tail"), format!("Tail ({} B)", tail.len()));
@@ -203,10 +179,10 @@ pub fn build(bytes: &[u8]) -> DocArena {
                         }
                         builder.check(
                             "nnd.tail",
-                            "尾部按「前导字 / 名字槽 / 表体」归段且恰好到 EOF",
+                            "the tail splits into leading words, name slots and table bodies, and ends exactly at EOF",
                             split.consumed == tail.len(),
                             Some(format!(
-                                "{} 字 + {} 名 × {NAME_SLOT} + {} 字 + {} 对 × 8 = {} / {} B",
+                                "{} words + {} names × {NAME_SLOT} + {} words + {} pairs × 8 = {} / {} B",
                                 split.prefix.len(),
                                 split.names.len(),
                                 header.len(),
@@ -241,10 +217,10 @@ pub fn build(bytes: &[u8]) -> DocArena {
                         }
                         builder.check(
                             "nnd.tail",
-                            "尾部按「前导字 / 名字槽 / 表体」归段且恰好到 EOF",
+                            "the tail splits into leading words, name slots and table bodies, and ends exactly at EOF",
                             split.consumed == tail.len(),
                             Some(format!(
-                                "{} 字 + {} 名 × {NAME_SLOT} + {} B 值数组 = {} / {} B",
+                                "{} words + {} names × {NAME_SLOT} + {} B of values = {} / {} B",
                                 split.prefix.len(),
                                 split.names.len(),
                                 body_bytes,
@@ -255,25 +231,24 @@ pub fn build(bytes: &[u8]) -> DocArena {
                     }
                 }
 
-                // 表体形态只是描述，不是校验：语料里两种形态都合法。
                 builder.field(
                     group,
                     "shape",
                     if links {
-                        format!("{} 对 8 字节连接对", links_total(&split))
+                        format!("{} link pairs of 8 bytes", links_total(&split))
                     } else {
-                        "u32 值数组".to_string()
+                        "u32 value array".to_string()
                     },
                 );
             }
             None => {
-                builder.warn("尾部找不到名字槽，只做原始转储");
+                builder.warn("no name slot in the tail, dumping raw bytes");
                 builder.mark(group, DocMark::Warn);
                 builder.check(
                     "nnd.tail",
-                    "尾部按「前导字 / 名字槽 / 表体」归段且恰好到 EOF",
+                    "the tail splits into leading words, name slots and table bodies, and ends exactly at EOF",
                     false,
-                    Some(format!("{} B 未归段", tail.len())),
+                    Some(format!("{} B unassigned", tail.len())),
                 );
                 let words = (tail.len() / 4).min(MAX_VALUES_SHOWN);
                 let mut raw = String::new();
@@ -292,7 +267,7 @@ pub fn build(bytes: &[u8]) -> DocArena {
             }
         }
     } else {
-        builder.check("nnd.tail", "无尾部字节", true, None);
+        builder.check("nnd.tail", "no trailing bytes", true, None);
     }
 
     builder.finish()
@@ -326,7 +301,6 @@ fn links_total(split: &TailSplit) -> usize {
     }
 }
 
-/// 名字槽：64 字节、NUL 结尾、NUL 之后全 0、可解成 UTF-8 且无控制字符。
 fn name_slot(bytes: &[u8]) -> Option<String> {
     let slot = bytes.get(..NAME_SLOT)?;
     let end = slot.iter().position(|&byte| byte == 0)?;
@@ -343,9 +317,6 @@ fn name_slot(bytes: &[u8]) -> Option<String> {
     Some(text.to_string())
 }
 
-/// 找最长的连续名字槽（在尾部前 8 KB 里试 4 字节对齐的起点）。
-///
-/// 前导区有时是几百个 `1` 的索引数组，名字块并不紧贴尾部起点，所以要扫一段窗口。
 fn find_names(tail: &[u8]) -> (usize, Vec<String>) {
     let mut best_at = 0usize;
     let mut best: Vec<String> = Vec::new();
@@ -380,7 +351,6 @@ fn split_tail(tail: &[u8]) -> Option<TailSplit> {
         .map(|index| rdr::u32_at(tail, index * 4).unwrap_or(0))
         .collect();
 
-    // 先试「连接对」：头字数 0～6，且头里有一个字等于对数。
     for words in 0..=6usize {
         let header_bytes = words * 4;
         if rest < header_bytes {
@@ -417,7 +387,6 @@ fn split_tail(tail: &[u8]) -> Option<TailSplit> {
         });
     }
 
-    // 再退到「值数组」：整段按 u32 归属，余数字节单独记账。
     let words: Vec<u32> = (0..rest / 4)
         .map(|index| rdr::u32_at(tail, after_names + index * 4).unwrap_or(0))
         .collect();
