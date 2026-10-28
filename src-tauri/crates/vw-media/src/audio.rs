@@ -7,7 +7,7 @@
 //! 逐条探测头会把首次打开拖到秒级。字节按需 `read_track` 从 AWB 里 seek 出来。
 
 use std::fs::File;
-use std::io::{BufReader, Cursor};
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use cridecoder::acb::{AfsArchive, TrackList, UtfTable, Value};
@@ -253,20 +253,32 @@ pub fn open_acb(path: &Path) -> Result<Bundle, AudioError> {
 }
 
 /// 解析 `.awb`：AFS2 条目即轨道，名字用 id 表示。
+///
+/// AFS2 **没有** `enc_type`：同一份 `.awb` 里 lopus 与 HCA 混装是常态
+/// （`bgm.awb` 102 + 28、`dlc.awb` 21 + 1）。所以编码必须逐条按数据头判定，
+/// 只看首条会给整包贴错标签，列表里的「Opus」其实是 HCA，
+/// 解码时就会走到 lopus 分支并报「缺少基本块（读到 0x414348 = "HCA\0"）」。
 pub fn open_awb(path: &Path) -> Result<Bundle, AudioError> {
     let archive = open_afs(path)?;
     if archive.files.is_empty() {
         return Err(AudioError::NoTracks);
     }
-    // 同一 AWB 通常统一编码：只看第一条，避免对一万三千条逐条 seek。
-    let first = archive.files[0];
-    let hint = {
-        let mut archive = open_afs(path)?;
-        match archive.file_data(first) {
-            Ok(bytes) => Codec::sniff(&bytes),
-            Err(_) => Codec::Other("?".to_string()),
+
+    // 逐条读 8 字节头：13537 条也只做 13537 次 8 字节读。
+    // 这里**不用** BufReader：随机 seek 会让它每次都丢掉缓冲区并重读一整块，
+    // 1.3 万条实测要 1.4 秒；裸 File 直接 seek + 8 字节读只要几十毫秒。
+    let mut heads = File::open(path)?;
+    let mut sniff = |offset: u32| -> Codec {
+        let mut head = [0u8; 8];
+        if heads.seek(SeekFrom::Start(u64::from(offset))).is_err() {
+            return Codec::Other("?".to_string());
+        }
+        match heads.read(&mut head) {
+            Ok(read) if read > 0 => Codec::sniff(&head[..read]),
+            _ => Codec::Other("?".to_string()),
         }
     };
+
     let tracks = archive
         .files
         .iter()
@@ -275,7 +287,7 @@ pub fn open_awb(path: &Path) -> Result<Bundle, AudioError> {
             index,
             name: format!("#{}", entry.cue_id),
             cue_id: entry.cue_id,
-            codec: hint.clone(),
+            codec: sniff(entry.offset),
             stream: false,
             stream_awb_id: -1,
             wav_id: entry.cue_id,
@@ -318,25 +330,27 @@ pub enum Clip {
 /// 读一条轨道并解码。
 pub fn decode_track(bundle: &Bundle, index: usize) -> Result<Clip, AudioError> {
     let bytes = bundle.read_track(index)?;
-    let codec = bundle
+    let declared = bundle
         .tracks
         .get(index)
         .map(|track| track.codec.clone())
-        .unwrap_or_else(|| Codec::sniff(&bytes));
-    match codec {
+        .unwrap_or_else(|| Codec::Other("?".to_string()));
+    match effective_codec(&declared, &bytes) {
         Codec::Hca => decode_hca(&bytes),
         Codec::Lopus => parse_lopus(&bytes),
-        other => {
-            let sniffed = Codec::sniff(&bytes);
-            match sniffed {
-                Codec::Hca => decode_hca(&bytes),
-                Codec::Lopus => parse_lopus(&bytes),
-                _ => Err(AudioError::Decode(format!(
-                    "{} 暂不支持应用内解码",
-                    other.tag()
-                ))),
-            }
-        }
+        other => Err(AudioError::Decode(format!(
+            "{} 暂不支持应用内解码",
+            other.tag()
+        ))),
+    }
+}
+
+/// 容器标签只是提示：AWB 没有 `enc_type`，列表里的编码是按首条轨道猜的，
+/// 混合编码的 AWB 会把后面的 HCA 标成 lopus。解码前始终以数据头为准。
+fn effective_codec(declared: &Codec, bytes: &[u8]) -> Codec {
+    match Codec::sniff(bytes) {
+        Codec::Other(_) => declared.clone(),
+        sniffed => sniffed,
     }
 }
 
@@ -363,35 +377,42 @@ fn decode_hca(bytes: &[u8]) -> Result<Clip, AudioError> {
 
 /// lopus：`0x80000001` 基本块 + `0x80000004` 数据块；数据块里是定长帧，
 /// 每帧前 8 字节为帧头，其后是裸 Opus 包。
+///
+/// 载荷允许有前导 0：AFS2 的条目按 `alignment`（语料是 0x20）对齐，
+/// 起点到实际块头之间可能垫 4~28 个 0 字节。cridecoder 已按对齐取起点，
+/// 但裸 `.lopus` 或将来别的容器不一定，所以这里在前 0x20 字节内找块头，
+/// 找到就整段平移；找不到才报错。
 fn parse_lopus(bytes: &[u8]) -> Result<Clip, AudioError> {
     if bytes.len() < 0x20 {
         return Err(AudioError::Malformed("lopus 头不足 0x20 字节".to_string()));
     }
-    if u32_at(bytes, 0) != CHUNK_BASIC {
+    let Some(base) = (0..bytes.len().min(0x20)).find(|&at| u32_at(bytes, at) == CHUNK_BASIC) else {
         return Err(AudioError::Malformed(format!(
             "lopus 缺少基本块（读到 {:#x}）",
             u32_at(bytes, 0)
         )));
-    }
-    let channels = bytes[0x09] as u32;
-    let frame_size = u16_at(bytes, 0x0a) as usize;
-    let sample_rate = u32_at(bytes, 0x0c);
-    let data_offset = u32_at(bytes, 0x10) as usize;
-    let skip = u16_at(bytes, 0x1c) as u32;
+    };
+    let at = |offset: usize| base + offset;
+    let channels = bytes[at(0x09)] as u32;
+    let frame_size = u16_at(bytes, at(0x0a)) as usize;
+    let sample_rate = u32_at(bytes, at(0x0c));
+    let data_offset = u32_at(bytes, at(0x10)) as usize;
+    let skip = u16_at(bytes, at(0x1c)) as u32;
     if frame_size <= LOPUS_FRAME_HEADER || sample_rate == 0 {
         return Err(AudioError::Malformed(format!(
             "lopus 参数不成立：frame_size={frame_size} sample_rate={sample_rate}"
         )));
     }
-    if u32_at(bytes, data_offset) != CHUNK_DATA {
+    let data_at = at(data_offset);
+    if u32_at(bytes, data_at) != CHUNK_DATA {
         return Err(AudioError::Malformed(format!(
-            "{data_offset:#x} 处不是数据块"
+            "{data_at:#x} 处不是数据块"
         )));
     }
-    let data_size = u32_at(bytes, data_offset + 4) as usize;
-    let start = data_offset + 8;
+    let data_size = u32_at(bytes, data_at + 4) as usize;
+    let start = data_at + 8;
     let end = start.saturating_add(data_size).min(bytes.len());
-    let body = &bytes[start..end];
+    let body = &bytes[start.min(end)..end];
     let stride = frame_size - LOPUS_FRAME_HEADER;
     let count = body.len() / frame_size;
     let mut packets = Vec::with_capacity(count * stride);
@@ -483,6 +504,27 @@ mod tests {
         assert!(parse_lopus(&bytes).is_err());
     }
 
+    /// AFS2 按 0x20 对齐，条目起点可能垫几个 0 字节才到块头。
+    #[test]
+    fn lopus_tolerates_alignment_padding() {
+        let mut bytes = vec![0u8; 8];
+        bytes.extend_from_slice(&build_lopus());
+        let clip = parse_lopus(&bytes).expect("前导 0 不应被判成损坏");
+        match clip {
+            Clip::OpusPackets {
+                sample_rate,
+                stride,
+                frames,
+                ..
+            } => {
+                assert_eq!(sample_rate, 48000);
+                assert_eq!(stride, 240);
+                assert_eq!(frames, 1920);
+            }
+            _ => panic!("应当识别成 Opus"),
+        }
+    }
+
     #[test]
     fn codec_sniffs_headers() {
         assert_eq!(Codec::sniff(b"HCA\0\x03\x00\x00\x60"), Codec::Hca);
@@ -492,5 +534,16 @@ mod tests {
         );
         assert_eq!(Codec::from_wave_ext(".lopus"), Codec::Lopus);
         assert_eq!(Codec::from_wave_ext("hca"), Codec::Hca);
+    }
+
+    /// 混合编码 AWB：标签按首条轨道猜成 lopus，实际载荷是 HCA。
+    #[test]
+    fn data_header_overrides_declared_codec() {
+        let hca = b"HCA\0\x03\x00\x00\x60";
+        assert_eq!(effective_codec(&Codec::Lopus, hca), Codec::Hca);
+        let lopus = [0x01, 0x00, 0x00, 0x80, 0x18, 0x00, 0x00, 0x00];
+        assert_eq!(effective_codec(&Codec::Hca, &lopus), Codec::Lopus);
+        // 数据头不认识时才回退到标签。
+        assert_eq!(effective_codec(&Codec::Adx, b"????"), Codec::Adx);
     }
 }

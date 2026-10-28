@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Texture } from "pixi.js";
-import { api, type Scene, type SceneLayer } from "../../lib/ipc";
+import { api, type Scene, type SceneAnimation, type SceneAttach, type SceneLayer } from "../../lib/ipc";
 import {
   NO_TINT,
   PixiRenderer,
@@ -11,51 +11,81 @@ import {
   type RenderLayer,
   type Tint,
 } from "../../lib/pixiScene";
-import { fitCamera, frameBounds, frameDurationMs, resolveFrame, srcUvs } from "../../lib/sceneDraw";
+import {
+  animationIndex,
+  boundsOf,
+  boneAnimation,
+  fitCamera,
+  newBoneStates,
+  quadPoints,
+  resolveBones,
+  skeletonLength,
+  srcUvs,
+  stepBone,
+  type BoneState,
+} from "../../lib/sceneDraw";
 
-/** 播放位置：全部放在 ref 里，由 Pixi ticker 推进，避免 60Hz 触发 React 重渲染。 */
+/** 播放位置：全部放在 ref 里，由 Pixi ticker 推进，避免 60Hz 触发 React 重渲染。
+ *
+ * 播放单位是 **skeleton**：一根骨一个游标，各骨按自己的 loop 点循环
+ * （权威播放器 `draw_skeleton` + `anim_current` 的行为）。
+ */
 interface Playhead {
-  animationIndex: number;
-  frameIndex: number;
-  elapsed: number;
+  skeletonIndex: number;
+  bones: BoneState[];
   playing: boolean;
   speed: number;
   dirty: boolean;
 }
 
 interface Hud {
-  frameIndex: number;
-  frameCount: number;
-  time: number;
-  loopId: number;
+  frame: number;
+  frames: number;
+  bones: number;
   layerCount: number;
+  time: number;
+  attach: SceneAttach | null;
 }
 
-/** 动画播放查看器：动画列表 + PixiJS 合成 + 图层面板 + 时间轴（ADR-0007 / ADR-0011）。
+/** 动画播放查看器：骨架列表 + PixiJS 合成 + 图层面板 + 时间轴（ADR-0007 / 0011 / 0024）。
  *
  * 受控组件：目标 `.mbs` 与平台 `tag` 都由查看器面板传入，不再读全局选中态。
  */
 export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
-
   const [scene, setScene] = useState<Scene | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [textureError, setTextureError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const [animationIndex, setAnimationIndex] = useState(0);
+  const [skeletonIndex, setSkeletonIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [showHitbox, setShowHitbox] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
   const [applyTint, setApplyTint] = useState(true);
-  const [hud, setHud] = useState<Hud>({ frameIndex: 0, frameCount: 0, time: 0, loopId: -1, layerCount: 0 });
+  const [hud, setHud] = useState<Hud>({
+    frame: 0,
+    frames: 0,
+    bones: 0,
+    layerCount: 0,
+    time: 0,
+    attach: null,
+  });
   const [zoomLabel, setZoomLabel] = useState(1);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<PixiRenderer | null>(null);
   const sceneRef = useRef<Scene | null>(null);
+  const animationsRef = useRef<Map<number, SceneAnimation>>(new Map());
   const texturesRef = useRef(new Map<number, Texture>());
   const inflightTexRef = useRef(new Map<number, Promise<void>>());
-  const playheadRef = useRef<Playhead>({ animationIndex: 0, frameIndex: 0, elapsed: 0, playing: true, speed: 1, dirty: true });
+  const playheadRef = useRef<Playhead>({
+    skeletonIndex: 0,
+    bones: [],
+    playing: true,
+    speed: 1,
+    dirty: true,
+  });
   const optionsRef = useRef({ showHitbox: false, showOutline: false, applyTint: true });
   const hudAtRef = useRef(0);
 
@@ -81,17 +111,33 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     let alive = true;
     setLoading(true);
     setError(null);
-    setAnimationIndex(0);
+    setTextureError(null);
+    setSkeletonIndex(0);
 
     api
       .previewScene(path, tag)
       .then((next) => {
         if (!alive) return;
         sceneRef.current = next;
-        playheadRef.current = { animationIndex: 0, frameIndex: 0, elapsed: 0, playing: true, speed: 1, dirty: true };
+        animationsRef.current = animationIndex(next);
+        const first = next.skeletons[0];
+        playheadRef.current = {
+          skeletonIndex: 0,
+          bones: newBoneStates(first?.bones.length ?? 0),
+          playing: true,
+          speed: 1,
+          dirty: true,
+        };
         setScene(next);
         setPlaying(true);
-        setHud({ frameIndex: 0, frameCount: next.animations[0]?.frames.length ?? 0, time: 0, loopId: next.animations[0]?.loopId ?? -1, layerCount: 0 });
+        setHud({
+          frame: 0,
+          frames: skeletonLength(first?.bones ?? [], animationsRef.current),
+          bones: first?.bones.length ?? 0,
+          layerCount: 0,
+          time: 0,
+          attach: null,
+        });
       })
       .catch((e) => {
         if (alive) setError(String(e));
@@ -119,7 +165,10 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         texturesRef.current.set(texId, texture);
         playheadRef.current.dirty = true;
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        // 纹理取不到时画面直接空白；必须把原因告诉用户，不能静默吞掉。
+        setTextureError((previous) => previous ?? `纹理 ${texId} 加载失败：${String(error)}`);
+      })
       .finally(() => inflightTexRef.current.delete(texId));
 
     inflightTexRef.current.set(texId, task);
@@ -158,38 +207,35 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     };
   }, [scene, ensureTextureAsync]);
 
-  /** 把当前帧的图层与命中框组装成渲染器输入。 */
+  /** 某副骨架的骨列表。 */
+  const bonesOf = useCallback((index: number): SceneAttach[] => {
+    return sceneRef.current?.skeletons[index]?.bones ?? [];
+  }, []);
+
+  /** 把当前骨架各骨的帧合成成渲染器输入。 */
   const drawFrame = useCallback(() => {
     const renderer = rendererRef.current;
     const scene = sceneRef.current;
     if (!renderer || !scene) return;
 
     const playhead = playheadRef.current;
-    const animation = scene.animations[playhead.animationIndex];
-    if (!animation) {
-      renderer.submit({ layers: [], hitboxes: [] }, { showHitbox: false, showOutline: false });
-      return;
-    }
+    const animations = animationsRef.current;
+    const bones = scene.skeletons[playhead.skeletonIndex]?.bones ?? [];
+    const resolved = resolveBones(scene, bones, playhead.bones, animations);
 
-    const { frame, layers, hitboxes } = resolveFrame(scene, animation, playhead.frameIndex);
-    if (!frame) {
-      renderer.submit({ layers: [], hitboxes: [] }, optionsRef.current);
-      return;
-    }
-
-    // 权威播放器：顶点色 = 时间线 color × 每图层 fogquad，再与纹理逐分量相乘。
-    const frameTint = optionsRef.current.applyTint ? parseColor(frame.color) : NO_TINT;
     const renderLayers: RenderLayer[] = [];
-
-    for (const layer of layers) {
+    for (const item of resolved.layers) {
+      const layer = item.layer;
       const texture = layer.texId === null ? null : texturesRef.current.get(layer.texId);
       if (!texture || layer.src === null) {
         if (layer.texId !== null) ensureTexture(scene.mbsPath, layer.texId);
         continue;
       }
+      // 顶点色 = 时间线 color × 每图层 fogquad，再与纹理逐分量相乘。
+      const frameTint = optionsRef.current.applyTint ? parseColor(item.color) : NO_TINT;
       const tint: Tint = layer.fog?.[0] ? multiplyTint(frameTint, parseColor(layer.fog[0])) : frameTint;
       renderLayers.push({
-        positions: positions(layer, frame.matrix),
+        positions: positionsOf(layer.dst, item.matrix),
         uvs: srcUvs(layer.src, texture.width, texture.height),
         texture,
         tint: tint.tint,
@@ -197,34 +243,48 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
       });
     }
 
-    const hitboxQuads = hitboxes.map((quad) => positionsOf(quad, frame.matrix));
+    const hitboxQuads = resolved.hitboxes.map((item) => positionsOf(item.quad, item.matrix));
     const input: RenderFrame = { layers: renderLayers, hitboxes: hitboxQuads };
     renderer.submit(input, optionsRef.current);
 
     const now = performance.now();
     if (now - hudAtRef.current > 100) {
       hudAtRef.current = now;
-      setHud({
-        frameIndex: playhead.frameIndex,
-        frameCount: animation.frames.length,
-        time: frame.time,
-        loopId: animation.loopId,
-        layerCount: renderLayers.length,
-      });
+      // HUD 以「跑得最远的那根骨」为准；各骨长度不同，取最大值才有意义。
+      let frame = 0;
+      let frames = 0;
+      let time = 0;
+      let attach: SceneAttach | null = null;
+      for (let index = 0; index < bones.length; index += 1) {
+        const animation = boneAnimation(animations, bones[index]);
+        if (!animation) continue;
+        const at = Math.min(playhead.bones[index]?.frameIndex ?? 0, animation.frames.length - 1);
+        if (at >= frame) {
+          frame = at;
+          time = animation.frames[at]?.time ?? 0;
+          attach = animation.frames[at]?.attach ?? null;
+        }
+        frames = Math.max(frames, animation.frames.length);
+      }
+      setHud({ frame, frames, bones: bones.length, layerCount: renderLayers.length, time, attach });
     }
   }, [ensureTexture]);
 
-  /** 按首个有图层的帧取景。 */
+  /** 按首个骨架的前几十帧取景（各骨都算进去，缺骨的模型也能框住）。 */
   const fitScene = useCallback(() => {
     const renderer = rendererRef.current;
     const scene = sceneRef.current;
     const wrap = wrapRef.current;
     if (!renderer || !scene || !wrap) return;
 
-    const animation = scene.animations[0];
-    let bounds: ReturnType<typeof frameBounds> = null;
-    for (let index = 0; animation && index < animation.frames.length && index < 60 && !bounds; index += 1) {
-      bounds = frameBounds(scene, animation, index);
+    const bones = scene.skeletons[0]?.bones ?? [];
+    const animations = animationsRef.current;
+    const probes = newBoneStates(bones.length);
+    let bounds: ReturnType<typeof boundsOf> = null;
+    for (let frame = 0; frame < 60 && !bounds; frame += 1) {
+      for (const probe of probes) probe.frameIndex = frame;
+      const resolved = resolveBones(scene, bones, probes, animations);
+      bounds = boundsOf(resolved.layers, resolved.hitboxes);
     }
     if (bounds) renderer.setCamera(fitCamera(bounds, wrap.clientWidth, wrap.clientHeight));
     setZoomLabel(renderer.getCamera().zoom);
@@ -244,32 +304,24 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
 
     const onTick = (deltaMs: number) => {
       const playhead = playheadRef.current;
-      const animation = sceneRef.current?.animations[playhead.animationIndex];
-      if (!animation) return;
-
+      const scene = sceneRef.current;
+      if (!scene) return;
+      const bones = scene.skeletons[playhead.skeletonIndex]?.bones ?? [];
       let changed = playhead.dirty;
 
-      if (playhead.playing && animation.frames.length > 0) {
-        playhead.elapsed += deltaMs;
-        for (let guard = 0; guard < 512; guard += 1) {
-          const frame = animation.frames[playhead.frameIndex];
-          if (!frame) break;
-          const span = frameDurationMs(frame, playhead.speed);
-          if (playhead.elapsed < span) break;
-
-          playhead.elapsed -= span;
-          let next = playhead.frameIndex + 1;
-          if (next >= animation.frames.length) {
-            if (animation.loopId >= 0 && animation.loopId < animation.frames.length) {
-              next = animation.loopId;
-            } else {
-              next = animation.frames.length - 1;
-              playhead.playing = false;
-              setPlaying(false);
-            }
-          }
-          playhead.frameIndex = next;
-          changed = true;
+      if (playhead.playing && bones.length > 0) {
+        let running = 0;
+        for (let index = 0; index < bones.length; index += 1) {
+          const animation = boneAnimation(animationsRef.current, bones[index]);
+          const state = playhead.bones[index];
+          if (!animation || !state) continue;
+          if (stepBone(animation, state, deltaMs, playhead.speed)) changed = true;
+          if (!state.done) running += 1;
+        }
+        // 所有骨都不再循环（loopId < 0 且播到末帧）才停下。
+        if (running === 0) {
+          playhead.playing = false;
+          setPlaying(false);
         }
       }
 
@@ -371,22 +423,29 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     };
   }, [scene, fitScene]);
 
-  function selectAnimation(index: number) {
+  function selectSkeleton(index: number) {
     const playhead = playheadRef.current;
-    playhead.animationIndex = index;
-    playhead.frameIndex = 0;
-    playhead.elapsed = 0;
+    playhead.skeletonIndex = index;
+    playhead.bones = newBoneStates(bonesOf(index).length);
     playhead.playing = false;
     playhead.dirty = true;
-    setAnimationIndex(index);
+    setSkeletonIndex(index);
     setPlaying(false);
-    setHud((prev) => ({ ...prev, frameIndex: 0, time: 0 }));
+    setHud((prev) => ({ ...prev, frame: 0, time: 0, attach: null }));
   }
 
-  function seek(index: number) {
+  /** 跳到第 `frame` 帧：各骨按自己的长度夹取（骨长不一致是常态）。 */
+  function seek(frame: number) {
     const playhead = playheadRef.current;
-    playhead.frameIndex = Math.max(0, index);
-    playhead.elapsed = 0;
+    const bones = bonesOf(playhead.skeletonIndex);
+    for (let index = 0; index < bones.length; index += 1) {
+      const animation = boneAnimation(animationsRef.current, bones[index]);
+      const state = playhead.bones[index];
+      if (!animation || !state) continue;
+      state.frameIndex = Math.max(0, Math.min(frame, animation.frames.length - 1));
+      state.elapsed = 0;
+      state.done = false;
+    }
     playhead.playing = false;
     playhead.dirty = true;
     setPlaying(false);
@@ -395,7 +454,13 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   function togglePlay() {
     const playhead = playheadRef.current;
     playhead.playing = !playhead.playing;
-    playhead.elapsed = 0;
+    // 重新播放时把已结束的骨复位，否则按一下再也不动。
+    if (playhead.playing) {
+      for (const state of playhead.bones) {
+        state.done = false;
+        state.elapsed = 0;
+      }
+    }
     setPlaying(playhead.playing);
   }
 
@@ -424,25 +489,34 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">无内容</div>
     );
 
-  const animation = scene.animations[animationIndex] ?? null;
-  const total = animation?.frames.length ?? 0;
-  const currentFrame = animation?.frames[hud.frameIndex] ?? null;
-  const loopId = animation?.loopId ?? -1;
-  const keyframeId = currentFrame?.attach?.id ?? -1;
-  const layers = scene.keyframe[keyframeId]?.layers.filter((layer): layer is SceneLayer => layer !== null) ?? [];
+  const total = hud.frames;
+  const currentLayers: SceneLayer[] = resolveBones(
+    scene,
+    scene.skeletons[skeletonIndex]?.bones ?? [],
+    playheadRef.current.bones,
+    animationsRef.current,
+  ).layers.map((item) => item.layer);
+
+  const loopId = (() => {
+    for (const bone of scene.skeletons[skeletonIndex]?.bones ?? []) {
+      const animation = boneAnimation(animationsRef.current, bone);
+      if (animation) return animation.loopId;
+    }
+    return -1;
+  })();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex flex-none items-center gap-1.5 border-b border-base-300 bg-base-200 px-2 py-1.5">
         <select
           className="select select-xs"
-          value={animationIndex}
-          onChange={(event) => selectAnimation(Number(event.target.value))}
-          title={`动画（${scene.animations.length}）`}
+          value={skeletonIndex}
+          onChange={(event) => selectSkeleton(Number(event.target.value))}
+          title={`骨架（${scene.skeletons.length}）`}
         >
-          {scene.animations.map((item, index) => (
-            <option key={item.id} value={index}>
-              {item.name || `动画 ${item.id}`} · {item.frames.length} 帧
+          {scene.skeletons.map((item, index) => (
+            <option key={index} value={index}>
+              {item.name || `骨架 ${index}`} · {item.bones.length} 骨
             </option>
           ))}
         </select>
@@ -450,12 +524,12 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         <button className="btn btn-xs" onClick={togglePlay} disabled={total === 0}>
           {playing ? "暂停" : "播放"}
         </button>
-        <button className="btn btn-xs" onClick={() => seek(hud.frameIndex - 1)} title="上一帧">
+        <button className="btn btn-xs" onClick={() => seek(hud.frame - 1)} title="上一帧">
           ◀
         </button>
         <button
           className="btn btn-xs"
-          onClick={() => seek(Math.min(total - 1, hud.frameIndex + 1))}
+          onClick={() => seek(Math.min(total - 1, hud.frame + 1))}
           title="下一帧"
         >
           ▶
@@ -476,7 +550,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
 
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-base-content/60">
-          {hud.frameIndex + 1}/{total} · t{hud.time} · loop {loopId}
+          {hud.frame + 1}/{total} · t{hud.time} · {hud.bones} 骨 · loop {loopId}
         </span>
       </div>
 
@@ -492,8 +566,15 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         <div className="pointer-events-none absolute left-2 top-2 flex gap-1.5">
           <span className="badge badge-sm bg-base-100/90">{Math.round(zoomLabel * 100)}%</span>
           <span className="badge badge-sm bg-base-100/90">{hud.layerCount} layers</span>
-          {currentFrame?.attach && (
-            <span className="badge badge-sm badge-success">{currentFrame.attach.kind}</span>
+          {hud.attach && (
+            <span className="badge badge-sm badge-success">
+              {hud.attach.kind} {hud.attach.id}
+            </span>
+          )}
+          {textureError && (
+            <span className="badge badge-sm badge-error" title={textureError}>
+              纹理失败
+            </span>
           )}
         </div>
       </div>
@@ -509,7 +590,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         >
           {total > 0 &&
             total <= 240 &&
-            animation?.frames.map((_, index) => (
+            Array.from({ length: total }, (_, index) => (
               <div
                 key={index}
                 className="absolute inset-y-0 w-px bg-base-300"
@@ -525,21 +606,21 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           )}
           <div
             className="absolute -top-0.5 -bottom-0.5 w-0.5 bg-primary shadow-md"
-            style={{ left: `${total > 0 ? (hud.frameIndex / total) * 100 : 0}%` }}
+            style={{ left: `${total > 0 ? (hud.frame / total) * 100 : 0}%` }}
           />
         </div>
       </div>
 
       <details className="collapse collapse-arrow shrink-0 border-t border-base-300 bg-base-200">
         <summary className="collapse-title font-mono text-xs text-base-content/60">
-          图层 {layers.length} · 调试
+          图层 {currentLayers.length} · 调试
         </summary>
         <div className="collapse-content">
-          {layers.length === 0 && (
+          {currentLayers.length === 0 && (
             <div className="font-mono text-xs text-base-content/50">本帧没有贴图图层</div>
           )}
-          {layers.map((layer, index) => (
-            <LayerRow key={index} index={index} layer={layer} color={currentFrame?.color ?? null} />
+          {currentLayers.map((layer, index) => (
+            <LayerRow key={index} index={index} layer={layer} />
           ))}
 
           <div className="mt-2 border-t border-base-300 pt-1.5">
@@ -553,28 +634,18 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   );
 }
 
-/** dstquad 四角经矩阵映射后的 8 个世界坐标。 */
-function positions(layer: SceneLayer, matrix: number[]): Float32Array {
-  return positionsOf(layer.dst, matrix);
-}
-
+/** dstquad 四角经矩阵映射后的 8 个世界坐标（与 `quad_multi4` 同口径）。 */
 function positionsOf(quad: number[], matrix: number[]): Float32Array {
   const out = new Float32Array(8);
-  for (let i = 0; i < 4; i += 1) {
-    const x = quad[i * 2] ?? 0;
-    const y = quad[i * 2 + 1] ?? 0;
-    if (matrix.length < 16) {
-      out[i * 2] = x;
-      out[i * 2 + 1] = y;
-    } else {
-      out[i * 2] = matrix[0] * x + matrix[1] * y + matrix[3];
-      out[i * 2 + 1] = matrix[4] * x + matrix[5] * y + matrix[7];
-    }
+  const points = quadPoints(quad, matrix);
+  for (let index = 0; index < points.length; index += 1) {
+    out[index * 2] = points[index][0];
+    out[index * 2 + 1] = points[index][1];
   }
   return out;
 }
 
-function LayerRow({ index, layer, color }: { index: number; layer: SceneLayer; color: string | null }) {
+function LayerRow({ index, layer }: { index: number; layer: SceneLayer }) {
   const fog = layer.fog?.[0] ?? null;
   return (
     <div
@@ -586,7 +657,7 @@ function LayerRow({ index, layer, color }: { index: number; layer: SceneLayer; c
       <span className="w-6 shrink-0 text-base-content/50">{index}</span>
       <span className="min-w-0 truncate" title={`${layer.flags} · blend ${layer.blendId}`}>
         tex {layer.texId ?? "-"} · b{layer.blendId} · {layer.flags}
-        {color ? ` · ${color}` : ""}
+        {layer.colorize ? ` · ${layer.colorize}` : ""}
       </span>
     </div>
   );

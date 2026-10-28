@@ -48,6 +48,77 @@ function audioDecoderCtor(): AnyAudioDecoder | null {
   return typeof ctor === "function" ? (ctor as AnyAudioDecoder) : null;
 }
 
+/** WebCodecs `AudioData` 的字段（lib.dom 未覆盖，自己声明）。 */
+interface AudioFrameLike {
+  numberOfFrames: number;
+  numberOfChannels: number;
+  format: string;
+  /** 微秒。 */
+  timestamp: number;
+  /**
+   * WebCodecs 的 `copyTo(destination, options)` 第二个参数是**必填**的：
+   * `planeIndex` 为 required member，缺了它 Chrome 直接抛
+   * `TypeError: 2 arguments required, but only 1 present`。
+   * 这里把 `options` 声明成必填，让「漏传」在编译期就报错。
+   */
+  copyTo: (
+    target: Float32Array | Int16Array | Int32Array | Uint8Array,
+    options: { planeIndex: number; frameOffset?: number; frameCount?: number; format?: string },
+  ) => void;
+  close: () => void;
+}
+
+type SampleArray = Float32Array | Int16Array | Int32Array | Uint8Array;
+
+/** `copyTo` 要求目标数组类型与 `format` 一致，不能一律用 Float32Array。 */
+function sampleArray(format: string, length: number): SampleArray {
+  switch (format.replace("-planar", "")) {
+    case "s16":
+      return new Int16Array(length);
+    case "s32":
+      return new Int32Array(length);
+    case "u8":
+      return new Uint8Array(length);
+    default:
+      return new Float32Array(length);
+  }
+}
+
+function sampleAt(array: SampleArray, index: number): number {
+  const value = array[index];
+  if (array instanceof Int16Array) return value / 32768;
+  if (array instanceof Int32Array) return value / 2147483648;
+  if (array instanceof Uint8Array) return (value - 128) / 128;
+  return value;
+}
+
+/** 把一帧 `AudioData` 拷进按时间戳定位的浮点声道。 */
+function copyPlanes(frame: AudioFrameLike, planes: Float32Array[], start: number, channels: number) {
+  const format = String(frame.format);
+  const sourceChannels = Math.max(1, frame.numberOfChannels);
+  const frameCount = frame.numberOfFrames;
+  if (format.includes("planar")) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const buffer = sampleArray(format, frameCount);
+      frame.copyTo(buffer, { planeIndex: Math.min(channel, sourceChannels - 1) });
+      const plane = planes[channel];
+      for (let index = 0; index < frameCount; index += 1) {
+        plane[start + index] = sampleAt(buffer, index);
+      }
+    }
+    return;
+  }
+  // 交错格式只有 1 个 plane，planeIndex 必须显式给 0（不能省参数）。
+  const buffer = sampleArray(format, frameCount * sourceChannels);
+  frame.copyTo(buffer, { planeIndex: 0 });
+  for (let index = 0; index < frameCount; index += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      planes[channel][start + index] =
+        sampleAt(buffer, index * sourceChannels + Math.min(channel, sourceChannels - 1));
+    }
+  }
+}
+
 /** 当前 WebView 是否支持 WebCodecs 音频解码。 */
 export function opusDecodable(): boolean {
   return audioDecoderCtor() !== null;
@@ -96,48 +167,39 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
     throw new UnsupportedAudioError("lopus 缺少帧步长");
   }
   const packets = new Uint8Array(data);
-  const capped = Math.ceil((MAX_CLIP_SECONDS * 1000) / OPUS_PACKET_MICROS);
+  // 包上限按**微秒**算：包长是 20 000 µs，不是 20 000 ms。
+  const capped = Math.floor((MAX_CLIP_SECONDS * 1_000_000) / OPUS_PACKET_MICROS);
   const count = Math.min(Math.floor(packets.length / stride), capped);
   if (!count) {
     throw new UnsupportedAudioError("lopus 没有可解码的包");
   }
 
   const total = count * OPUS_PACKET_SAMPLES;
+  const sampleRate = Math.max(1, clip.sampleRate);
   const planes = Array.from({ length: channels }, () => new Float32Array(total));
   let written = 0;
+  let outputs = 0;
   let failure: unknown = null;
 
   const decoder = new ctor({
     output: (frame) => {
-      const typed = frame as {
-        numberOfFrames: number;
-        numberOfChannels: number;
-        format: string;
-        copyTo: (target: Float32Array, options?: Record<string, unknown>) => void;
-        close: () => void;
-      };
-      const frameCount = typed.numberOfFrames;
-      if (frameCount > 0 && written + frameCount <= total) {
-        const planar = String(typed.format).includes("planar");
-        if (planar) {
-          for (let channel = 0; channel < channels; channel += 1) {
-            const tmp = new Float32Array(frameCount);
-            typed.copyTo(tmp, { planeIndex: Math.min(channel, typed.numberOfChannels - 1) });
-            planes[channel].set(tmp, written);
-          }
-        } else {
-          const tmp = new Float32Array(frameCount * typed.numberOfChannels);
-          typed.copyTo(tmp);
-          for (let frame = 0; frame < frameCount; frame += 1) {
-            for (let channel = 0; channel < channels; channel += 1) {
-              planes[channel][written + frame] =
-                tmp[frame * typed.numberOfChannels + Math.min(channel, typed.numberOfChannels - 1)];
-            }
-          }
-        }
-        written += frameCount;
+      const typed = frame as AudioFrameLike;
+      try {
+        const frameCount = typed.numberOfFrames;
+        if (frameCount <= 0) return;
+        outputs += 1;
+        // 用输出时间戳定位，不假设解码器按顺序、无丢帧地吐帧。
+        const start = Number.isFinite(typed.timestamp)
+          ? Math.round((typed.timestamp / 1e6) * sampleRate)
+          : written;
+        if (start < 0 || start + frameCount > total) return;
+        copyPlanes(typed, planes, start, channels);
+        written = Math.max(written, start + frameCount);
+      } catch (error) {
+        failure = failure ?? error;
+      } finally {
+        typed.close();
       }
-      typed.close();
     },
     error: (error) => {
       failure = error;
@@ -175,7 +237,9 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
     throw new UnsupportedAudioError(`Opus 解码失败：${String(failure)}`);
   }
   if (written === 0) {
-    throw new UnsupportedAudioError("Opus 解码没有产出样本");
+    throw new UnsupportedAudioError(
+      `Opus 解码没有产出样本（${count} 包 / 解码器输出 ${outputs} 帧）`,
+    );
   }
 
   // 裁掉 pre-skip 与尾部未写满的区域。

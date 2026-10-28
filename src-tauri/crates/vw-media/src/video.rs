@@ -15,6 +15,14 @@ use crate::audio::AudioError;
 
 /// 块头长度：`magic(4) + size(4) + 0x18 参数`。
 const CHUNK_HEADER: usize = 0x20;
+/// `size` 字段只统计它之后的字节（`0x18 参数 + 载荷`），块总长要加回 `magic + size`。
+/// 少算这 8 字节会把每帧 NAL 的尾部截掉（ffmpeg 会报 `bytestream -5` + concealing errors）。
+const CHUNK_SIZE_BIAS: u64 = 8;
+/// `size` 字段覆盖的字节数 = `0x18 参数 + 载荷`，所以载荷恒为 `size - 0x18`。
+/// **按 size 反推而不是按对齐后的块长反推**：块尾到 0x20 对齐之间是填充，
+/// 它不属于码流；把它拼进 Annex-B 会让上一帧的 NAL 末尾多出若干 0 字节，
+/// 在 AVCC 里就变成「NAL 长度包含垃圾」，解码器只能靠容错猜。
+const PAYLOAD_PREFIX: u64 = CHUNK_HEADER as u64 - CHUNK_SIZE_BIAS;
 /// 扫描窗口：块之间只需保留 3 字节，防止起始码跨块。
 const CARRY: usize = 3;
 const MAX_CHUNKS: usize = 2_000_000;
@@ -23,7 +31,7 @@ const MAX_FRAMES: usize = 4_000_000;
 #[derive(Clone, Copy, Debug)]
 pub struct VideoChunk {
     pub file_offset: u64,
-    /// 载荷长度（已扣掉 0x20 块头）。
+    /// 载荷长度（`size - 0x18`，不含块尾对齐填充）。
     pub payload: u32,
     /// 该块载荷在拼接流里的起始位置。
     pub stream_offset: u64,
@@ -96,6 +104,16 @@ impl UsmIndex {
     }
 }
 
+/// 块总长（含 0x20 头，按 0x20 对齐）与真实载荷长度。
+///
+/// 两个量必须分开：**块总长**决定下一个块从哪开始（对齐到 0x20），
+/// **载荷长度**只取 `size` 声明的部分（`size - 0x18`），不含尾部填充。
+fn chunk_span(size: u64) -> (u64, u32) {
+    let total = (size + CHUNK_SIZE_BIAS).div_ceil(CHUNK_HEADER as u64) * CHUNK_HEADER as u64;
+    let payload = size.saturating_sub(PAYLOAD_PREFIX).min(total - CHUNK_HEADER as u64);
+    (total, payload as u32)
+}
+
 /// 打开并扫描 USM：块表、帧表、SPS 宽高。
 pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
     let mut file = BufReader::with_capacity(1 << 20, File::open(path)?);
@@ -131,7 +149,11 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
             break;
         }
         let size = u32_be(&chunk_head, 4).unwrap_or(0) as u64;
-        if size < CHUNK_HEADER as u64 || cursor + size > file_len {
+        if size < PAYLOAD_PREFIX {
+            break;
+        }
+        let (total, payload_len) = chunk_span(size);
+        if cursor + total > file_len {
             break;
         }
         // 块头的 0x18 参数里：+0x0C 帧号、+0x10 保留、+0x14 帧率 ×1000。
@@ -155,16 +177,16 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
                 let probed = file.read(&mut probe).unwrap_or(0);
                 let is_table = probed >= 4 && (&probe == b"@UTF" || probe[0] == b'#');
                 if is_table {
-                    cursor += size.div_ceil(CHUNK_HEADER as u64) * CHUNK_HEADER as u64;
+                    cursor += total;
                     continue;
                 }
                 chunks.push(VideoChunk {
                     file_offset: cursor,
-                    payload: (size - CHUNK_HEADER as u64) as u32,
+                    payload: payload_len,
                     stream_offset,
                     frame_no,
                 });
-                stream_offset += size - CHUNK_HEADER as u64;
+                stream_offset += payload_len as u64;
             }
             b"@SFA" => {
                 if audio == "none" {
@@ -189,7 +211,7 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
             _ => {}
         }
 
-        cursor += size.div_ceil(CHUNK_HEADER as u64) * CHUNK_HEADER as u64;
+        cursor += total;
         if chunks.len() > MAX_CHUNKS {
             return Err(AudioError::Malformed("块数超过上限".to_string()));
         }
@@ -522,5 +544,17 @@ mod tests {
         assert_eq!(reader.ue(), Some(0));
         assert_eq!(reader.ue(), Some(1));
         assert_eq!(reader.ue(), Some(2));
+    }
+
+    /// `size` 不含块头前 8 字节；语料里 `size % 32 == 24`，载荷就是 `size - 0x18`。
+    #[test]
+    fn chunk_span_counts_the_first_eight_bytes() {
+        assert_eq!(chunk_span(504), (512, 480));
+        assert_eq!(chunk_span(280), (288, 256));
+        assert_eq!(chunk_span(0x18), (32, 0));
+        // 语料之外的尺寸：块长仍对齐，载荷只按 size 取，不把填充算进码流。
+        assert_eq!(chunk_span(500), (512, 476));
+        // size+8 跨过 0x20 边界时整块涨到下一个 0x20，载荷仍只取 1 字节。
+        assert_eq!(chunk_span(0x19), (64, 1));
     }
 }
