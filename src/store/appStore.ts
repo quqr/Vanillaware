@@ -7,7 +7,7 @@
 import { create } from "zustand";
 import type { GameProfile } from "../lib/ipc";
 
-/** 平台标签全集（与 `vw_formats::mbs::profile::lookup` 一致）。 */
+/** 平台标签全集（与 `formats::mbs::profile::lookup` 一致）。 */
 export const TAGS = [
   "swi_unic",
   "ps4_unic",
@@ -39,8 +39,8 @@ export const THEMES = [
 
 export type ThemeId = (typeof THEMES)[number];
 
-const THEME_KEY = "vw-theme";
-const PROFILE_KEY = "vw-profile";
+const THEME_KEY = "theme";
+const PROFILE_KEY = "profile";
 
 function readTheme(): ThemeId {
   try {

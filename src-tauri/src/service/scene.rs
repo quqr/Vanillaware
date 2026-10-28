@@ -1,17 +1,17 @@
 //! 预览场景服务：把 `.mbs` 解析成 Quad，再摊平成前端 DTO。
 //!
-//! 这里只做「模型 → 视图」的搬运，不含任何格式判断：字段含义全部由 `vw-formats` 定义。
+//! 这里只做「模型 → 视图」的搬运，不含任何格式判断：字段含义全部由 `formats` 定义。
 //! 解析结果由 [`super::parse::ParseCache`] 缓存，播放与结构两个查看器共用同一份。
 
 use std::path::Path;
 
-use vw_formats::Result;
-use vw_formats::atlas::Atlas;
-use vw_formats::mbs::quad::{
+use formats::Result;
+use formats::atlas::Atlas;
+use formats::mbs::quad::{
     Animation, Attach, Attribute, Bone, Hitbox, HitboxLayer, Keyframe, KeyframeLayer, Pad, Quad,
     TimelineEntry,
 };
-use vw_formats::mbs::v55::FogQuad;
+use formats::mbs::v55::FogQuad;
 
 use crate::model::scene::{
     AnimationDto, AtlasFrameDto, AttachDto, FrameDto, HitboxDto, HitboxLayerDto, KeyframeDto,
@@ -26,8 +26,8 @@ pub struct LoadedMbs {
 
 /// 解析 + 转换 + 打开图集。
 pub fn load(mbs_path: &Path, tag: &str) -> Result<LoadedMbs> {
-    let v55 = vw_formats::mbs::parse_file(mbs_path, tag)?;
-    let quad = vw_formats::mbs::convert(&v55)?;
+    let v55 = formats::mbs::parse_file(mbs_path, tag)?;
+    let quad = formats::mbs::convert(&v55)?;
     let atlas = Atlas::open(mbs_path)?;
     Ok(LoadedMbs { quad, atlas })
 }
@@ -83,7 +83,7 @@ impl LoadedMbs {
                     Pad::Empty(_) => None,
                 })
                 .collect(),
-            self_check: vw_formats::mbs::self_check(&self.quad),
+            self_check: formats::mbs::self_check(&self.quad),
         }
     }
 }

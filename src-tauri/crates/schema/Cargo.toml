@@ -1,0 +1,9 @@
+[package]
+name = "schema"
+version = "0.1.0"
+edition = "2021"
+description = "Generated Kaitai structures; do not edit src/gen."
+publish = false
+
+[dependencies]
+kaitai = { path = "../../vendor/kaitai" }

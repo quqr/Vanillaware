@@ -1,6 +1,6 @@
 //! 运行时配置：缓存位置与并发上限。
 //!
-//! 只放「可调参数」，不放业务逻辑。改缓存布局时记得同步 `vw_media::ThumbCache` 的 `SCHEMA`。
+//! 只放「可调参数」，不放业务逻辑。改缓存布局时记得同步 `media::ThumbCache` 的 `SCHEMA`。
 
 use std::path::PathBuf;
 

@@ -7,7 +7,7 @@ pub mod animation;
 pub mod audio;
 pub mod cache;
 pub mod content;
-pub mod doc;
+pub mod document;
 pub mod index;
 pub mod library;
 pub mod texture;
@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use tauri::State;
 use tauri::ipc::Response;
 
-use vw_media::TextureInfo;
+use media::TextureInfo;
 
 use crate::model::FrameMetaDto;
 use crate::state::AppState;
@@ -75,7 +75,7 @@ pub(crate) async fn decode_frame_png(
 
     let bytes = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let decode = || vw_formats::ftx::decode_file_frame(&source, index);
+        let decode = || formats::ftx::decode_file_frame(&source, index);
         if full {
             cache.ensure_png_full(&source, index, decode)
         } else {

@@ -39,7 +39,7 @@ pub async fn convert_mbs(
     let cache = state.parse_cache();
     tokio::task::spawn_blocking(move || {
         let loaded = cache.load(&source, &tag)?;
-        let self_check = vw_formats::mbs::self_check(&loaded.quad);
+        let self_check = formats::mbs::self_check(&loaded.quad);
         let quad = serde_json::to_value(&loaded.quad).map_err(err_string)?;
 
         Ok(ConvertDto {

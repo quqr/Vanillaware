@@ -6,7 +6,7 @@ use super::err_string;
 use crate::state::AppState;
 
 #[tauri::command]
-pub async fn get_cache_info(state: State<'_, AppState>) -> Result<vw_media::CacheInfo, String> {
+pub async fn get_cache_info(state: State<'_, AppState>) -> Result<media::CacheInfo, String> {
     let cache = state.cache.clone();
     tokio::task::spawn_blocking(move || cache.info())
         .await
@@ -14,7 +14,7 @@ pub async fn get_cache_info(state: State<'_, AppState>) -> Result<vw_media::Cach
 }
 
 #[tauri::command]
-pub async fn clear_thumb_cache(state: State<'_, AppState>) -> Result<vw_media::CacheInfo, String> {
+pub async fn clear_thumb_cache(state: State<'_, AppState>) -> Result<media::CacheInfo, String> {
     let cache = state.cache.clone();
     tokio::task::spawn_blocking(move || cache.clear())
         .await

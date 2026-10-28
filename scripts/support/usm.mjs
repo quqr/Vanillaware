@@ -7,7 +7,7 @@ export const WORKSPACE = new URL("../../src-tauri/", import.meta.url).pathname.r
 );
 
 const FFMPEG_CANDIDATES = [
-  process.env.VW_FFMPEG,
+  process.env.FFMPEG_BIN,
   "C:\\Program Files\\Krita (x64)\\bin\\ffmpeg.exe",
   "ffmpeg",
 ].filter(Boolean);
@@ -23,7 +23,7 @@ export function readGop({ usm, gop, dumpPath }) {
       "run",
       "-q",
       "-p",
-      "vw-media",
+      "media",
       "--example",
       "usm_gop_probe",
       "--",

@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::Semaphore;
 
-use vw_core::{IndexEntry, IndexStatusDto};
-use vw_media::ThumbCache;
+use catalog::{IndexEntry, IndexStatusDto};
+use media::ThumbCache;
 
 use crate::config;
 use crate::service::{AudioService, DocCache, IndexService, ParseCache, VideoService};

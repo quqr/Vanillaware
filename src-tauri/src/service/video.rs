@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use vw_media::video::{UsmIndex, open};
+use media::video::{UsmIndex, open};
 
 #[derive(Default)]
 pub struct VideoService {

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use tauri::State;
 
-use vw_core::{IndexStatusDto, SearchResultDto};
+use catalog::{IndexStatusDto, SearchResultDto};
 
 use crate::state::AppState;
 
@@ -28,8 +28,8 @@ pub async fn search_files(
     limit: Option<u32>,
 ) -> Result<SearchResultDto, String> {
     let entries = state.index_entries();
-    let limit = limit.map(|v| v as usize).unwrap_or(vw_core::SEARCH_LIMIT);
-    tokio::task::spawn_blocking(move || vw_core::search_index(&entries, &query, limit))
+    let limit = limit.map(|v| v as usize).unwrap_or(catalog::SEARCH_LIMIT);
+    tokio::task::spawn_blocking(move || catalog::search_index(&entries, &query, limit))
         .await
         .map_err(|e| format!("join error: {e}"))
 }

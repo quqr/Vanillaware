@@ -1,7 +1,7 @@
 //! 跨进程数据结构（DTO）。
 //!
 //! 这一层只有 `struct` 与 `serde` 属性，没有任何解析或 IO 逻辑：
-//! 字段含义由 `vw-formats` / `vw-core` 定义，这里只负责「怎么传给前端」。
+//! 字段含义由 `formats` / `catalog` 定义，这里只负责「怎么传给前端」。
 
 pub mod animation;
 pub mod audio;

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use vw_core::{IndexEntry, IndexState, IndexStatusDto};
+use catalog::{IndexEntry, IndexState, IndexStatusDto};
 
 /// 索引的可变部分：状态 + 条目快照。
 struct IndexSlot {
@@ -84,7 +84,7 @@ impl IndexService {
 
         std::thread::spawn(move || {
             let progress_slot = slot.clone();
-            let result = vw_core::build_index(&root_path, &cancel, move |count| {
+            let result = catalog::build_index(&root_path, &cancel, move |count| {
                 if let Ok(mut guard) = progress_slot.lock() {
                     guard.status.count = count;
                 }
@@ -118,7 +118,7 @@ impl IndexService {
         slot.status = IndexStatusDto {
             state: IndexState::Building,
             count: 0,
-            root: Some(vw_core::normalize(root)),
+            root: Some(catalog::normalize(root)),
             error: None,
         };
         slot.entries = Arc::new(Vec::new());

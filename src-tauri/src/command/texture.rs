@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use tauri::State;
 use tauri::ipc::Response;
 
-use vw_media::TextureInfo;
+use media::TextureInfo;
 
 use super::{decode_frame_png, err_string, frame_metas};
 use crate::model::FrameListDto;
@@ -18,7 +18,7 @@ pub async fn list_frames(state: State<'_, AppState>, path: String) -> Result<Fra
     let source = PathBuf::from(&path);
 
     let infos = tokio::task::spawn_blocking(move || -> Result<Vec<TextureInfo>, String> {
-        let infos = vw_formats::ftx::probe_file(&source).map_err(err_string)?;
+        let infos = formats::ftx::probe_file(&source).map_err(err_string)?;
         // 顺手落 meta.json，让帧数徽标可以早于缩略图出现。
         cache.ensure_meta(&source, &infos).map_err(err_string)?;
         Ok(infos)
@@ -77,11 +77,11 @@ pub async fn get_atlas_png(
     let bytes = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         // 只需要同目录的纹理容器，不必解析 `.mbs` 本身。
-        let container = vw_formats::atlas::sibling_container(&source)?
-            .ok_or_else(|| vw_formats::Error::BadData("没有同名纹理容器".to_string()))?;
+        let container = formats::atlas::sibling_container(&source)?
+            .ok_or_else(|| formats::Error::BadData("没有同名纹理容器".to_string()))?;
         let index = tex_id as usize;
         cache.ensure_png_full(&container, index, || {
-            vw_formats::ftx::decode_file_frame(&container, index)
+            formats::ftx::decode_file_frame(&container, index)
         })
     })
     .await

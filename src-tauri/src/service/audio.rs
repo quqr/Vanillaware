@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use vw_media::audio::{AudioError, Bundle as AudioBundle, open_acb, open_awb};
+use media::audio::{AudioError, Bundle as AudioBundle, open_acb, open_awb};
 
 /// 同时驻留的容器数。
 const CAPACITY: usize = 2;

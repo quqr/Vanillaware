@@ -1,0 +1,13 @@
+[package]
+name = "catalog"
+version = "0.1.0"
+edition = "2021"
+description = "Directory listings, format registry, index and game profile. Deliberately does not depend on formats, so scanning cannot decode anything."
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"

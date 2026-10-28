@@ -418,6 +418,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "catalog"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
+ "walkdir",
+]
+
+[[package]]
 name = "cc"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1120,6 +1129,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "formats"
+version = "0.1.0"
+dependencies = [
+ "encoding_rs",
+ "flate2",
+ "image",
+ "kaitai",
+ "schema",
+ "serde",
+ "serde_json",
+ "texture2ddecoder",
 ]
 
 [[package]]
@@ -2105,6 +2128,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "media"
+version = "0.1.0"
+dependencies = [
+ "cridecoder",
+ "formats",
+ "image",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2987,6 +3022,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "schema"
+version = "0.1.0"
+dependencies = [
+ "kaitai",
 ]
 
 [[package]]
@@ -4244,6 +4286,9 @@ dependencies = [
 name = "vanillaware"
 version = "0.1.0"
 dependencies = [
+ "catalog",
+ "formats",
+ "media",
  "serde",
  "serde_json",
  "tauri",
@@ -4251,9 +4296,6 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tokio",
- "vw-core",
- "vw-formats",
- "vw-media",
 ]
 
 [[package]]
@@ -4286,48 +4328,6 @@ checksum = "fb067e4cbd1ff067d1df46c9194b5de0e98efd2810bbc95c5d5e5f25a3231150"
 dependencies = [
  "cc",
  "libc",
-]
-
-[[package]]
-name = "vw-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "tempfile",
- "walkdir",
-]
-
-[[package]]
-name = "vw-formats"
-version = "0.1.0"
-dependencies = [
- "encoding_rs",
- "flate2",
- "image",
- "kaitai",
- "serde",
- "serde_json",
- "texture2ddecoder",
- "vw-gen",
-]
-
-[[package]]
-name = "vw-gen"
-version = "0.1.0"
-dependencies = [
- "kaitai",
-]
-
-[[package]]
-name = "vw-media"
-version = "0.1.0"
-dependencies = [
- "cridecoder",
- "image",
- "serde",
- "serde_json",
- "tempfile",
- "vw-formats",
 ]
 
 [[package]]

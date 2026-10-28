@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tauri::State;
 use tauri::ipc::Response;
 
-use vw_media::audio::{Clip, decode_track};
+use media::audio::{Clip, decode_track};
 
 use crate::model::audio::{AudioBundleDto, AudioClipDto, AudioCodecCountDto, AudioTrackDto};
 use crate::state::AppState;

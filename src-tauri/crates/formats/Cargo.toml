@@ -1,0 +1,26 @@
+[package]
+name = "formats"
+version = "0.1.0"
+edition = "2021"
+description = "Format semantics and projections on top of the generated Kaitai structures, plus hand-written pixel codecs."
+publish = false
+
+[dependencies]
+schema = { path = "../schema" }
+kaitai = { path = "../../vendor/kaitai" }
+texture2ddecoder = "0.1"
+encoding_rs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+flate2 = "1"
+
+[[example]]
+name = "doc_probe"
+path = "tests/tools/doc_probe.rs"
+
+[[example]]
+name = "bst_probe"
+path = "tests/tools/bst_probe.rs"
