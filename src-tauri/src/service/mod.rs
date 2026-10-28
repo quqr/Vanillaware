@@ -4,12 +4,16 @@
 //! - [`parse`]：解析结果 LRU；
 //! - [`index`]：目录索引的后台构建与快照。
 
+pub mod audio;
 pub mod doc;
 pub mod index;
 pub mod parse;
 pub mod scene;
+pub mod video;
 
+pub use audio::AudioService;
 pub use doc::DocCache;
 pub use index::IndexService;
 pub use parse::ParseCache;
 pub use scene::{LoadedMbs, load as load_mbs};
+pub use video::VideoService;

@@ -6,6 +6,7 @@
 
 pub mod atlas;
 pub mod codec;
+pub mod content;
 pub mod doc;
 pub mod ftx;
 pub mod mbs;

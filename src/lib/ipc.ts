@@ -14,6 +14,8 @@ export type Kind =
   | "text"
   | "list"
   | "grid"
+  | "audio"
+  | "video"
   | "binary";
 
 /** 已知游戏档案。 */
@@ -414,6 +416,98 @@ export interface ConvertResult {
   selfCheck: string[];
 }
 
+/** 音频容器里的一条轨道。 */
+export interface AudioTrack {
+  index: number;
+  name: string;
+  cueId: number;
+  /** HCA / Opus / ADX … */
+  codec: string;
+  /** 能否在应用内解码播放。 */
+  playable: boolean;
+  /** 载荷在外部 AWB 里。 */
+  stream: boolean;
+  bytes: number;
+}
+
+export interface AudioCodecCount {
+  codec: string;
+  count: number;
+}
+
+export interface AudioBundle {
+  container: string;
+  source: string;
+  tracks: AudioTrack[];
+  codecs: AudioCodecCount[];
+  external: string[];
+  warnings: string[];
+}
+
+/** 片段元信息；载荷另取。 */
+export interface AudioClip {
+  /** "hca" 为后端解好的 i16 PCM，"lopus" 为裸 Opus 包。 */
+  codec: string;
+  sampleRate: number;
+  channels: number;
+  frames: number;
+  durationMs: number;
+  /** lopus 每包字节数。 */
+  stride: number;
+  skip: number;
+  bytes: number;
+}
+
+/** USM 影片索引。 */
+export interface UsmVideo {
+  width: number;
+  height: number;
+  /** avc1.640028 */
+  codec: string;
+  profile: number;
+  level: number;
+  fps: number;
+  frames: number;
+  durationMs: number;
+  /** SPS / PPS 的 hex。 */
+  sps: string;
+  pps: string;
+  /** adx / hca / none */
+  audio: string;
+  chunks: number;
+  streamBytes: number;
+  keyframes: number[];
+  frameSizes: number[];
+}
+
+/** 内容视图的一张表。 */
+export interface ContentSection {
+  title: string;
+  columns: string[];
+  rows: string[][];
+  /** 实际总行数，`rows` 可能被截断。 */
+  total: number;
+}
+
+export interface ContentSeries {
+  label: string;
+  points: number[];
+  note: string | null;
+}
+
+/** 内容视图：一个文件可同时有表格 / 位图 / 折线 / 文本。 */
+export interface Content {
+  title: string;
+  note: string | null;
+  sections: ContentSection[];
+  series: ContentSeries | null;
+  text: string[] | null;
+  /** `data:image/png;base64,...` */
+  image: string | null;
+  /** 位图坐标口径（横轴/纵轴/灰度含义）。 */
+  imageNote: string | null;
+}
+
 export const api = {
   listDir: (path: string) => invoke<DirListing>("list_dir", { path }),
   listFormats: () => invoke<FormatInfo[]>("list_formats"),
@@ -451,6 +545,18 @@ export const api = {
   convertMbs: (path: string, tag: string) => invoke<ConvertResult>("convert_mbs", { path, tag }),
   exportQuad: (path: string, tag: string, outPath: string) =>
     invoke<number>("export_quad", { path, tag, outPath }),
+
+  audioBundle: (path: string) => invoke<AudioBundle>("audio_bundle", { path }),
+  audioClipInfo: (path: string, index: number) =>
+    invoke<AudioClip>("audio_clip_info", { path, index }),
+  audioClipData: (path: string, index: number) =>
+    invoke<ArrayBuffer>("audio_clip_data", { path, index }),
+
+  contentOpen: (path: string) => invoke<Content>("content_open", { path }),
+
+  usmVideoInfo: (path: string) => invoke<UsmVideo>("usm_video_info", { path }),
+  usmVideoGop: (path: string, gop: number) =>
+    invoke<ArrayBuffer>("usm_video_gop", { path, gop }),
 
   getCacheInfo: () => invoke<CacheInfo>("get_cache_info"),
   clearThumbCache: () => invoke<CacheInfo>("clear_thumb_cache"),

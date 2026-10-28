@@ -12,7 +12,7 @@ use vw_core::{IndexEntry, IndexStatusDto};
 use vw_media::ThumbCache;
 
 use crate::config;
-use crate::service::{DocCache, IndexService, ParseCache};
+use crate::service::{AudioService, DocCache, IndexService, ParseCache, VideoService};
 
 pub struct AppState {
     /// 缩略图与帧图的磁盘缓存。
@@ -23,6 +23,10 @@ pub struct AppState {
     pub inflight: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// 文档树构建的并发闸门（与像素解码隔离）。
     pub doc_sem: Arc<Semaphore>,
+    /// 音频容器索引（ACB/AWB）。
+    pub audio: Arc<AudioService>,
+    /// USM 影片索引。
+    pub video: Arc<VideoService>,
     index: IndexService,
     parse: ParseCache,
     doc: DocCache,
@@ -35,6 +39,8 @@ impl AppState {
             decode_sem: Arc::new(Semaphore::new(config::DECODE_PERMITS)),
             doc_sem: Arc::new(Semaphore::new(config::DOC_PERMITS)),
             inflight: Arc::new(Mutex::new(HashMap::new())),
+            audio: Arc::new(AudioService::new()),
+            video: Arc::new(VideoService::new()),
             index: IndexService::new(),
             parse: ParseCache::new(),
             doc: DocCache::new(),

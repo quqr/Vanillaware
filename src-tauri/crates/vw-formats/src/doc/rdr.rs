@@ -74,6 +74,15 @@ pub fn ascii(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// 以 NUL 截断的 UTF-8 字符串（日文标签；非 UTF-8 字节替换成 U+FFFD）。
+pub fn utf8_string(bytes: &[u8]) -> String {
+    let end = bytes
+        .iter()
+        .position(|&byte| byte == 0)
+        .unwrap_or(bytes.len());
+    String::from_utf8_lossy(&bytes[..end]).trim().to_string()
+}
+
 /// 以 NUL 截断的可打印字符串（Shift-JIS 尚未解码，保留原始字节）。
 pub fn c_string(bytes: &[u8]) -> String {
     let end = bytes

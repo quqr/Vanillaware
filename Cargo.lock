@@ -578,6 +578,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cridecoder"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7562e2f9604c5daf900dd2ee3fabb93341544324f0d5c568a46588b9f241b93e"
+dependencies = [
+ "byteorder",
+ "encoding_rs",
+ "hex",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4325,6 +4340,7 @@ dependencies = [
 name = "vw-media"
 version = "0.1.0"
 dependencies = [
+ "cridecoder",
  "image",
  "serde",
  "serde_json",

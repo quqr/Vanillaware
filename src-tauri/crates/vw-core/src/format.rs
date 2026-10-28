@@ -94,6 +94,9 @@ const DOC_HEX: &[&str] = &["doc", "hex"];
 const GRAPH_DOC_HEX: &[&str] = &["graph", "doc", "hex"];
 const ANIMATION_DOC_HEX: &[&str] = &["animation", "doc", "hex"];
 const ATLAS_DOC_HEX: &[&str] = &["atlas", "doc", "hex"];
+const AUDIO_DOC_HEX: &[&str] = &["audio", "doc", "hex"];
+const VIDEO_DOC_HEX: &[&str] = &["video", "doc", "hex"];
+const CONTENT_DOC_HEX: &[&str] = &["content", "doc", "hex"];
 
 /// 注册表。扩展名小写、不含点。
 pub const FORMATS: &[Format] = &[
@@ -157,7 +160,7 @@ pub const FORMATS: &[Format] = &[
         ext: "fsb",
         kind: Kind::List,
         label: "FSB",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
@@ -185,14 +188,14 @@ pub const FORMATS: &[Format] = &[
         ext: "mpd",
         kind: Kind::Grid,
         label: "MPD",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "ctb",
         kind: Kind::Grid,
         label: "CTB",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     // 大地图与调试参数库：结构已逐字段闭合，查看器给出全量字段。
@@ -200,42 +203,42 @@ pub const FORMATS: &[Format] = &[
         ext: "nnd",
         kind: Kind::Grid,
         label: "NND",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "drg",
         kind: Kind::List,
         label: "DRG",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "ufb",
         kind: Kind::Scene,
         label: "UFB",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "ucb",
         kind: Kind::Grid,
         label: "UCB",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "vs2",
         kind: Kind::List,
         label: "VS2",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "inc",
         kind: Kind::Text,
         label: "INC",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     // CRI 音频 / 影片：容器层闭合，载荷（HCA / Sofdec2）按字节保留。
@@ -243,28 +246,28 @@ pub const FORMATS: &[Format] = &[
         ext: "acb",
         kind: Kind::Audio,
         label: "ACB",
-        viewers: DOC_HEX,
+        viewers: AUDIO_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "awb",
         kind: Kind::Audio,
         label: "AFS2",
-        viewers: DOC_HEX,
+        viewers: AUDIO_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "acf",
         kind: Kind::Audio,
         label: "ACF",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "usm",
         kind: Kind::Video,
         label: "USM",
-        viewers: DOC_HEX,
+        viewers: VIDEO_DOC_HEX,
         has_thumb: false,
     },
     // CPK 是 CRI 封包，目录表加密且 romfs 已全解包：只报元信息。
@@ -279,7 +282,7 @@ pub const FORMATS: &[Format] = &[
         ext: "scb",
         kind: Kind::Text,
         label: "SCB",
-        viewers: DOC_HEX,
+        viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
 ];

@@ -4,11 +4,14 @@
 //! 业务逻辑在 [`crate::service`]，数据结构在 [`crate::model`]。
 
 pub mod animation;
+pub mod audio;
 pub mod cache;
+pub mod content;
 pub mod doc;
 pub mod index;
 pub mod library;
 pub mod texture;
+pub mod video;
 
 use std::path::PathBuf;
 

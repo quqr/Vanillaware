@@ -4,20 +4,25 @@ import { formatBytes } from "../../lib/format";
 import type { FileEntry } from "../../lib/ipc";
 import { AsmViewer } from "../viewers/AsmViewer";
 import { AtlasViewer } from "../viewers/AtlasViewer";
+import { AudioViewer } from "../viewers/AudioViewer";
 import { BbsLayoutViewer } from "../viewers/BbsLayoutViewer";
 import { AnimationViewer } from "../viewers/AnimationViewer";
+import { ContentViewer } from "../viewers/ContentViewer";
 import { DocViewer } from "../viewers/DocViewer";
 import { FmdMeshViewer } from "../viewers/FmdMeshViewer";
 import { FmsTableViewer } from "../viewers/FmsTableViewer";
 import { HexViewer } from "../viewers/HexViewer";
 import { OsbSceneViewer } from "../viewers/OsbSceneViewer";
 import { RefGraphViewer } from "../viewers/RefGraphViewer";
+import { VideoViewer } from "../viewers/VideoViewer";
 
 /** 查看器 id → 组件。新增格式只需在这里加一条（后端负责声明有哪些 id）。 */
 const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: string) => React.ReactNode }> = {
   asm: { label: "反汇编", render: (entry) => <AsmViewer entry={entry} /> },
   atlas: { label: "图集", render: (entry) => <AtlasViewer entry={entry} /> },
   animation: { label: "动画", render: (entry, tag) => <AnimationViewer entry={entry} tag={tag} /> },
+  audio: { label: "音频", render: (entry) => <AudioViewer entry={entry} /> },
+  content: { label: "内容", render: (entry) => <ContentViewer entry={entry} /> },
   doc: { label: "结构", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
   layout: { label: "布局", render: (entry) => <BbsLayoutViewer entry={entry} /> },
   mesh: { label: "模型", render: (entry) => <FmdMeshViewer entry={entry} /> },
@@ -25,6 +30,7 @@ const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: s
   graph: { label: "引用图", render: (entry) => <RefGraphViewer entry={entry} /> },
   text: { label: "文本", render: (entry) => <FmsTableViewer entry={entry} /> },
   hex: { label: "十六进制", render: (entry) => <HexViewer entry={entry} /> },
+  video: { label: "影片", render: (entry) => <VideoViewer entry={entry} /> },
 };
 
 const KIND_LABEL: Record<string, string> = {
