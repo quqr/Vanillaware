@@ -1,12 +1,12 @@
+import { t } from "../../i18n";
 import { useLibraryStore } from "../../store/libraryStore";
 
-/** 面包屑：从根到当前目录，每一段可点。 */
 export function Breadcrumbs() {
   const root = useLibraryStore((s) => s.root);
   const dir = useLibraryStore((s) => s.dir);
   const navigate = useLibraryStore((s) => s.navigate);
 
-  if (!root || !dir) return <div className="px-2 text-xs text-base-content/50">未打开目录</div>;
+  if (!root || !dir) return <div className="px-2 text-xs text-base-content/50">{t("library.noDirectory")}</div>;
 
   const segments = buildSegments(root, dir);
 
@@ -48,7 +48,6 @@ function buildSegments(root: string, dir: string): { name: string; path: string 
     return segments;
   }
 
-  // 落到了根之外（例如「上一级」跳出去）：退化为按绝对路径分段。
   const parts = dir.split(/[\\/]/).filter(Boolean);
   let cursor = "";
   return parts.map((part, index) => {

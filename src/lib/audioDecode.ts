@@ -1,13 +1,3 @@
-/**
- * 音频片段解码：把后端给的载荷变成可绘制的浮点声道。
- *
- * 两条路径：
- * - `hca`：后端已用 cridecoder 解成交错 i16 PCM，这里只做定点转浮点；
- * - `lopus`：后端只拆出裸 Opus 包，这里用 WebCodecs `AudioDecoder` 解码。
- *
- * WebCodecs 不可用时抛 `UnsupportedAudioError`，由查看器降级成「只能看结构」。
- */
-
 import type { AudioClip } from "./ipc";
 
 export class UnsupportedAudioError extends Error {}
@@ -15,21 +5,16 @@ export class UnsupportedAudioError extends Error {}
 export interface DecodedAudio {
   sampleRate: number;
   channels: Float32Array<ArrayBuffer>[];
-  /** 每声道样本数。 */
+
   frames: number;
   durationSec: number;
-  /** 丢掉了多少前导样本（Opus pre-skip）。 */
+
   skipped: number;
 }
 
-/** 每包样本数：lopus 固定 20 ms @ 48 kHz。 */
 const OPUS_PACKET_SAMPLES = 960;
 const OPUS_PACKET_MICROS = 20_000;
 
-/**
- * 单次解码上限（秒）。语料里最长的是 107 秒的 BGM，
- * 留 5 分钟余量，超过就只解前 5 分钟，免得几十兆浮点把页面拖死。
- */
 const MAX_CLIP_SECONDS = 300;
 
 type AnyAudioDecoder = new (init: {
@@ -48,19 +33,13 @@ function audioDecoderCtor(): AnyAudioDecoder | null {
   return typeof ctor === "function" ? (ctor as AnyAudioDecoder) : null;
 }
 
-/** WebCodecs `AudioData` 的字段（lib.dom 未覆盖，自己声明）。 */
 interface AudioFrameLike {
   numberOfFrames: number;
   numberOfChannels: number;
   format: string;
-  /** 微秒。 */
+
   timestamp: number;
-  /**
-   * WebCodecs 的 `copyTo(destination, options)` 第二个参数是**必填**的：
-   * `planeIndex` 为 required member，缺了它 Chrome 直接抛
-   * `TypeError: 2 arguments required, but only 1 present`。
-   * 这里把 `options` 声明成必填，让「漏传」在编译期就报错。
-   */
+
   copyTo: (
     target: Float32Array | Int16Array | Int32Array | Uint8Array,
     options: { planeIndex: number; frameOffset?: number; frameCount?: number; format?: string },
@@ -70,7 +49,6 @@ interface AudioFrameLike {
 
 type SampleArray = Float32Array | Int16Array | Int32Array | Uint8Array;
 
-/** `copyTo` 要求目标数组类型与 `format` 一致，不能一律用 Float32Array。 */
 function sampleArray(format: string, length: number): SampleArray {
   switch (format.replace("-planar", "")) {
     case "s16":
@@ -92,7 +70,6 @@ function sampleAt(array: SampleArray, index: number): number {
   return value;
 }
 
-/** 把一帧 `AudioData` 拷进按时间戳定位的浮点声道。 */
 function copyPlanes(frame: AudioFrameLike, planes: Float32Array[], start: number, channels: number) {
   const format = String(frame.format);
   const sourceChannels = Math.max(1, frame.numberOfChannels);
@@ -108,7 +85,6 @@ function copyPlanes(frame: AudioFrameLike, planes: Float32Array[], start: number
     }
     return;
   }
-  // 交错格式只有 1 个 plane，planeIndex 必须显式给 0（不能省参数）。
   const buffer = sampleArray(format, frameCount * sourceChannels);
   frame.copyTo(buffer, { planeIndex: 0 });
   for (let index = 0; index < frameCount; index += 1) {
@@ -119,7 +95,6 @@ function copyPlanes(frame: AudioFrameLike, planes: Float32Array[], start: number
   }
 }
 
-/** 当前 WebView 是否支持 WebCodecs 音频解码。 */
 export function opusDecodable(): boolean {
   return audioDecoderCtor() !== null;
 }
@@ -134,7 +109,6 @@ export async function decodeClip(clip: AudioClip, data: ArrayBuffer): Promise<De
   throw new UnsupportedAudioError(`未知编码 ${clip.codec}`);
 }
 
-/** 交错 i16 → 分声道 f32。 */
 function decodePcm(clip: AudioClip, data: ArrayBuffer): DecodedAudio {
   const channels = Math.max(1, clip.channels);
   const interleaved = new Int16Array(data);
@@ -167,7 +141,6 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
     throw new UnsupportedAudioError("lopus 缺少帧步长");
   }
   const packets = new Uint8Array(data);
-  // 包上限按**微秒**算：包长是 20 000 µs，不是 20 000 ms。
   const capped = Math.floor((MAX_CLIP_SECONDS * 1_000_000) / OPUS_PACKET_MICROS);
   const count = Math.min(Math.floor(packets.length / stride), capped);
   if (!count) {
@@ -188,7 +161,6 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
         const frameCount = typed.numberOfFrames;
         if (frameCount <= 0) return;
         outputs += 1;
-        // 用输出时间戳定位，不假设解码器按顺序、无丢帧地吐帧。
         const start = Number.isFinite(typed.timestamp)
           ? Math.round((typed.timestamp / 1e6) * sampleRate)
           : written;
@@ -242,7 +214,6 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
     );
   }
 
-  // 裁掉 pre-skip 与尾部未写满的区域。
   const skip = Math.min(clip.skip, written);
   const frames = written - skip;
   const trimmed = planes.map((plane) => plane.subarray(skip, skip + frames));
@@ -255,7 +226,6 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
   };
 }
 
-/** 波形包络：每列一对 (min, max)。 */
 export function buildPeaks(channels: Float32Array[], columns: number): Float32Array {
   const data = channels[0] ?? new Float32Array(0);
   const peaks = new Float32Array(columns * 2);

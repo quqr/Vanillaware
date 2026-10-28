@@ -1,21 +1,3 @@
-/** 预览合成：把 MBS 的 Quad 时间线摊成「这一帧要画哪些图层」。
- *
- * 口径对照权威播放器 `quad_player_mobile/src/quad-draw.js`：
- * - **播放单位是 skeleton，不是 animation**。`draw_skeleton` 遍历 `skeleton.bone`，
- *   每根骨各自求当前帧再递归画 attach；只播 `animation[0]` 会漏掉副骨/叠加层
- *   （语料 678 个可播模型里，354 个的首骨图层数不足总量的 90%，最差为 0）。
- * - **attach 要看 `type`**：`keyframe` 取 keyframe，`hitbox` 取 hitbox，
- *   `slot` 是 (keyframe, hitbox) 的同号对。原来只按 id 去查 keyframe，
- *   88k 条 hitbox attach 会画出一张无关的贴图。
- * - **顶点变换是 `quad_multi4`**：`x' = m0*x + m1*y + m2 + m3`，
- *   `y' = m4*x + m5*y + m6 + m7`。`m2`/`m6` 是 z 列投影（绕 x/y 轴旋转时非零），
- *   漏掉会把侧身姿态平移错。
- * - 顶点色 = 时间线 `color` × 该图层 `fogquad`，逐分量相乘（含 alpha）。
- *
- * 有意保留的差异（见 `docs/adr/0024`）：`blend_id` 1..3 的表项 PHP 未解出，
- * 这里一律按普通混合画（权威播放器会直接跳过；宁可混合不精确也别丢部件）。
- */
-
 import type { Scene, SceneAnimation, SceneAttach, SceneFrame, SceneLayer } from "./ipc";
 
 export const FPS = 60;
@@ -28,7 +10,6 @@ export interface Camera {
 
 type Point = [number, number];
 
-/** 行主序 16 项矩阵作用于 xy（含 z 列 2/6 与平移列 3/7）；空数组视为单位矩阵。 */
 export function applyMatrix(matrix: number[], x: number, y: number): Point {
   if (matrix.length < 16) return [x, y];
   return [
@@ -37,7 +18,6 @@ export function applyMatrix(matrix: number[], x: number, y: number): Point {
   ];
 }
 
-/** dstquad 的 4 个角经矩阵映射后的点。 */
 export function quadPoints(quad: number[], matrix: number[]): Point[] {
   const points: Point[] = [];
   for (let i = 0; i + 1 < quad.length && i < 8; i += 2) {
@@ -46,13 +26,11 @@ export function quadPoints(quad: number[], matrix: number[]): Point[] {
   return points;
 }
 
-/** 一条 attach 指向的 keyframe / hitbox 下标。 */
 export interface FrameTargets {
   keyframes: number[];
   hitboxes: number[];
 }
 
-/** 对应权威播放器 `draw_attach` 的分派。`slot` 的两半共用同一个 s6 下标。 */
 export function frameTargets(attach: SceneAttach | null): FrameTargets {
   if (!attach || attach.id < 0) return { keyframes: [], hitboxes: [] };
   switch (attach.kind) {
@@ -63,12 +41,10 @@ export function frameTargets(attach: SceneAttach | null): FrameTargets {
     case "slot":
       return { keyframes: [attach.id], hitboxes: [attach.id] };
     default:
-      // `skeleton` / `list` / `__MIX` 这类跨 mbs 的挂载在预览器里不展开。
       return { keyframes: [], hitboxes: [] };
   }
 }
 
-/** 一根骨的播放游标：时间线帧号 + 该帧内已过毫秒。 */
 export interface BoneState {
   frameIndex: number;
   elapsed: number;
@@ -79,7 +55,6 @@ export function newBoneStates(count: number): BoneState[] {
   return Array.from({ length: count }, () => ({ frameIndex: 0, elapsed: 0, done: false }));
 }
 
-/** 骨（attach）→ 它对应的时间线；非 animation 的骨返回 null。 */
 export function boneAnimation(
   animations: Map<number, SceneAnimation>,
   attach: SceneAttach | null,
@@ -88,19 +63,16 @@ export function boneAnimation(
   return animations.get(attach.id) ?? null;
 }
 
-/** `scene.animations` 建按 id 取的下标（`Pad::Empty` 已被后端滤掉，id 不连续）。 */
 export function animationIndex(scene: Scene): Map<number, SceneAnimation> {
   const map = new Map<number, SceneAnimation>();
   for (const animation of scene.animations) map.set(animation.id, animation);
   return map;
 }
 
-/** 一帧的时长（毫秒），`time` 的单位是 60Hz 帧。 */
 export function frameDurationMs(frame: SceneFrame, speed: number): number {
   return Math.max(1, (frame.time * 1000) / FPS / speed);
 }
 
-/** 推进一根骨；返回是否换了帧。每根骨有自己的 loop 点（权威播放器 `anim_current`）。 */
 export function stepBone(
   animation: SceneAnimation,
   state: BoneState,
@@ -133,14 +105,12 @@ export function stepBone(
   return changed;
 }
 
-/** 要画的一个图层：图层本体 + 它所属骨这一帧的矩阵与颜色。 */
 export interface BoneLayer {
   layer: SceneLayer;
   matrix: number[];
   color: string | null;
 }
 
-/** 要画的一个命中框。 */
 export interface BoneHitbox {
   quad: number[];
   matrix: number[];
@@ -149,11 +119,10 @@ export interface BoneHitbox {
 export interface ResolvedScene {
   layers: BoneLayer[];
   hitboxes: BoneHitbox[];
-  /** 真正出了图层的骨数（HUD 用）。 */
+
   bones: number;
 }
 
-/** 按骨架各骨的当前帧解析出整帧要画的图层。 */
 export function resolveBones(
   scene: Scene,
   bones: SceneAttach[],
@@ -194,7 +163,6 @@ export function resolveBones(
   return { layers, hitboxes, bones: drawn };
 }
 
-/** 一组图层的世界包围盒（未过相机）。 */
 export function boundsOf(
   layers: BoneLayer[],
   hitboxes: BoneHitbox[],
@@ -218,15 +186,6 @@ export function boundsOf(
   ];
 }
 
-/** srcquad → 渲染器用的 8 项归一化 UV。
- *
- * 对应权威播放器 `vram_srcquad` 的口径：srcquad 可能是 0..1 的归一化值，也可能是
- * 纹理像素坐标（任一分量 > 1 即视为像素）。前者原样使用，后者除以纹理尺寸归一化。
- *
- * 归一化是必需的：Pixi 内置 mesh 着色器 `uv = (uTextureMatrix * vec3(uv,1)).xy`，
- * 4 顶点的 mesh 走 batch 时 UV 被原样写进顶点缓冲。两条路径都不接受像素坐标，
- * 传像素会让采样越界被 clamp 到贴图边缘。
- */
 export function srcUvs(src: number[] | null, width: number, height: number): Float32Array {
   const out = new Float32Array(8);
   const values = src ?? [];
@@ -241,7 +200,6 @@ export function srcUvs(src: number[] | null, width: number, height: number): Flo
   return out;
 }
 
-/** 把外接框缩放到画布中央（留 10% 边距）。 */
 export function fitCamera(
   [[minX, minY], [maxX, maxY]]: [Point, Point],
   width: number,
@@ -255,7 +213,6 @@ export function fitCamera(
   return { zoom, panX: -centerX * zoom, panY: -centerY * zoom };
 }
 
-/** 骨架里最长的骨有多少帧（时间轴与 HUD 用）。 */
 export function skeletonLength(
   bones: SceneAttach[],
   animations: Map<number, SceneAnimation>,

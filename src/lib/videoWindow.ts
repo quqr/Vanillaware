@@ -1,20 +1,11 @@
-/**
- * 影片的「窗口」逻辑：当前该解哪一段 GOP。
- *
- * 抽成纯函数是为了能测——播放时那种「突然闪一下」正是这段判断的锅：
- * 以前是**播到当前段最后才去取下一段**，取流 + 解码要 100~200 ms，
- * 这几帧里没有画面，画布就被清空了。
- */
-
 export interface GopRange {
   gop: number;
-  /** 含。 */
+
   start: number;
-  /** 不含。 */
+
   end: number;
 }
 
-/** 帧号 → 所属 GOP 下标（`keyframes` 升序）。 */
 export function gopIndexAt(keyframes: number[], frame: number): number {
   if (keyframes.length === 0) return 0;
   let low = 0;
@@ -41,21 +32,12 @@ export interface WindowQuery {
   total: number;
   current: number;
   loaded: GopRange | null;
-  /** 某一帧是否已经在缓存里。 */
+
   has: (frame: number) => boolean;
-  /** 提前多少帧开始取下一段。 */
+
   prefetchAhead: number;
 }
 
-/**
- * 返回要加载的 GOP 下标；`null` 表示缓存够用、不用动。
- *
- * 三条规则：
- * 1. 还没加载过 → 取当前帧所在段；
- * 2. 当前帧不在缓存里（拖动跳段）→ 取它所在段；
- * 3. 当前帧要到段尾了（`prefetchAhead` 以内）→ 提前取下一段，
- *    但下一段已经在缓存里就不重复取。
- */
 export function nextGopToLoad(query: WindowQuery): number | null {
   const { keyframes, total, loaded, has, prefetchAhead } = query;
   if (keyframes.length === 0 || total <= 0) return null;

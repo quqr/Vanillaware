@@ -5,7 +5,7 @@ const ROOT = new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)
 
 const SCAN = ["src-tauri/crates", "src-tauri/src", "src", "spec/ksy", "scripts"];
 const SKIP_DIRS = new Set(["node_modules", "target", "vendor", "gen", "dist", ".git"]);
-const SKIP_FILES = new Set(["src/i18n/zh.ts"]);
+const SKIP_DIRS_EXTRA = new Set(["src/i18n"]);
 const EXTENSIONS = new Set([".rs", ".ts", ".tsx", ".mjs", ".ksy", ".toml", ".json"]);
 const CJK = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff00-\uffef]/;
 
@@ -35,7 +35,7 @@ for (const dir of SCAN) walk(join(ROOT, dir), files);
 const offenders = [];
 for (const path of files) {
   const rel = relative(ROOT, path).replace(/\\/g, "/");
-  if (SKIP_FILES.has(rel)) continue;
+  if ([...SKIP_DIRS_EXTRA].some((dir) => rel.startsWith(`${dir}/`))) continue;
   const lines = readFileSync(path, "utf8").split("\n");
   lines.forEach((line, index) => {
     if (CJK.test(line)) offenders.push(`${rel}:${index + 1}: ${line.trim()}`);

@@ -4,7 +4,6 @@ import { DocTree } from "./DocTree";
 
 const PAGE = 100;
 
-/** 统一结构查看器：后端把格式投影成 arena，这里只做分页展开。 */
 export function DocViewer({ entry, tag }: { entry: FileEntry; tag: string }) {
   const [open, setOpen] = useState<DocOpen | null>(null);
   const [pages, setPages] = useState<Map<number, DocPage>>(new Map());

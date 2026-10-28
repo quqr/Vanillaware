@@ -4,7 +4,6 @@ import { api, type BbsLayout, type FileEntry } from "../../lib/ipc";
 const W = 800;
 const H = 600;
 
-/** BBS 布局示意图：bbox / 物件 / 雾区四边形 / 相机轨迹。 */
 export function BbsLayoutViewer({ entry }: { entry: FileEntry }) {
   const [data, setData] = useState<BbsLayout | null>(null);
   const [error, setError] = useState<string | null>(null);

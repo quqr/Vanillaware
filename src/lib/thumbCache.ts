@@ -1,14 +1,11 @@
-/** 缩略图 Blob URL 的前端 LRU + in-flight 去重。 */
-
 import { api } from "./ipc";
 
 const MAX = 400;
-/** 列表滚动停止多久后才开始解码缩略图。 */
+
 const SCROLL_IDLE_MS = 300;
 const cache = new Map<string, { url: string; used: number }>();
 const inflight = new Map<string, Promise<string>>();
 
-/** 串行闸门：列表缩略图一次只解码一张，避免与预览争 CPU。 */
 let serialTail: Promise<unknown> = Promise.resolve();
 let lastScrollAt = 0;
 
@@ -24,7 +21,6 @@ async function waitForScrollIdle(): Promise<void> {
   }
 }
 
-/** 列表滚动时调用：推迟缩略图解码，先把滚动本身做顺。 */
 export function noteListScroll(): void {
   lastScrollAt = performance.now();
 }
@@ -58,12 +54,10 @@ async function fetchUrl(key: string, load: () => Promise<ArrayBuffer>): Promise<
   return task;
 }
 
-/** 纹理文件第 `index` 帧的缩略图。 */
 export function getThumbUrl(path: string, index: number): Promise<string> {
   return fetchUrl(`${path.toLowerCase()}#${index}`, () => api.getThumbPng(path, index));
 }
 
-/** 查看器用的原尺寸帧图。单独一张缓存，避免和缩略图抢 LRU 名额。 */
 const frames = new Map<string, string>();
 
 export async function getFrameUrl(path: string, index: number): Promise<string> {
@@ -86,12 +80,10 @@ export async function getFrameUrl(path: string, index: number): Promise<string> 
   return url;
 }
 
-/** 网格用的缩略图：立即请求（看图时人在等图）。 */
 export function getFileThumbUrl(path: string): Promise<string> {
   return fetchUrl(`file#${path.toLowerCase()}`, () => api.fileThumb(path));
 }
 
-/** 列表用的缩略图：滚动停止后才串行解码，行内图标不值得卡住滚动。 */
 export function getFileThumbUrlDeferred(path: string): Promise<string> {
   return fetchUrl(`file#${path.toLowerCase()}`, () =>
     runSerial(async () => {

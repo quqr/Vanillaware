@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLibraryStore } from "../../store/libraryStore";
@@ -8,7 +9,6 @@ const CARD_W = 148;
 const CARD_H = 168;
 const GAP = 12;
 
-/** 网格视图：卡片式，缩略图优先，适合一眼扫图。 */
 export function FileGrid() {
   const { rows, searching } = useRows();
   const selectedPath = useLibraryStore((s) => s.selectedPath);
@@ -47,21 +47,21 @@ export function FileGrid() {
     return <div className="p-4 text-sm text-error">{error}</div>;
   }
   if (!root) {
-    return <div className="p-4 text-sm text-base-content/60">打开一个目录开始浏览</div>;
+    return <div className="p-4 text-sm text-base-content/60">{t("library.openHint")}</div>;
   }
   if (rows.length === 0) {
     return (
       <div className="p-4 text-sm text-base-content/60">
         {phase === "loading"
-          ? "读取中…"
+          ? t("common.loading")
           : searching || query.trim().length > 0
-            ? "没有匹配的资源"
+            ? t("library.noMatch")
             : formatFilter.length > 0
-              ? "当前格式过滤没有匹配项"
-              : "此目录没有收录的资源"}
+              ? t("library.filterEmpty")
+              : t("library.emptyDirectory")}
         {!searching && hiddenFiles > 0 && phase === "ready" && (
           <span className="mt-1.5 block font-mono text-xs text-base-content/40">
-            另有 {hiddenFiles} 个文件不在格式注册表内，未收录
+            {t("library.hiddenFiles", { count: hiddenFiles })}
           </span>
         )}
       </div>

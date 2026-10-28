@@ -1,3 +1,4 @@
+import { t, type MsgKey } from "../../i18n";
 import { useLibraryStore } from "../../store/libraryStore";
 import { TAGS, useAppStore, type TagId } from "../../store/appStore";
 import { formatBytes } from "../../lib/format";
@@ -16,38 +17,39 @@ import { OsbSceneViewer } from "../viewers/OsbSceneViewer";
 import { RefGraphViewer } from "../viewers/RefGraphViewer";
 import { VideoViewer } from "../viewers/VideoViewer";
 
-/** 查看器 id → 组件。新增格式只需在这里加一条（后端负责声明有哪些 id）。 */
-const VIEWERS: Record<string, { label: string; render: (entry: FileEntry, tag: string) => React.ReactNode }> = {
-  asm: { label: "反汇编", render: (entry) => <AsmViewer entry={entry} /> },
-  atlas: { label: "图集", render: (entry) => <AtlasViewer entry={entry} /> },
-  animation: { label: "动画", render: (entry, tag) => <AnimationViewer entry={entry} tag={tag} /> },
-  audio: { label: "音频", render: (entry) => <AudioViewer entry={entry} /> },
-  content: { label: "内容", render: (entry) => <ContentViewer entry={entry} /> },
-  doc: { label: "结构", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
-  layout: { label: "布局", render: (entry) => <BbsLayoutViewer entry={entry} /> },
-  mesh: { label: "模型", render: (entry) => <FmdMeshViewer entry={entry} /> },
-  scene: { label: "场景", render: (entry) => <OsbSceneViewer entry={entry} /> },
-  graph: { label: "引用图", render: (entry) => <RefGraphViewer entry={entry} /> },
-  text: { label: "文本", render: (entry) => <FmsTableViewer entry={entry} /> },
-  hex: { label: "十六进制", render: (entry) => <HexViewer entry={entry} /> },
-  video: { label: "影片", render: (entry) => <VideoViewer entry={entry} /> },
+const VIEWERS: Record<
+  string,
+  { labelKey: string; render: (entry: FileEntry, tag: string) => React.ReactNode }
+> = {
+  asm: { labelKey: "viewer.asm", render: (entry) => <AsmViewer entry={entry} /> },
+  atlas: { labelKey: "viewer.atlas", render: (entry) => <AtlasViewer entry={entry} /> },
+  animation: { labelKey: "viewer.animation", render: (entry, tag) => <AnimationViewer entry={entry} tag={tag} /> },
+  audio: { labelKey: "viewer.audio", render: (entry) => <AudioViewer entry={entry} /> },
+  content: { labelKey: "viewer.content", render: (entry) => <ContentViewer entry={entry} /> },
+  doc: { labelKey: "viewer.doc", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
+  layout: { labelKey: "viewer.layout", render: (entry) => <BbsLayoutViewer entry={entry} /> },
+  mesh: { labelKey: "viewer.mesh", render: (entry) => <FmdMeshViewer entry={entry} /> },
+  scene: { labelKey: "viewer.scene", render: (entry) => <OsbSceneViewer entry={entry} /> },
+  graph: { labelKey: "viewer.graph", render: (entry) => <RefGraphViewer entry={entry} /> },
+  text: { labelKey: "viewer.text", render: (entry) => <FmsTableViewer entry={entry} /> },
+  hex: { labelKey: "viewer.hex", render: (entry) => <HexViewer entry={entry} /> },
+  video: { labelKey: "viewer.video", render: (entry) => <VideoViewer entry={entry} /> },
 };
 
-const KIND_LABEL: Record<string, string> = {
-  texture: "纹理",
-  animation: "动画",
-  scene: "场景",
-  model: "模型",
-  script: "脚本",
-  text: "文本",
-  list: "列表",
-  grid: "网格",
-  audio: "音频",
-  video: "影片",
-  binary: "二进制",
+const KIND_LABEL: Record<string, MsgKey> = {
+  texture: "kind.texture",
+  animation: "kind.animation",
+  scene: "kind.scene",
+  model: "kind.model",
+  script: "kind.script",
+  text: "kind.text",
+  list: "kind.list",
+  grid: "kind.grid",
+  audio: "kind.audio",
+  video: "kind.video",
+  binary: "kind.binary",
 };
 
-/** 右侧查看器：属性 + 查看器 tab + 内容。 */
 export function ViewerPanel() {
   const selectedPath = useLibraryStore((s) => s.selectedPath);
   const meta = useLibraryStore((s) => s.meta);
@@ -70,8 +72,6 @@ export function ViewerPanel() {
   }
 
   const entry = meta?.entry ?? null;
-  // 切换文件后旧 tab 可能不属于新格式（例如 asb → bbs 仍保留 asm）；
-  // 统一回退到该格式声明的第一个查看器。
   const activeViewer =
     entry && openedViewer && entry.viewers.includes(openedViewer)
       ? openedViewer
@@ -86,7 +86,7 @@ export function ViewerPanel() {
 
         {entry && (
           <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span className="badge badge-sm">{KIND_LABEL[entry.kind] ?? entry.kind}</span>
+            <span className="badge badge-sm">{entry.kind ? t(KIND_LABEL[entry.kind] ?? "kind.binary") : entry.kind}</span>
             <span className="badge badge-sm badge-primary">{entry.label}</span>
             <span className="font-mono text-base-content/50">{formatBytes(entry.size)}</span>
             <span className="font-mono text-base-content/50">{formatDate(entry.mtimeMs)}</span>
@@ -150,7 +150,7 @@ export function ViewerPanel() {
                 className={`tab ${id === activeViewer ? "tab-active" : ""}`}
                 onClick={() => setViewerTab(id)}
               >
-                {VIEWERS[id]?.label ?? id}
+                {VIEWERS[id] ? t(VIEWERS[id].labelKey as MsgKey) : id}
               </button>
             ))}
           </div>

@@ -1,9 +1,4 @@
-/** 库状态：目录列表、选中/打开、过滤与索引。
- *
- * 列表永远来自后端实时 `list_dir`；索引只服务「全部目录」搜索，不冒充列表。
- * 目录树与当前目录共用同一份缓存：展开时读的那层，正是之后导航用的那层。
- */
-
+import { t } from "../i18n";
 import { create } from "zustand";
 import {
   api,
@@ -46,14 +41,13 @@ interface State {
   meta: FileMeta | null;
   metaPhase: "idle" | "loading" | "ready" | "error";
 
-  /** 双击/Enter 打开的文件；只有它有查看器内容。 */
   openedPath: string | null;
   openedViewer: string | null;
 
   viewMode: ViewMode;
-  /** 注册表快照（工具栏过滤项）。 */
+
   availableFormats: FormatInfo[];
-  /** 选中的格式扩展名；空数组 = 全部。 */
+
   formatFilter: string[];
   query: string;
   scope: SearchScope;
@@ -95,7 +89,6 @@ const EMPTY_INDEX: IndexStatus = { state: "idle", count: 0, root: null, error: n
 const SEARCH_DEBOUNCE = 180;
 const INDEX_POLL = 400;
 
-/** 列表请求序号：只有最后一次请求能写回当前列表，避免旧响应覆盖新目录。 */
 let listingSeq = 0;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let indexTimer: ReturnType<typeof setInterval> | null = null;
@@ -131,20 +124,16 @@ const initialState: State = {
   cacheEpoch: 0,
 };
 
-/** 取路径的上一级（兼容 `\` 与 `/`）。 */
 function parentOf(path: string): string | null {
   const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
   if (cut <= 0) return null;
   const parent = path.slice(0, cut);
-  // `C:\` 这类根：保留盘符。
   return parent.endsWith(":") ? `${parent}\\` : parent;
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => {
-  /** 读一层目录；`asTree` 时只更新树节点，否则同时作为当前列表。 */
+
   function loadDir(path: string, asTree: boolean): Promise<void> {
-    // 只有「当前列表」请求参与序号竞争；树展开请求不能推进序号，
-    // 否则祖先链的树加载会把当前目录的列表响应判成过期，永远停在 loading。
     const seq = asTree ? listingSeq : ++listingSeq;
 
     if (asTree) {
@@ -162,8 +151,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
           const next: Partial<State> = {
             tree: { ...prev.tree, [listing.path]: { dirs: listing.dirs, phase: "ready" } },
           };
-          // 只有最后一次列表请求、且路径仍是当前目录时才写列表，
-          // 否则旧目录的响应会把新目录覆盖掉。
           if (!asTree && seq === listingSeq) {
             next.dir = listing.path;
             next.parent = listing.parent;
@@ -226,7 +213,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
 
     void loadDir(path, false);
 
-    // 目录树的祖先链要展开，否则当前目录在树里不可见。
     const root = get().root;
     let cursor: string | null = path;
     while (cursor && root && cursor.toLowerCase() !== root.toLowerCase()) {
@@ -279,7 +265,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       void api
         .searchFiles(trimmed)
         .then((result) => {
-          // 期间查询或作用域变了就不覆盖。
           if (get().query.trim() !== trimmed || get().scope !== "all") return;
           set({ search: result, searchPhase: "ready" });
         })
@@ -294,7 +279,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       let picked: string | string[] | null = null;
       try {
         const { open } = await import("@tauri-apps/plugin-dialog");
-        picked = await open({ directory: true, multiple: false, title: "选择资源目录" });
+        picked = await open({ directory: true, multiple: false, title: t("library.pickDirectoryTitle") });
       } catch (e) {
         set({ listingPhase: "error", listingError: String(e) });
         return;
@@ -306,7 +291,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({
         ...initialState,
         root: picked,
-        // 保留显示偏好与缓存纪元。
         viewMode: previous.viewMode,
         availableFormats: previous.availableFormats,
         formatFilter: previous.formatFilter,
@@ -314,7 +298,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       });
 
       set({ history: [picked], historyIndex: 0, expanded: { [picked]: true } });
-      // 根目录只走一次列表请求；失败时必须落到 error，不能停在 loading。
       await loadDir(picked, false);
 
       try {
@@ -322,7 +305,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         set({ index: status });
         startIndexPolling();
       } catch {
-        set({ index: { ...EMPTY_INDEX, state: "failed", error: "索引启动失败" } });
+        set({ index: { ...EMPTY_INDEX, state: "failed", error: t("library.indexStartFailed") } });
       }
     },
 
@@ -378,8 +361,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         return;
       }
 
-      // 同一文件的 meta 已经取过：只改选中，不再触发一次往返（避免查看器闪一下）。
-      // 打开态必须一起写：`close()` / `navigate()` 之后重选同一文件也要能渲染内容。
       if (!additive && get().meta?.entry.path === path && get().metaPhase === "ready") {
         const entry = get().meta?.entry;
         set({
@@ -406,7 +387,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         selectedPaths,
         meta: null,
         metaPhase: "loading",
-        // 单击即打开主查看器：属性与内容一起到，不需要再双击一次。
         openedPath: path,
         openedViewer: entry?.viewers[0] ?? get().openedViewer,
       });
@@ -441,7 +421,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       try {
         set({ availableFormats: await api.listFormats() });
       } catch {
-        // 注册表加载失败时保持空列表，过滤退化为「全部」。
       }
     },
 

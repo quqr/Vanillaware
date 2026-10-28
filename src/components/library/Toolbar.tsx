@@ -1,10 +1,10 @@
+import { t } from "../../i18n";
 import { useLibraryStore } from "../../store/libraryStore";
 import { PROFILE_PRESETS, THEMES, useAppStore, type ProfileMode } from "../../store/appStore";
 import { Breadcrumbs } from "./Breadcrumbs";
 
 const BAR = "flex flex-wrap items-center gap-2 border-b border-base-300 bg-base-200 px-2 py-1.5";
 
-/** 工具栏：打开目录 / 导航 / 搜索 / 类别过滤 / 视图切换 / 主题 / 索引状态。 */
 export function Toolbar({
   treeOpen,
   viewerOpen,
@@ -46,6 +46,8 @@ export function Toolbar({
   const profile = useAppStore((s) => s.profile);
   const profileMode = useAppStore((s) => s.profileMode);
   const setProfileMode = useAppStore((s) => s.setProfileMode);
+  const locale = useAppStore((s) => s.locale);
+  const setLocale = useAppStore((s) => s.setLocale);
 
   const searching = scope === "all" && query.trim().length > 0;
 
@@ -53,16 +55,16 @@ export function Toolbar({
     <div className="flex flex-none flex-col">
       <div className={BAR}>
         <button className="btn btn-sm btn-primary" onClick={() => void openRoot()}>
-          打开目录
+          {t("library.openDirectory")}
         </button>
 
-        <button className="btn btn-sm btn-square btn-ghost" onClick={back} disabled={!canBack} title="后退">
+        <button className="btn btn-sm btn-square btn-ghost" onClick={back} disabled={!canBack} title={t("library.back")}>
           ←
         </button>
-        <button className="btn btn-sm btn-square btn-ghost" onClick={forward} disabled={!canForward} title="前进">
+        <button className="btn btn-sm btn-square btn-ghost" onClick={forward} disabled={!canForward} title={t("library.forward")}>
           →
         </button>
-        <button className="btn btn-sm btn-square btn-ghost" onClick={() => void up()} disabled={!root} title="上一级">
+        <button className="btn btn-sm btn-square btn-ghost" onClick={() => void up()} disabled={!root} title={t("library.up")}>
           ↑
         </button>
 
@@ -71,10 +73,10 @@ export function Toolbar({
         <div className="flex-1" />
 
         <details className="dropdown dropdown-end">
-          <summary className="btn btn-sm btn-ghost gap-1.5" title="游戏档案">
-            档案{" "}
+          <summary className="btn btn-sm btn-ghost gap-1.5" title={t("library.profileHint")}>
+            {t("library.profile")}{" "}
             {profileMode === "auto"
-              ? profile?.label ?? "自动"
+              ? profile?.label ?? t("library.auto")
               : PROFILE_PRESETS[profileMode].label}
           </summary>
           <ul className="dropdown-content menu menu-sm z-50 mt-2 w-44 rounded-box bg-base-100 p-1 shadow">
@@ -88,7 +90,7 @@ export function Toolbar({
                     setProfileMode(mode);
                   }}
                 >
-                  {mode === "auto" ? "自动嗅探" : PROFILE_PRESETS[mode].label}
+                  {mode === "auto" ? t("library.autoDetect") : PROFILE_PRESETS[mode].label}
                 </button>
               </li>
             ))}
@@ -96,7 +98,7 @@ export function Toolbar({
         </details>
 
         <details className="dropdown dropdown-end">
-          <summary className="btn btn-sm btn-ghost gap-1.5" title="切换主题">
+          <summary className="btn btn-sm btn-ghost gap-1.5" title={t("library.themeHint")}>
             <span className="status status-primary status-xs" />
             {theme}
           </summary>
@@ -126,29 +128,37 @@ export function Toolbar({
         </details>
 
         <button
+          className="btn btn-sm btn-ghost"
+          onClick={() => setLocale(locale === "en" ? "zh" : "en")}
+          title={t("library.locale")}
+        >
+          {t("locale.name")}
+        </button>
+
+        <button
           className={`btn btn-sm btn-square btn-ghost ${treeOpen ? "btn-active" : ""}`}
           onClick={onToggleTree}
-          title="显示/隐藏目录树"
+          title={t("library.treeToggle")}
         >
-          树
+          {t("library.tree")}
         </button>
         <button
           className={`btn btn-sm btn-ghost ${viewerOpen ? "btn-active" : ""}`}
           onClick={onToggleViewer}
-          title="显示/隐藏查看器"
+          title={t("library.viewerToggle")}
         >
-          查看器
+          {t("library.viewer")}
         </button>
 
         {index.state === "building" && (
-          <span className="badge badge-sm badge-warning" title="全局搜索在索引完成前不完整">
-            索引 {index.count}
+          <span className="badge badge-sm badge-warning" title={t("library.indexIncompleteHint")}>
+            {t("library.indexCount", { count: index.count })}
           </span>
         )}
-        {index.state === "ready" && <span className="badge badge-sm badge-success">索引 {index.count}</span>}
+        {index.state === "ready" && <span className="badge badge-sm badge-success">{t("library.indexCount", { count: index.count })}</span>}
         {index.state === "failed" && (
           <span className="badge badge-sm badge-error" title={index.error ?? ""}>
-            索引失败
+            {t("library.indexFailed")}
           </span>
         )}
 
@@ -156,16 +166,16 @@ export function Toolbar({
           className="btn btn-sm btn-ghost"
           key={cacheEpoch}
           onClick={() => void refreshCache()}
-          title="清空磁盘与内存缓存并重新解码全部缩略图"
+          title={t("library.refreshCacheHint")}
         >
-          刷新缓存
+          {t("library.refreshCache")}
         </button>
       </div>
 
       <div className={BAR}>
         <input
           className="input input-sm min-w-20 flex-1"
-          placeholder={scope === "all" ? "在全库中搜索文件名…" : "在当前目录中过滤…"}
+          placeholder={scope === "all" ? t("library.searchAll") : t("library.searchDir")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           disabled={!root}
@@ -175,22 +185,22 @@ export function Toolbar({
           className="select select-sm w-28"
           value={scope}
           onChange={(e) => setScope(e.target.value as "dir" | "all")}
-          title="搜索作用域"
+          title={t("library.searchScope")}
         >
-          <option value="dir">本目录</option>
-          <option value="all">全部目录</option>
+          <option value="dir">{t("library.scopeDir")}</option>
+          <option value="all">{t("library.scopeAll")}</option>
         </select>
 
         <details className="dropdown">
           <summary className="btn btn-xs">
-            格式{" "}
+            {t("library.format")}{" "}
             {formatFilter.length === 0
-              ? "全部"
+              ? t("library.all")
               : `${formatFilter.length}/${availableFormats.length}`}
           </summary>
           <ul className="dropdown-content menu menu-xs z-50 mt-2 max-h-80 w-64 overflow-auto rounded-box bg-base-100 p-1 shadow">
             <li>
-              <button onClick={clearFormats}>全部格式</button>
+              <button onClick={clearFormats}>{t("library.allFormats")}</button>
             </li>
             {availableFormats.map((format) => (
               <li key={format.ext}>
@@ -214,8 +224,8 @@ export function Toolbar({
         <div className="flex-1" />
 
         {!searching && hiddenFiles > 0 && (
-          <span className="font-mono text-xs text-base-content/60" title="不在格式注册表内，未收录">
-            未收录 {hiddenFiles}
+          <span className="font-mono text-xs text-base-content/60" title={t("library.notCataloguedHint")}>
+            {t("library.notCatalogued", { count: hiddenFiles })}
           </span>
         )}
 
@@ -224,19 +234,19 @@ export function Toolbar({
             className={`btn btn-xs join-item ${viewMode === "list" ? "btn-active" : ""}`}
             onClick={() => setViewMode("list")}
           >
-            列表
+            {t("library.list")}
           </button>
           <button
             className={`btn btn-xs join-item ${viewMode === "grid" ? "btn-active" : ""}`}
             onClick={() => setViewMode("grid")}
           >
-            网格
+            {t("library.grid")}
           </button>
         </div>
 
         {root && (
-          <button className="btn btn-sm btn-ghost" onClick={() => void reload()} title="重新读取当前目录">
-            刷新
+          <button className="btn btn-sm btn-ghost" onClick={() => void reload()} title={t("library.reloadHint")}>
+            {t("library.reload")}
           </button>
         )}
       </div>

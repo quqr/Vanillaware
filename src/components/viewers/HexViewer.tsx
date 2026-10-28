@@ -4,7 +4,6 @@ import { api, type FileEntry } from "../../lib/ipc";
 const HEAD_BYTES = 4096;
 const PER_ROW = 16;
 
-/** 二进制查看器：只读头部 4KB，够看清魔数与版本号，不做整文件加载。 */
 export function HexViewer({ entry }: { entry: FileEntry }) {
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [error, setError] = useState<string | null>(null);

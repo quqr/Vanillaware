@@ -3,10 +3,6 @@ import type { MeshStandardMaterial } from "three";
 import { api, type FileEntry, type VizScene } from "../../lib/ipc";
 import { buildMesh, loadPageTextures } from "../../lib/meshScene";
 
-/** FMD：贴图/纯色三角面 + 线框切换 + 轨道相机（ADR-0019）。
- *
- * Three.js 只在打开模型时动态加载，避免把 3D 引擎塞进首屏 bundle。
- */
 export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
   const [data, setData] = useState<VizScene | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -212,7 +208,6 @@ export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
   );
 }
 
-/** 同名 .ftx：FMD 的 TXTR 页与它的页一一对应。 */
 function siblingFtx(path: string): string {
   return path.replace(/\.[^./\\]+$/, "") + ".ftx";
 }

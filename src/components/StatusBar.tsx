@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useLibraryStore } from "../store/libraryStore";
 import { useAppStore } from "../store/appStore";
 import { useRows } from "./library/rows";
@@ -21,15 +22,15 @@ export function StatusBar() {
   return (
     <div className="flex h-[26px] shrink-0 items-center gap-3 overflow-hidden border-t border-base-300 bg-base-200 px-2.5 font-mono text-[11px] text-base-content/60">
       <span className="truncate" title={dir ?? ""}>
-        {dir ?? root ?? "未打开目录"}
+        {dir ?? root ?? t("library.noDirectory")}
       </span>
       <span>dirs {dirs.length}</span>
       <span>
-        {searching ? "命中" : "资源"} {truncated ? `${rows.length}/${total}` : rows.length}
+        {searching ? t("status.hits") : t("status.assets")} {truncated ? `${rows.length}/${total}` : rows.length}
       </span>
       <span className={`flex items-center gap-1 ${indexTone.text}`}>
         <span className={`status status-xs ${indexTone.dot}`} />
-        索引 {index.count}
+        {t("library.indexCount", { count: index.count })}
       </span>
       <div className="flex-1" />
       <span>tag {tag}</span>

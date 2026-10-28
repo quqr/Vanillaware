@@ -5,7 +5,6 @@ import { StructurePanel } from "./StructurePanel";
 
 type Mode = "play" | "structure";
 
-/** 动画查看器：同一文件的两种看法，不额外占导航位。 */
 export function AnimationViewer({ entry, tag }: { entry: FileEntry; tag: string }) {
   const [mode, setMode] = useState<Mode>("play");
 

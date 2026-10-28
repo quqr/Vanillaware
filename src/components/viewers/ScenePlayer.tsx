@@ -25,11 +25,6 @@ import {
   type BoneState,
 } from "../../lib/sceneDraw";
 
-/** 播放位置：全部放在 ref 里，由 Pixi ticker 推进，避免 60Hz 触发 React 重渲染。
- *
- * 播放单位是 **skeleton**：一根骨一个游标，各骨按自己的 loop 点循环
- * （权威播放器 `draw_skeleton` + `anim_current` 的行为）。
- */
 interface Playhead {
   skeletonIndex: number;
   bones: BoneState[];
@@ -47,10 +42,6 @@ interface Hud {
   attach: SceneAttach | null;
 }
 
-/** 动画播放查看器：骨架列表 + PixiJS 合成 + 图层面板 + 时间轴（ADR-0007 / 0011 / 0024）。
- *
- * 受控组件：目标 `.mbs` 与平台 `tag` 都由查看器面板传入，不再读全局选中态。
- */
 export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   const [scene, setScene] = useState<Scene | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +80,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   const optionsRef = useRef({ showHitbox: false, showOutline: false, applyTint: true });
   const hudAtRef = useRef(0);
 
-  // 把 React 控件状态镜像到 ref，ticker 闭包读 ref 不读 state。
   useEffect(() => {
     playheadRef.current.playing = playing;
     playheadRef.current.speed = speed;
@@ -100,7 +90,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     playheadRef.current.dirty = true;
   }, [showHitbox, showOutline, applyTint]);
 
-  /** 场景加载。 */
   useEffect(() => {
     if (!path) {
       setScene(null);
@@ -151,7 +140,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     };
   }, [path, tag]);
 
-  /** 图集纹理：同一 texId 的并发请求合并，返回可等待的任务。 */
   const ensureTextureAsync = useCallback((mbsPath: string, texId: number): Promise<void> => {
     if (texturesRef.current.has(texId)) return Promise.resolve();
 
@@ -166,7 +154,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         playheadRef.current.dirty = true;
       })
       .catch((error: unknown) => {
-        // 纹理取不到时画面直接空白；必须把原因告诉用户，不能静默吞掉。
         setTextureError((previous) => previous ?? `纹理 ${texId} 加载失败：${String(error)}`);
       })
       .finally(() => inflightTexRef.current.delete(texId));
@@ -182,12 +169,10 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     [ensureTextureAsync],
   );
 
-  /** 进查看器即把场景用到的图集全部取回：拖动时间轴不再突现空白。 */
   useEffect(() => {
     if (!scene) return;
     let cancelled = false;
 
-    // 只预取真正被图层引用到的纹理：图集里的空帧不值得占用显存。
     const referenced = new Set<number>();
     for (const keyframe of scene.keyframe) {
       for (const layer of keyframe?.layers ?? []) {
@@ -207,12 +192,10 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     };
   }, [scene, ensureTextureAsync]);
 
-  /** 某副骨架的骨列表。 */
   const bonesOf = useCallback((index: number): SceneAttach[] => {
     return sceneRef.current?.skeletons[index]?.bones ?? [];
   }, []);
 
-  /** 把当前骨架各骨的帧合成成渲染器输入。 */
   const drawFrame = useCallback(() => {
     const renderer = rendererRef.current;
     const scene = sceneRef.current;
@@ -231,7 +214,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         if (layer.texId !== null) ensureTexture(scene.mbsPath, layer.texId);
         continue;
       }
-      // 顶点色 = 时间线 color × 每图层 fogquad，再与纹理逐分量相乘。
       const frameTint = optionsRef.current.applyTint ? parseColor(item.color) : NO_TINT;
       const tint: Tint = layer.fog?.[0] ? multiplyTint(frameTint, parseColor(layer.fog[0])) : frameTint;
       renderLayers.push({
@@ -250,7 +232,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     const now = performance.now();
     if (now - hudAtRef.current > 100) {
       hudAtRef.current = now;
-      // HUD 以「跑得最远的那根骨」为准；各骨长度不同，取最大值才有意义。
       let frame = 0;
       let frames = 0;
       let time = 0;
@@ -270,7 +251,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     }
   }, [ensureTexture]);
 
-  /** 按首个骨架的前几十帧取景（各骨都算进去，缺骨的模型也能框住）。 */
   const fitScene = useCallback(() => {
     const renderer = rendererRef.current;
     const scene = sceneRef.current;
@@ -290,8 +270,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     setZoomLabel(renderer.getCamera().zoom);
   }, []);
 
-  /** 画布与渲染器生命周期：场景首次到达后才创建（此前组件走 loading/empty 分支，
-   *  wrapRef 还是 null）。之后切换文件复用同一个 WebGL 上下文。 */
   const hasScene = scene !== null;
   useEffect(() => {
     if (!hasScene) return;
@@ -318,7 +296,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           if (stepBone(animation, state, deltaMs, playhead.speed)) changed = true;
           if (!state.done) running += 1;
         }
-        // 所有骨都不再循环（loopId < 0 且播到末帧）才停下。
         if (running === 0) {
           playhead.playing = false;
           setPlaying(false);
@@ -396,7 +373,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     };
   }, [drawFrame, fitScene, hasScene]);
 
-  /** 画布尺寸变化 → 渲染器 resize + 重画。 */
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
@@ -410,7 +386,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     return () => observer.disconnect();
   }, []);
 
-  /** 场景切换：重新取景，并释放上一份纹理。 */
   useEffect(() => {
     if (!scene) return;
     fitScene();
@@ -434,7 +409,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     setHud((prev) => ({ ...prev, frame: 0, time: 0, attach: null }));
   }
 
-  /** 跳到第 `frame` 帧：各骨按自己的长度夹取（骨长不一致是常态）。 */
   function seek(frame: number) {
     const playhead = playheadRef.current;
     const bones = bonesOf(playhead.skeletonIndex);
@@ -454,7 +428,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   function togglePlay() {
     const playhead = playheadRef.current;
     playhead.playing = !playhead.playing;
-    // 重新播放时把已结束的骨复位，否则按一下再也不动。
     if (playhead.playing) {
       for (const state of playhead.bones) {
         state.done = false;
@@ -634,7 +607,6 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   );
 }
 
-/** dstquad 四角经矩阵映射后的 8 个世界坐标（与 `quad_multi4` 同口径）。 */
 function positionsOf(quad: number[], matrix: number[]): Float32Array {
   const out = new Float32Array(8);
   const points = quadPoints(quad, matrix);

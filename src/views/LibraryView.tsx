@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useState } from "react";
 import { useLibraryStore } from "../store/libraryStore";
 import { PROFILE_PRESETS, useAppStore } from "../store/appStore";
@@ -13,7 +14,6 @@ const TREE_MAX = 420;
 const VIEWER_MIN = 320;
 const VIEWER_MAX = 900;
 
-/** 库视图：目录树 | 文件列表/网格 | 查看器，三栏可拖拽（ADR-0012）。 */
 export function LibraryView() {
   const viewMode = useLibraryStore((s) => s.viewMode);
   const root = useLibraryStore((s) => s.root);
@@ -71,7 +71,7 @@ export function LibraryView() {
             <Divider onDelta={(dx) => setTreeWidth((w) => clamp(w + dx, TREE_MIN, TREE_MAX))} />
           </>
         ) : (
-          <CollapsedStrip label="目录" onClick={() => setTreeOpen(true)} />
+          <CollapsedStrip label={t("library.directory")} onClick={() => setTreeOpen(true)} />
         )}
 
         <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-base-100">
@@ -89,7 +89,7 @@ export function LibraryView() {
             </aside>
           </>
         ) : (
-          <CollapsedStrip label="查看器" onClick={() => setViewerOpen(true)} />
+          <CollapsedStrip label={t("library.viewer")} onClick={() => setViewerOpen(true)} />
         )}
       </div>
     </div>
@@ -118,7 +118,7 @@ function CollapsedStrip({ label, onClick }: { label: string; onClick: () => void
     <button
       className="btn btn-xs h-full w-7 shrink-0 rounded-none px-0 tracking-widest [writing-mode:vertical-rl]"
       onClick={onClick}
-      title={`展开${label}`}
+      title={t("library.expand", { label })}
     >
       {label}
     </button>

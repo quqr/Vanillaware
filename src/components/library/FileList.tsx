@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLibraryStore } from "../../store/libraryStore";
@@ -8,7 +9,6 @@ import { noteListScroll } from "../../lib/thumbCache";
 
 const GRID = "grid grid-cols-[28px_minmax(0,1fr)_76px_110px_130px] items-center gap-2 px-2.5";
 
-/** 列表视图：虚拟化行，键盘可选、双击打开。 */
 export function FileList() {
   const { rows, searching } = useRows();
   const selectedPath = useLibraryStore((s) => s.selectedPath);
@@ -37,21 +37,21 @@ export function FileList() {
     return <div className="p-4 text-sm text-error">{error}</div>;
   }
   if (!root) {
-    return <div className="p-4 text-sm text-base-content/60">打开一个目录开始浏览</div>;
+    return <div className="p-4 text-sm text-base-content/60">{t("library.openHint")}</div>;
   }
   if (rows.length === 0) {
     return (
       <div className="p-4 text-sm text-base-content/60">
         {phase === "loading"
-          ? "读取中…"
+          ? t("common.loading")
           : searching || query.trim().length > 0
-            ? "没有匹配的资源"
+            ? t("library.noMatch")
             : formatFilter.length > 0
-              ? "当前格式过滤没有匹配项"
-              : "此目录没有收录的资源"}
+              ? t("library.filterEmpty")
+              : t("library.emptyDirectory")}
         {!searching && hiddenFiles > 0 && phase === "ready" && (
           <span className="mt-1.5 block font-mono text-xs text-base-content/40">
-            另有 {hiddenFiles} 个文件不在格式注册表内，未收录
+            {t("library.hiddenFiles", { count: hiddenFiles })}
           </span>
         )}
       </div>
@@ -74,10 +74,10 @@ export function FileList() {
         className={`${GRID} sticky top-0 z-10 h-7 border-b border-base-300 bg-base-200 font-mono text-[10px] uppercase tracking-wider text-base-content/60`}
       >
         <span />
-        <span>名称</span>
-        <span>格式</span>
-        <span>{searching ? "目录" : "大小"}</span>
-        <span>修改时间</span>
+        <span>{t("library.columnName")}</span>
+        <span>{t("library.columnFormat")}</span>
+        <span>{searching ? t("library.directory") : t("library.columnSize")}</span>
+        <span>{t("library.columnModified")}</span>
       </div>
 
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>

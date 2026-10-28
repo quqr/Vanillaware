@@ -1,13 +1,7 @@
-/** 应用级状态：平台标签、主题与游戏档案。
- *
- * 视图路由已并入库视图（ADR-0012）：不再有全局 `view` 与 `activeMbs`，
- * 目标文件由库的选中/打开状态决定，查看器直接接收 `path`。
- */
-
 import { create } from "zustand";
+import { setLocale as applyLocale, type Locale } from "../i18n";
 import type { GameProfile } from "../lib/ipc";
 
-/** 平台标签全集（与 `formats::mbs::profile::lookup` 一致）。 */
 export const TAGS = [
   "swi_unic",
   "ps4_unic",
@@ -25,7 +19,6 @@ export const TAGS = [
 
 export type TagId = (typeof TAGS)[number];
 
-/** 启用的 daisyUI 内置主题；与 `styles.css` 和 `index.html` 的白名单保持同步。 */
 export const THEMES = [
   "dark",
   "light",
@@ -41,13 +34,25 @@ export type ThemeId = (typeof THEMES)[number];
 
 const THEME_KEY = "theme";
 const PROFILE_KEY = "profile";
+const LOCALE_KEY = "locale";
+
+function readLocale(): Locale {
+  try {
+    const saved = localStorage.getItem(LOCALE_KEY);
+    if (saved === "en" || saved === "zh") {
+      applyLocale(saved);
+      return saved;
+    }
+  } catch {
+  }
+  return "en";
+}
 
 function readTheme(): ThemeId {
   try {
     const saved = localStorage.getItem(THEME_KEY);
     if (saved && (THEMES as readonly string[]).includes(saved)) return saved as ThemeId;
   } catch {
-    // localStorage 不可用时回退默认主题。
   }
   return "dark";
 }
@@ -78,7 +83,6 @@ function readProfileMode(): ProfileMode {
       return saved;
     }
   } catch {
-    // localStorage 不可用时回退自动嗅探。
   }
   return "auto";
 }
@@ -92,10 +96,13 @@ interface AppState {
 
   profile: GameProfile | null;
   profileMode: ProfileMode;
-  /** 用户手动改过 tag 后，档案嗅探不再覆盖。 */
+
   tagSource: "manual" | "profile";
   setProfile(profile: GameProfile | null): void;
   setProfileMode(mode: ProfileMode): void;
+
+  locale: Locale;
+  setLocale(locale: Locale): void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -113,7 +120,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch {
-      // 持久化失败不阻塞切换。
+    }
+  },
+
+  locale: readLocale(),
+
+  setLocale(locale) {
+    set({ locale });
+    applyLocale(locale);
+    try {
+      localStorage.setItem(LOCALE_KEY, locale);
+    } catch {
     }
   },
 
@@ -142,7 +159,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       localStorage.setItem(PROFILE_KEY, mode);
     } catch {
-      // 持久化失败不阻塞切换。
     }
     if (mode !== "auto") get().setProfile(PROFILE_PRESETS[mode]);
   },

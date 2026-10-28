@@ -1,10 +1,5 @@
-/** 后端 DTO 的 TypeScript 镜像与 invoke 封装。 */
-
 import { invoke } from "@tauri-apps/api/core";
 
-// ─── 库：目录与文件 ─────────────────────────────────
-
-/** 资源类别（粗分类，只用于图标与分组）。 */
 export type Kind =
   | "texture"
   | "animation"
@@ -18,20 +13,17 @@ export type Kind =
   | "video"
   | "binary";
 
-/** 已知游戏档案。 */
 export type GameId = "unicorn_overlord" | "thirteen_sentinels" | "unknown";
 
-/** 游戏档案嗅探结果。 */
 export interface GameProfile {
   id: GameId;
   label: string;
-  /** 默认 mbs 平台标签；null 表示不改动当前选择。 */
+
   mbsTag: string | null;
   confidence: number;
   evidence: string[];
 }
 
-/** 注册表里的一条格式声明。 */
 export interface FormatInfo {
   ext: string;
   kind: Kind;
@@ -42,26 +34,24 @@ export interface FormatInfo {
   hasThumb: boolean;
 }
 
-/** 一个子目录。 */
 export interface DirEntry {
   path: string;
   name: string;
 }
 
-/** 一个已收录的文件条目。 */
 export interface FileEntry {
   path: string;
   name: string;
-  /** 小写、不含点。 */
+
   ext: string;
   size: number;
   mtimeMs: number;
   kind: Kind;
-  /** 给人看的格式名，如 `FTEX`。 */
+
   label: string;
-  /** 图标语义名。 */
+
   icon: string;
-  /** 可用查看器 id，按展示顺序。 */
+
   viewers: string[];
   hasThumb: boolean;
 }
@@ -71,7 +61,7 @@ export interface DirListing {
   parent: string | null;
   dirs: DirEntry[];
   files: FileEntry[];
-  /** 因不在格式注册表里而被过滤掉的文件数。 */
+
   hiddenFiles: number;
   warnings: string[];
 }
@@ -88,8 +78,6 @@ export interface FileMeta {
   entry: FileEntry;
   related: RelatedFile[];
 }
-
-// ─── 文档树 ─────────────────────────────────────────
 
 export type DocNodeKind = "root" | "struct" | "array" | "field" | "bytes" | "text" | "opaque";
 export type DocMark = "note" | "warn" | "error";
@@ -142,8 +130,6 @@ export interface DocOpen {
   page: DocPage;
 }
 
-// ─── ASB 反汇编 ─────────────────────────────────────
-
 export interface AsmFunction {
   index: number;
   name: string;
@@ -168,8 +154,6 @@ export interface Asm {
 export interface Pseudo {
   text: string;
 }
-
-// ─── BBS 布局 ───────────────────────────────────────
 
 export interface BbsObject {
   mbs: number;
@@ -207,8 +191,6 @@ export interface BbsLayout {
   routes: BbsRoute[];
 }
 
-// ─── 可视化图元层 ───────────────────────────────────
-
 export interface VizReference {
   path: string;
   ext: string;
@@ -220,18 +202,18 @@ export interface VizSubRange {
   start: number;
   count: number;
   material: number;
-  /** 材质指向的纹理页（MTRL[K].t2）；-1 表示无贴图。 */
+
   page: number;
-  /** 材质 tint，内存序 R,G,B,A。 */
+
   rgba: [number, number, number, number];
-  /** 渲染路径：-1 default / 0 NML / 1 ADD / 2 SUB / 3 OPA。 */
+
   texRef: number;
 }
 
 export interface VizMesh {
   positions: number[];
   indices: number[];
-  /** 每顶点 uv（2 个浮点）；空数组表示没有 UV 流。 */
+
   uvs: number[];
   bounds: [number, number, number, number, number, number];
   subRanges: VizSubRange[];
@@ -244,7 +226,7 @@ export interface VizNode {
   kind: string;
   transform: number[];
   mesh: VizMesh | null;
-  /** 复用另一节点的网格（同一 FMD 被多个 model 实例引用）。 */
+
   meshRef: number | null;
   reference: VizReference | null;
 }
@@ -263,7 +245,7 @@ export interface GraphNode {
   detail: string | null;
   path: string | null;
   offset: number | null;
-  /** resolved / missing；只有 external 节点有值。 */
+
   status: string | null;
 }
 
@@ -279,15 +261,11 @@ export interface FileGraph {
   truncated: boolean;
 }
 
-// ─── FMS 文本表 ─────────────────────────────────────
-
 export interface FmsText {
   encoding: number;
   count: number;
   strings: string[];
 }
-
-// ─── 索引 ───────────────────────────────────────────
 
 export interface IndexedFile {
   path: string;
@@ -314,8 +292,6 @@ export interface IndexStatus {
   error: string | null;
 }
 
-// ─── 纹理帧 ─────────────────────────────────────────
-
 export interface FrameMeta {
   index: number;
   width: number;
@@ -339,9 +315,6 @@ export interface CacheInfo {
   misses: number;
 }
 
-// ─── 预览场景 ───────────────────────────────────────
-
-/** 图集一帧（预览用，不含像素）。 */
 export interface AtlasFrame {
   texId: number;
   width: number;
@@ -416,16 +389,15 @@ export interface ConvertResult {
   selfCheck: string[];
 }
 
-/** 音频容器里的一条轨道。 */
 export interface AudioTrack {
   index: number;
   name: string;
   cueId: number;
   /** HCA / Opus / ADX … */
   codec: string;
-  /** 能否在应用内解码播放。 */
+
   playable: boolean;
-  /** 载荷在外部 AWB 里。 */
+
   stream: boolean;
   bytes: number;
 }
@@ -444,21 +416,19 @@ export interface AudioBundle {
   warnings: string[];
 }
 
-/** 片段元信息；载荷另取。 */
 export interface AudioClip {
-  /** "hca" 为后端解好的 i16 PCM，"lopus" 为裸 Opus 包。 */
+
   codec: string;
   sampleRate: number;
   channels: number;
   frames: number;
   durationMs: number;
-  /** lopus 每包字节数。 */
+
   stride: number;
   skip: number;
   bytes: number;
 }
 
-/** USM 影片索引。 */
 export interface UsmVideo {
   width: number;
   height: number;
@@ -469,7 +439,7 @@ export interface UsmVideo {
   fps: number;
   frames: number;
   durationMs: number;
-  /** SPS / PPS 的 hex。 */
+
   sps: string;
   pps: string;
   /** adx / hca / none */
@@ -480,12 +450,11 @@ export interface UsmVideo {
   frameSizes: number[];
 }
 
-/** 内容视图的一张表。 */
 export interface ContentSection {
   title: string;
   columns: string[];
   rows: string[][];
-  /** 实际总行数，`rows` 可能被截断。 */
+
   total: number;
 }
 
@@ -495,7 +464,6 @@ export interface ContentSeries {
   note: string | null;
 }
 
-/** 内容视图：一个文件可同时有表格 / 位图 / 折线 / 文本。 */
 export interface Content {
   title: string;
   note: string | null;
@@ -504,7 +472,7 @@ export interface Content {
   text: string[] | null;
   /** `data:image/png;base64,...` */
   image: string | null;
-  /** 位图坐标口径（横轴/纵轴/灰度含义）。 */
+
   imageNote: string | null;
 }
 

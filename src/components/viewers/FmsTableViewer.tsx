@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type FileEntry, type FmsText } from "../../lib/ipc";
 
-/** FMS 文本表：虚拟列表 + 子串过滤。 */
 export function FmsTableViewer({ entry }: { entry: FileEntry }) {
   const [data, setData] = useState<FmsText | null>(null);
   const [error, setError] = useState<string | null>(null);

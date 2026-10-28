@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { getFileThumbUrl, getFileThumbUrlDeferred } from "../../lib/thumbCache";
 
-/** 格式图标。语义名由后端注册表给出，前端只负责画。 */
 export function FormatIcon({ icon, size = 16 }: { icon: string; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor" };
 
@@ -87,7 +86,6 @@ export function FormatIcon({ icon, size = 16 }: { icon: string; size?: number })
   }
 }
 
-/** 缩略图：只有后端声明 `hasThumb` 的条目才会请求，其余直接画格式图标。 */
 export function Thumb({
   path,
   icon,
@@ -99,7 +97,7 @@ export function Thumb({
   icon: string;
   size?: number;
   hasThumb: boolean;
-  /** 列表里用：滚动停止后才解码。 */
+
   deferred?: boolean;
 }) {
   const [url, setUrl] = useState<string | null>(null);

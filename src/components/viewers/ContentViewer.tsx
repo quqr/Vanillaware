@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type Content, type ContentSection, type FileEntry } from "../../lib/ipc";
 
-/** 内容视图：表格 / 位图 / 折线 / 文本，按后端投影的结果组合渲染。 */
 export function ContentViewer({ entry }: { entry: FileEntry }) {
   const [content, setContent] = useState<Content | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -5,7 +5,6 @@ import { decodeClip, buildPeaks, opusDecodable, UnsupportedAudioError, type Deco
 
 const WAVE_HEIGHT = 132;
 
-/** 音频容器：左侧 cue/条目列表，右侧波形与播放控制。 */
 export function AudioViewer({ entry }: { entry: FileEntry }) {
   const [bundle, setBundle] = useState<AudioBundle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +26,6 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const startedAtRef = useRef(0);
   const rafRef = useRef(0);
-
-  // ─── 容器索引 ───────────────────────────────────
 
   useEffect(() => {
     let alive = true;
@@ -60,13 +57,10 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
       try {
         source.stop();
       } catch {
-        // 已经结束的 source 再 stop 会抛，忽略。
       }
     }
     setPlaying(false);
   }, []);
-
-  // ─── 片段解码 ───────────────────────────────────
 
   useEffect(() => {
     if (selected === null) return;
@@ -103,8 +97,6 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
   }, [entry.path, selected, stopPlayback]);
 
   useEffect(() => stopPlayback, [stopPlayback]);
-
-  // ─── 播放 ───────────────────────────────────────
 
   const play = useCallback(
     (from: number) => {
@@ -178,8 +170,6 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePlay]);
 
-  // ─── 波形绘制 ───────────────────────────────────
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -233,8 +223,6 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width)));
     seek(ratio * decoded.durationSec);
   };
-
-  // ─── 列表 ───────────────────────────────────────
 
   const tracks = useMemo(() => {
     if (!bundle) return [];

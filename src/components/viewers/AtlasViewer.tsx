@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { api, type FileEntry, type FrameList } from "../../lib/ipc";
 import { getFrameUrl } from "../../lib/thumbCache";
 
-/** 纹理查看器：FTEX 容器内的帧列表 + 单帧预览。 */
 export function AtlasViewer({ entry }: { entry: FileEntry }) {
   const [frames, setFrames] = useState<FrameList | null>(null);
   const [index, setIndex] = useState(0);

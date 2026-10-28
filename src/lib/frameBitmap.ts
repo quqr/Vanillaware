@@ -1,26 +1,3 @@
-/**
- * `VideoFrame` → `ImageBitmap`，**同步**完成。
- *
- * 为什么必须同步：WebCodecs 的 `VideoDecoder` 输出帧是有配额的（硬解通常十几块
- * 输出缓冲）。如果像以前那样把 `VideoFrame` 攒进数组、等解码完再统一转位图，
- * 池子一旦耗尽解码器就停下来等释放缓冲 —— 表现正是「吐出 13 帧后 flush 永不返回」。
- * 所以这里只在 `output` 回调里同步 `drawImage` + `transferToImageBitmap`，
- * 调用方紧接着 `frame.close()`，一帧不囤。
- *
- * 走 Canvas2D 的 `drawImage`（`VideoFrame` 本身就是合法的 `CanvasImageSource`），
- * 而不是 `createImageBitmap(frame, { resizeWidth, … })`：缩放交给画布，
- * `transferToImageBitmap()` 同步返回，且是零拷贝。
- */
-
-/**
- * 这张位图是不是「近乎全黑」。
- *
- * 用途：`PcSelect_*.usm` 这类选人短片是**从黑场淡入**的，第 0 帧真的是纯黑
- * （1×1 缩略取平均灰 = 0）。解码修好之后首屏依然是黑的，很容易被当成「还是坏的」，
- * 所以在第 0 帧上做一次判定，界面给一句说明而不是让人猜。
- *
- * 拿不到像素时一律返回 `false`：这句提示是锦上添花，不能因为它出问题而挡路。
- */
 export function isNearBlack(bitmap: ImageBitmap, threshold = 8): boolean {
   if (typeof OffscreenCanvas !== "function") return false;
   try {
@@ -35,7 +12,6 @@ export function isNearBlack(bitmap: ImageBitmap, threshold = 8): boolean {
   }
 }
 
-/** 一个 GOP 复用同一块画布：30 帧不会建 30 块。 */
 export function createFrameBitmapConverter(
   width: number,
   height: number,

@@ -13,7 +13,6 @@ const ROLE_LABEL: Record<string, string> = {
   text: "文本",
 };
 
-/** OSB 场景组装：节点树 + 引用 FMD 灰模；Three.js 动态加载。 */
 export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
   const [data, setData] = useState<VizScene | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +95,6 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
       const materials: MeshStandardMaterial[] = [];
       materialsRef.current = materials;
 
-      // 纹理引用挂在 model 节点下：父节点即 model 节点。
       const textureOfModel = new Map<number, string>();
       for (const node of data.nodes) {
         if (node.parent !== null && node.reference?.role === "texture") {
@@ -145,7 +143,6 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
           built.set(node.id, result.object);
           object = result.object;
         } else if (node.meshRef !== null) {
-          // 同一 FMD 的后续实例复用首个实例的几何与材质。
           const source = built.get(node.meshRef);
           object = source ? new THREE.Mesh(source.geometry, source.material) : new THREE.Group();
         } else {
@@ -227,7 +224,6 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
     }
   }, [wireframe]);
 
-  // 同一资源会被多个节点引用，按 role + path 去重后展示，点击跳到对应文件。
   const references = useMemo(() => {
     if (!data) return [];
     const grouped = new Map<string, { reference: VizReference; count: number }>();
@@ -304,7 +300,6 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
   );
 }
 
-/** 引用面板只显示文件名，完整路径放在 title 里。 */
 function fileLabel(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }

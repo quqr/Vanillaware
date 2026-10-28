@@ -2,10 +2,6 @@ import { useEffect, useState } from "react";
 import { JsonTree } from "../JsonTree";
 import { api, type ConvertResult } from "../../lib/ipc";
 
-/** 动画结构查看器：单文件 V55 → Quad 的字段级树 + 自检 + 导出（ADR-0008 / ADR-0012）。
- *
- * golden 比对由测试套件负责（`mbs_golden_quad`），界面不提供手选 golden 的入口。
- */
 export function StructurePanel({ path, tag }: { path: string; tag: string }) {
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [busy, setBusy] = useState(false);

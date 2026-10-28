@@ -1,21 +1,19 @@
-/** 列表/网格共用的「一行」抽象：本目录文件与全局搜索结果在这里归一。 */
-
 import { useMemo } from "react";
 import { useLibraryStore } from "../../store/libraryStore";
 
 export interface Row {
   path: string;
   name: string;
-  /** 格式名（FTEX / MBS / …）。 */
+
   label: string;
-  /** 小写、不含点的扩展名；格式过滤以它为准。 */
+
   ext: string;
-  /** 图标语义名（后端注册表给出）。 */
+
   icon: string;
   size: number | null;
   mtimeMs: number | null;
   hasThumb: boolean;
-  /** 全局搜索命中时的所在目录。 */
+
   dir: string | null;
 }
 

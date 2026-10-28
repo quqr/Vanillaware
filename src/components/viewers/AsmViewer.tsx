@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type Asm, type FileEntry } from "../../lib/ipc";
 
-/** ASB 反汇编查看器：左侧函数列表，右侧虚拟化指令流。 */
 export function AsmViewer({ entry }: { entry: FileEntry }) {
   const [data, setData] = useState<Asm | null>(null);
   const [error, setError] = useState<string | null>(null);

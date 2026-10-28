@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-/** 只读 JSON 树：默认展开两层，超过 50 项的数组默认折叠，避免几 MB 的 Quad 一次性铺开。 */
 export function JsonTree({
   name,
   value,

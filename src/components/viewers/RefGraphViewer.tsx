@@ -5,13 +5,11 @@ import { useLibraryStore } from "../../store/libraryStore";
 const WIDTH = 760;
 const ROW = 30;
 
-/** 外部引用边标签 → 中文。 */
 const EXTERNAL_LABEL: Record<string, string> = {
   text: "文本表",
   loads: "资源",
 };
 
-/** 跨文件引用图：RSC 条目/载荷、OTM 清单、BBS 名表共用（ADR-0019）。 */
 export function RefGraphViewer({ entry }: { entry: FileEntry }) {
   const [data, setData] = useState<FileGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +34,6 @@ export function RefGraphViewer({ entry }: { entry: FileEntry }) {
     };
   }, [entry.path]);
 
-  // 外部引用（配对 .fms 与载荷内联资源串）：按边标签分组并统计引用次数。
   const externals = useMemo(() => {
     if (!data) return [];
     const byNode = new Map<number, { label: string; count: number }>();
