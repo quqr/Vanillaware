@@ -1,5 +1,3 @@
-//! 真实语料的冒烟验证。默认不跑：语料只在本机存在。
-//!
 //! ```text
 //! cargo test -p catalog --test real_corpus -- --ignored --nocapture
 //! ```
@@ -13,30 +11,30 @@ use catalog::{build_index, list_dir, Kind};
 const CORPUS: &str = r"F:\Codes\UNICORN OVERLORD\extract";
 
 #[test]
-#[ignore = "需要本机 UNICORN OVERLORD 解包语料"]
+#[ignore = "requires the local UNICORN OVERLORD extraction"]
 fn listing_returns_only_native_resources() {
     let root = Path::new(CORPUS);
     if !root.is_dir() {
-        eprintln!("跳过：语料不存在 {}", root.display());
+        eprintln!("skipped: corpus missing {}", root.display());
         return;
     }
 
     let t = Instant::now();
     let listing = list_dir(root).unwrap();
-    eprintln!("list_dir 根目录耗时：{:?}", t.elapsed());
+    eprintln!("list_dir root took {:?}", t.elapsed());
     eprintln!(
-        "子目录 {} / 收录 {} / 未收录 {} / 警告 {}",
+        "dirs {} / catalogued {} / skipped {} / warnings {}",
         listing.dirs.len(),
         listing.files.len(),
         listing.hidden_files,
         listing.warnings.len()
     );
 
-    assert!(!listing.dirs.is_empty(), "根下应有子目录");
+    assert!(!listing.dirs.is_empty(), "root must contain subdirectories");
     for file in &listing.files {
         assert!(
             !file.kind.icon().is_empty(),
-            "{} 的类别不在原生资源范围内",
+            "{} has a kind outside the native resource set",
             file.name
         );
         assert!(!matches!(
@@ -47,11 +45,11 @@ fn listing_returns_only_native_resources() {
 }
 
 #[test]
-#[ignore = "需要本机 UNICORN OVERLORD 解包语料"]
+#[ignore = "requires the local UNICORN OVERLORD extraction"]
 fn content_directory_reports_textures_and_animations() {
     let dir = Path::new(CORPUS).join("000").join("GUI");
     if !dir.is_dir() {
-        eprintln!("跳过：{} 不存在", dir.display());
+        eprintln!("skipped: {} does not exist", dir.display());
         return;
     }
 
@@ -67,34 +65,34 @@ fn content_directory_reports_textures_and_animations() {
         .filter(|f| f.kind == Kind::Animation)
         .count();
     eprintln!(
-        "{}：纹理 {} / 动画 {} / 未收录 {}",
+        "{}: textures {} / animations {} / skipped {}",
         dir.display(),
         textures,
         animations,
         listing.hidden_files
     );
 
-    assert!(textures > 0, "GUI 目录应有纹理");
-    assert!(animations > 0, "GUI 目录应有动画");
+    assert!(textures > 0, "GUI must contain textures");
+    assert!(animations > 0, "GUI must contain animations");
     assert!(
         textures + animations <= listing.files.len(),
-        "纹理/动画计数不应超过总数"
+        "texture and animation counts must not exceed the total"
     );
 }
 
 #[test]
-#[ignore = "需要本机 UNICORN OVERLORD 解包语料"]
+#[ignore = "requires the local UNICORN OVERLORD extraction"]
 fn derived_output_directory_indexes_to_nothing() {
     let dir = Path::new(CORPUS).join("Main-Output").join("quads");
     if !dir.is_dir() {
-        eprintln!("跳过：{} 不存在", dir.display());
+        eprintln!("skipped: {} does not exist", dir.display());
         return;
     }
 
     let cancel = AtomicBool::new(false);
     let t = Instant::now();
     let entries = build_index(&dir, &cancel, |_| {}).unwrap();
-    eprintln!("索引 {} 耗时：{:?}", dir.display(), t.elapsed());
-    eprintln!("{} 下的索引条目：{}", dir.display(), entries.len());
-    assert!(entries.is_empty(), "只含 .quad.json 的目录不应收录任何资源");
+    eprintln!("index {} took {:?}", dir.display(), t.elapsed());
+    eprintln!("index entries under {}: {}", dir.display(), entries.len());
+    assert!(entries.is_empty(), "a directory of .quad.json files must catalogue nothing");
 }

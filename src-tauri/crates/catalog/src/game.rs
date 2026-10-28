@@ -1,12 +1,7 @@
-//! 游戏档案嗅探：只决定「默认 mbs tag + 优先查看器」，不参与可见性。
-//!
-//! 有界、只读目录名：不递归整棵树、不读文件头，根目录变化时调用一次即可。
-
 use std::path::Path;
 
 use serde::Serialize;
 
-/// 已知游戏档案。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GameId {
@@ -15,15 +10,12 @@ pub enum GameId {
     Unknown,
 }
 
-/// 档案推断结果。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct GameProfileDto {
     pub id: GameId,
     pub label: &'static str,
-    /// 默认 mbs 平台标签；`None` 表示不改动用户当前选择。
     pub mbs_tag: Option<&'static str>,
-    /// 0–100；标记命中与扩展名普查共同决定。
     pub confidence: u8,
     pub evidence: Vec<String>,
 }
@@ -32,7 +24,6 @@ const UO_DIRS: &[&str] = &["Script", "BattleBG"];
 const TS_DIRS: &[&str] = &["Stage", "Cot", "Fms"];
 const CONTAINERS: &[&str] = &["EX DATA", "000"];
 
-/// 嗅探根目录；向上最多看 2 级父目录，目录项普查上限 256。
 pub fn detect(root: &Path) -> GameProfileDto {
     let mut uo = 0u32;
     let mut ts = 0u32;
@@ -76,7 +67,7 @@ pub fn detect(root: &Path) -> GameProfileDto {
         label: match id {
             GameId::UnicornOverlord => "Unicorn Overlord",
             GameId::ThirteenSentinels => "13 Sentinels",
-            GameId::Unknown => "未知",
+            GameId::Unknown => "Unknown",
         },
         mbs_tag: match id {
             GameId::UnicornOverlord => Some("swi_unic"),
@@ -95,29 +86,28 @@ fn scan_markers(dir: &Path, uo: &mut u32, ts: &mut u32, evidence: &mut Vec<Strin
     for marker in UO_DIRS {
         if dir.join(marker).is_dir() {
             *uo += 50;
-            push_evidence(evidence, format!("{} 下存在 {marker}/", dir.display()));
+            push_evidence(evidence, format!("{marker}/ exists under {}", dir.display()));
         }
     }
     for marker in TS_DIRS {
         if dir.join(marker).is_dir() {
             *ts += 50;
-            push_evidence(evidence, format!("{} 下存在 {marker}/", dir.display()));
+            push_evidence(evidence, format!("{marker}/ exists under {}", dir.display()));
         }
     }
 }
 
-/// 根目录本身可能就是游戏内的叶子目录（如 `.../Stage`），用目录名补一分。
 fn scan_basename(dir: &Path, uo: &mut u32, ts: &mut u32, evidence: &mut Vec<String>) {
     let Some(name) = dir.file_name().and_then(|name| name.to_str()) else {
         return;
     };
     if UO_DIRS.iter().any(|marker| name.eq_ignore_ascii_case(marker)) {
         *uo += 20;
-        push_evidence(evidence, format!("当前目录名为 {name}"));
+        push_evidence(evidence, format!("directory is named {name}"));
     }
     if TS_DIRS.iter().any(|marker| name.eq_ignore_ascii_case(marker)) {
         *ts += 20;
-        push_evidence(evidence, format!("当前目录名为 {name}"));
+        push_evidence(evidence, format!("directory is named {name}"));
     }
 }
 
@@ -151,10 +141,10 @@ fn scan_extensions(dir: &Path, uo: &mut u32, ts: &mut u32, evidence: &mut Vec<St
     }
 
     if uo_hit {
-        push_evidence(evidence, format!("{} 下出现 asb/bbs", dir.display()));
+        push_evidence(evidence, format!("asb/bbs found under {}", dir.display()));
     }
     if ts_hit {
-        push_evidence(evidence, format!("{} 下出现 osb/ctb/rsc/fmd/fsb", dir.display()));
+        push_evidence(evidence, format!("osb/ctb/rsc/fmd/fsb found under {}", dir.display()));
     }
 }
 

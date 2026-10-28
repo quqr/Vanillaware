@@ -1,8 +1,3 @@
-//! 目录读取与文件信息：库视图的唯一数据来源。
-//!
-//! 只做文件系统访问与**注册表过滤**，不解码任何内容——想在这里解码都做不到（本 crate 不依赖
-//! `formats`）。被过滤掉的文件只报数量，不报明细：库只服务原生二进制资源。
-
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -23,18 +18,17 @@ pub enum FsError {
 impl std::fmt::Display for FsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FsError::NotFound(p) => write!(f, "路径不存在: {p}"),
-            FsError::NotADirectory(p) => write!(f, "不是目录: {p}"),
-            FsError::NotAFile(p) => write!(f, "不是文件: {p}"),
-            FsError::NotCatalogued(p) => write!(f, "该扩展名不在格式注册表里: {p}"),
-            FsError::Io(msg) => write!(f, "文件系统错误: {msg}"),
+            FsError::NotFound(p) => write!(f, "path not found: {p}"),
+            FsError::NotADirectory(p) => write!(f, "not a directory: {p}"),
+            FsError::NotAFile(p) => write!(f, "not a file: {p}"),
+            FsError::NotCatalogued(p) => write!(f, "extension is not in the format registry: {p}"),
+            FsError::Io(msg) => write!(f, "filesystem error: {msg}"),
         }
     }
 }
 
 impl std::error::Error for FsError {}
 
-/// 读一层目录。子目录全部返回（含空目录），文件只返回注册表收录的。
 pub fn list_dir(dir: &Path) -> Result<DirListingDto, FsError> {
     if !dir.is_dir() {
         return Err(if dir.exists() {
@@ -54,19 +48,18 @@ pub fn list_dir(dir: &Path) -> Result<DirListingDto, FsError> {
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {
-                push_warning(&mut warnings, format!("读取条目失败: {e}"));
+                push_warning(&mut warnings, format!("failed to read entry: {e}"));
                 continue;
             }
         };
 
         let path = entry.path();
-        // 符号链接按真实类型判断，不跟随。
         let file_type = match entry.file_type() {
             Ok(t) => t,
             Err(e) => {
                 push_warning(
                     &mut warnings,
-                    format!("读取类型失败 {}: {e}", path.display()),
+                    format!("failed to read file type {}: {e}", path.display()),
                 );
                 continue;
             }
@@ -93,7 +86,7 @@ pub fn list_dir(dir: &Path) -> Result<DirListingDto, FsError> {
             Ok(metadata) => files.push(file_entry(&path, &metadata, format)),
             Err(e) => push_warning(
                 &mut warnings,
-                format!("读取元信息失败 {}: {e}", path.display()),
+                format!("failed to read metadata {}: {e}", path.display()),
             ),
         }
     }
@@ -111,7 +104,6 @@ pub fn list_dir(dir: &Path) -> Result<DirListingDto, FsError> {
     })
 }
 
-/// 单个已收录文件的完整信息，含同目录同基础名的关联文件。
 pub fn file_meta(path: &Path) -> Result<FileMetaDto, FsError> {
     if !path.exists() {
         return Err(FsError::NotFound(normalize(path)));
@@ -131,7 +123,6 @@ pub fn file_meta(path: &Path) -> Result<FileMetaDto, FsError> {
     })
 }
 
-/// 构造已收录文件的条目；字段全部来自注册表 + 文件元信息。
 fn file_entry(
     path: &Path,
     metadata: &std::fs::Metadata,
@@ -154,7 +145,6 @@ fn file_entry(
     }
 }
 
-/// 同目录、同基础名、不同扩展名的已收录文件。
 fn related_files(path: &Path) -> Vec<RelatedFileDto> {
     let (Some(parent), Some(stem)) = (path.parent(), path.file_stem()) else {
         return Vec::new();
@@ -193,7 +183,6 @@ fn related_files(path: &Path) -> Vec<RelatedFileDto> {
     out
 }
 
-/// 读文件头部若干字节（十六进制查看器用）。不足则返回实际长度。
 pub fn read_head(path: &Path, max_bytes: usize) -> Result<Vec<u8>, FsError> {
     use std::io::Read;
 
@@ -205,14 +194,12 @@ pub fn read_head(path: &Path, max_bytes: usize) -> Result<Vec<u8>, FsError> {
     Ok(buffer)
 }
 
-/// 小写、不含点的扩展名；无扩展名时为空串。
 pub fn extension(path: &Path) -> String {
     path.extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default()
 }
 
-/// 去掉 Windows 的 `\\?\` / `\\?\UNC\` 前缀，统一成普通显示路径。
 pub fn normalize(path: &Path) -> String {
     let raw = path.to_string_lossy();
     let stripped = raw
@@ -223,7 +210,6 @@ pub fn normalize(path: &Path) -> String {
     stripped.replace('/', "\\")
 }
 
-/// Unix 毫秒；取不到时为 0。
 pub fn mtime_ms(metadata: &std::fs::Metadata) -> u64 {
     metadata
         .modified()
@@ -233,7 +219,6 @@ pub fn mtime_ms(metadata: &std::fs::Metadata) -> u64 {
         .unwrap_or(0)
 }
 
-/// 把路径拼成绝对路径但不做 `canonicalize`（后者会带 `\\?\` 前缀）。
 pub fn absolutize(path: &Path) -> PathBuf {
     if path.is_absolute() {
         return path.to_path_buf();

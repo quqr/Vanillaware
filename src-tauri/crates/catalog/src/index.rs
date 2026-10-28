@@ -1,8 +1,3 @@
-//! 纯内存目录索引：只收集**已收录资源**的元信息，服务全局搜索。
-//!
-//! 不读文件内容、不做解码、不落盘。换根即整份丢弃重建，因此没有版本号与失效判定，
-//! 也不会与缩略图磁盘缓存形成第二套失效机制。
-
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -12,13 +7,10 @@ use crate::dto::{IndexedFileDto, SearchResultDto};
 use crate::format::{self, Format};
 use crate::fslist::{self, FsError};
 
-/// 搜索结果的默认上限。
 pub const SEARCH_LIMIT: usize = 500;
 
-/// 进度回调的节流间隔（条目数）。
 const PROGRESS_INTERVAL: u32 = 256;
 
-/// 索引里的一条记录。
 #[derive(Debug, Clone)]
 pub struct IndexEntry {
     pub path: String,
@@ -50,7 +42,6 @@ impl IndexEntry {
     }
 }
 
-/// 递归收集 `root` 下所有已收录资源。`cancel` 置位则提前返回已收集部分。
 pub fn build(
     root: &Path,
     cancel: &AtomicBool,
@@ -67,7 +58,6 @@ pub fn build(
     let mut entries: Vec<IndexEntry> = Vec::new();
     let mut since_report = 0u32;
 
-    // 不排序：索引只服务搜索，排序会让每个目录都先读完再遍历。
     let walker = WalkDir::new(root).follow_links(false);
     for entry in walker.into_iter().flatten() {
         if cancel.load(Ordering::Relaxed) {
@@ -102,7 +92,6 @@ pub fn build(
     Ok(entries)
 }
 
-/// 按文件名子串搜索（大小写不敏感），`limit` 为返回条数上限。
 pub fn search(entries: &[IndexEntry], query: &str, limit: usize) -> SearchResultDto {
     let needle = query.trim().to_lowercase();
     let limit = limit.max(1);

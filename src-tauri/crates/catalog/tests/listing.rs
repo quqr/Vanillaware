@@ -1,5 +1,3 @@
-//! 目录列表与索引的行为契约：只收录注册表内的原生资源。
-
 use std::fs;
 use std::sync::atomic::AtomicBool;
 
@@ -20,7 +18,6 @@ fn listing_keeps_catalogued_files_and_counts_the_rest() {
     touch(&root.join("Hero.ftx"));
     touch(&root.join("Hero.mbs"));
     touch(&root.join("Enemy.asb"));
-    // 非原生 / 派生产物：一律不收录。
     touch(&root.join("Hero.png"));
     touch(&root.join("Hero.quad.json"));
     touch(&root.join("readme.txt"));
