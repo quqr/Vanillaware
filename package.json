@@ -7,8 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "check:audio": "node --experimental-strip-types --no-warnings scripts/check-audio-decode.mjs",
-    "check:video": "node --experimental-strip-types --no-warnings scripts/check-video-decode.mjs",
+    "check:audio": "node --experimental-strip-types --no-warnings scripts/checks/check-audio-decode.mjs",
+    "check:video": "node --experimental-strip-types --no-warnings scripts/checks/check-video-decode.mjs",
+    "check:window": "node --experimental-strip-types --no-warnings scripts/checks/video-window.mjs",
+    "check:lang": "node scripts/checks/check-code-language.mjs",
+    "check:layout": "node scripts/checks/check-test-layout.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

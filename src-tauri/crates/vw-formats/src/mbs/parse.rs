@@ -246,12 +246,12 @@ fn index_label(section: &str, index: usize) -> String {
 }
 
 /// s1 / s2：PHP `nds_quad30p` 从 12 个 float 里取下标 2..9，共 8 个。
-fn quad8(floats: &[f32]) -> Vec<f32> {
+pub fn quad8(floats: &[f32]) -> Vec<f32> {
     floats.get(2..10).map(<[f32]>::to_vec).unwrap_or_default()
 }
 
 /// s0 的 `fog`：PHP `fog_quad` —— 四色全等退化为单串，否则四串。
-fn fog_quad(colors: [&[u8]; 4]) -> FogQuad {
+pub fn fog_quad(colors: [&[u8]; 4]) -> FogQuad {
     let same = colors[0] == colors[1] && colors[0] == colors[2] && colors[0] == colors[3];
     if same {
         FogQuad::One(hash_hex(colors[0]))
@@ -287,7 +287,7 @@ fn s9_name(rec: &vw_gen::gen::vw_mbs_v77::VwMbsV77_RecS9) -> String {
 }
 
 /// 截断于首个 NUL；无 NUL 则取全长（PHP `substr0`）。
-fn c_string(bytes: &[u8]) -> String {
+pub fn c_string(bytes: &[u8]) -> String {
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
@@ -304,49 +304,4 @@ fn to_hex(bytes: &[u8]) -> String {
         out.push_str(&format!("{byte:02x}"));
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quad8_takes_indices_2_to_9() {
-        let floats: Vec<f32> = (0..12).map(|i| i as f32).collect();
-        assert_eq!(quad8(&floats), vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
-    }
-
-    /// 四色全等 → 单串；任一不同 → 四串（PHP `fog_quad`）。
-    #[test]
-    fn fog_quad_degrades_only_when_all_equal() {
-        let same: Vec<u8> = vec![0xff, 0x00, 0x12, 0x34];
-        let other: Vec<u8> = vec![0xff, 0x00, 0x12, 0x35];
-        assert_eq!(
-            fog_quad([&same, &same, &same, &same]),
-            FogQuad::One("#ff001234".into())
-        );
-        assert_eq!(
-            fog_quad([&same, &same, &same, &other]),
-            FogQuad::Four([
-                "#ff001234".into(),
-                "#ff001234".into(),
-                "#ff001234".into(),
-                "#ff001235".into()
-            ])
-        );
-    }
-
-    /// 无 NUL 时读取会越过 name 字段，与 PHP `substr0` 的行为一致。
-    #[test]
-    fn c_string_stops_at_first_nul() {
-        assert_eq!(c_string(b"abc\0def"), "abc");
-        assert_eq!(c_string(b"abcdef"), "abcdef");
-        assert_eq!(c_string(b"a\0\0"), "a");
-    }
-
-    #[test]
-    fn hex_is_lowercase_without_padding() {
-        assert_eq!(hex(0), "0x0");
-        assert_eq!(hex(0x120), "0x120");
-    }
 }

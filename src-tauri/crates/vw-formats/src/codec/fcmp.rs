@@ -80,14 +80,3 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, Error> {
 
     Ok(result)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_non_fcmp() {
-        assert!(!is_fcmp(b"FTEX"));
-        assert!(decode(&[0u8; 32]).unwrap().is_empty());
-    }
-}

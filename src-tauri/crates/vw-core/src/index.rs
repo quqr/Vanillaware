@@ -28,6 +28,15 @@ pub struct IndexEntry {
 }
 
 impl IndexEntry {
+    pub fn new(path: String, name: String, format: &'static Format) -> Self {
+        Self {
+            path,
+            needle: name.to_lowercase(),
+            name,
+            format,
+        }
+    }
+
     fn to_dto(&self) -> IndexedFileDto {
         IndexedFileDto {
             path: self.path.clone(),
@@ -76,12 +85,11 @@ pub fn build(
             continue;
         };
 
-        entries.push(IndexEntry {
-            path: fslist::normalize(path),
-            needle: name.to_lowercase(),
+        entries.push(IndexEntry::new(
+            fslist::normalize(path),
             name,
             format,
-        });
+        ));
 
         since_report += 1;
         if since_report >= PROGRESS_INTERVAL {
@@ -124,39 +132,5 @@ pub fn search(entries: &[IndexEntry], query: &str, limit: usize) -> SearchResult
         truncated: total as usize > items.len(),
         total,
         items,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(name: &str) -> IndexEntry {
-        IndexEntry {
-            path: format!("C:\\x\\{name}"),
-            name: name.to_string(),
-            needle: name.to_lowercase(),
-            format: format::lookup(name.rsplit('.').next().unwrap_or_default())
-                .unwrap_or(&format::FORMATS[0]),
-        }
-    }
-
-    #[test]
-    fn search_is_case_insensitive_and_reports_truncation() {
-        let entries = vec![entry("Alpha.asb"), entry("alpha2.asb"), entry("Beta.ftx")];
-        let hit = search(&entries, "ALPHA", 10);
-        assert_eq!(hit.total, 2);
-        assert!(!hit.truncated);
-
-        let truncated = search(&entries, "alpha", 1);
-        assert_eq!(truncated.items.len(), 1);
-        assert_eq!(truncated.total, 2);
-        assert!(truncated.truncated);
-    }
-
-    #[test]
-    fn empty_query_matches_nothing() {
-        let entries = vec![entry("Alpha.asb")];
-        assert_eq!(search(&entries, "   ", 10).total, 0);
     }
 }

@@ -70,24 +70,3 @@ fn find(bytes: &[u8], needle: &[u8]) -> Option<usize> {
         .windows(needle.len())
         .position(|window| window == needle)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_file_is_reported_not_panicked() {
-        let arena = build(&vec![0u8; 8], "ACB");
-        assert!(arena.total_nodes() > 0);
-        assert!(arena
-            .checks()
-            .iter()
-            .any(|check| check.id == "acb.tables" && !check.ok));
-    }
-
-    #[test]
-    fn find_returns_first_offset() {
-        let bytes = b"xxAFS2yyAFS2";
-        assert_eq!(find(bytes, b"AFS2"), Some(2));
-    }
-}

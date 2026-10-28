@@ -15,3 +15,23 @@ cridecoder = "0.3"
 
 [dev-dependencies]
 tempfile = "3"
+
+[[example]]
+name = "audio_probe"
+path = "tests/tools/audio_probe.rs"
+
+[[example]]
+name = "content_probe"
+path = "tests/tools/content_probe.rs"
+
+[[example]]
+name = "usm_probe"
+path = "tests/tools/usm_probe.rs"
+
+[[example]]
+name = "usm_dump"
+path = "tests/tools/usm_dump.rs"
+
+[[example]]
+name = "usm_gop_probe"
+path = "tests/tools/usm_gop_probe.rs"

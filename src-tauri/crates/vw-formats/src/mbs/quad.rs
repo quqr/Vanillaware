@@ -237,7 +237,7 @@ pub fn convert(v55: &V55) -> Result<Quad> {
 /// PHP：`substr($id3, strpos($id3, ' ') + 1)`——取 `id3` 里第一个空格之后的部分。
 ///
 /// `strpos` 未命中时是 `false`，`false + 1` 为 `1`，故退化成「从第 1 个字节起」。
-fn game_name(id3: &str) -> &str {
+pub fn game_name(id3: &str) -> &str {
     match id3.find(' ') {
         Some(at) => &id3[at + 1..],
         None => id3.get(1..).unwrap_or(""),
@@ -568,7 +568,7 @@ fn attach(kind: &str, id: i64) -> Attach {
 /// 对应 PHP `quadfile::list_add`：不足处补整数 `0`，然后按下标落位。
 ///
 /// 因为每条 s6 / sa / s9 都是按下标升序访问，落位后数组恒为稠密的 `0..=k`。
-fn set_at<T>(list: &mut Vec<Pad<T>>, key: usize, value: Pad<T>) {
+pub fn set_at<T>(list: &mut Vec<Pad<T>>, key: usize, value: Pad<T>) {
     while list.len() <= key {
         list.push(Pad::Empty(0));
     }
@@ -611,7 +611,7 @@ fn s4_at(v55: &V55, index: i64) -> Result<&super::v55::S4Rec> {
 }
 
 /// 对应 PHP `hexdec`：忽略所有非十六进制字符后按位累加（`"0x1e"` → `0x1e`）。
-fn hexdec(text: &str) -> u64 {
+pub fn hexdec(text: &str) -> u64 {
     let mut value = 0u64;
     for ch in text.chars() {
         if let Some(digit) = ch.to_digit(16) {
@@ -624,7 +624,7 @@ fn hexdec(text: &str) -> u64 {
 /// 对应 PHP `bitflag_attr($int, $prefix)`（`$int > 0` 已在调用点保证）。
 ///
 /// 校验器要把旧 C# golden 的 `attribute` 整数规范化成同名串数组，故对 crate 内可见。
-pub(crate) fn bitflag_attr(value: u64, prefix: &str) -> Attribute {
+pub fn bitflag_attr(value: u64, prefix: &str) -> Attribute {
     let mut items = Vec::new();
     let mut rest = value;
     let mut shift = 0u32;
@@ -639,43 +639,5 @@ pub(crate) fn bitflag_attr(value: u64, prefix: &str) -> Attribute {
         Attribute::One(items.remove(0))
     } else {
         Attribute::Many(items)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hexdec_ignores_non_hex() {
-        assert_eq!(hexdec("0x0"), 0);
-        assert_eq!(hexdec("0x5"), 5);
-        assert_eq!(hexdec("0x1e"), 0x1e);
-        assert_eq!(hexdec("0x820"), 0x820);
-    }
-
-    #[test]
-    fn bitflags_turn_into_names() {
-        assert_eq!(
-            bitflag_attr(0x5, "keyattr"),
-            Attribute::Many(vec!["keyattr_1".to_string(), "keyattr_4".to_string(),])
-        );
-        assert_eq!(
-            bitflag_attr(0x2, "keyattr"),
-            Attribute::One("keyattr_2".to_string())
-        );
-    }
-
-    #[test]
-    fn game_name_drops_console_prefix() {
-        assert_eq!(game_name("swit unicorn overlord"), "unicorn overlord");
-        assert_eq!(game_name("ps4 13 sentinels"), "13 sentinels");
-    }
-
-    #[test]
-    fn list_add_pads_with_zero() {
-        let mut list: Vec<Pad<u8>> = Vec::new();
-        set_at(&mut list, 2, Pad::Filled(7u8));
-        assert_eq!(list, vec![Pad::Empty(0), Pad::Empty(0), Pad::Filled(7u8)]);
     }
 }

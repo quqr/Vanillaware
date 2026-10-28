@@ -350,7 +350,7 @@ fn append_strings(builder: &mut Builder, parent: u32, key: &str, title: &str, it
 }
 
 /// 单条记录的步长与三个计数；任何越界返回 `None`。
-fn record_size(bytes: &[u8], at: usize) -> Option<(usize, u16, u8, u8)> {
+pub fn record_size(bytes: &[u8], at: usize) -> Option<(usize, u16, u8, u8)> {
     let layers = rdr::u16_at(bytes, at + 0x20)?;
     let ext = rdr::u8_at(bytes, at + 0x22)?;
     let groups = rdr::u8_at(bytes, at + 0x23)?;
@@ -400,30 +400,4 @@ fn read_string(bytes: &[u8], at: usize) -> Option<(String, usize)> {
         .position(|&byte| byte == 0)
         .unwrap_or(rest.len());
     Some((text::utf8_or_sjis(&rest[..end]), at + end + 1))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_short_file() {
-        for len in 0..0x90 {
-            let arena = build(&vec![0u8; len]);
-            assert!(arena.total_nodes() > 0);
-        }
-    }
-
-    #[test]
-    fn record_size_counts_layers_and_groups() {
-        let mut bytes = vec![0u8; 0x400];
-        bytes[0x20..0x22].copy_from_slice(&1u16.to_le_bytes());
-        bytes[0x22] = 1;
-        bytes[0x23] = 1;
-        let after = 0x24 + 0x40 + 0x90;
-        bytes[after + 3] = 2;
-        let (size, layers, ext, groups) = record_size(&bytes, 0).expect("record");
-        assert_eq!((layers, ext, groups), (1, 1, 1));
-        assert_eq!(size, after + 2 * 0xF0 + 4);
-    }
 }
