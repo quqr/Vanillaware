@@ -9,6 +9,8 @@ pub mod asb_ops;
 pub mod awb;
 pub mod bbs;
 pub mod binary;
+pub mod bst;
+pub mod bundle;
 pub mod ctb;
 pub mod drg;
 pub mod fmd;
@@ -18,6 +20,8 @@ pub mod ftx;
 pub mod mbs;
 pub mod mpd;
 pub mod nnd;
+pub mod oeb;
+pub mod orb;
 pub mod osb;
 pub mod otm;
 pub mod rdr;
@@ -82,6 +86,9 @@ pub fn parse_bytes(bytes: &[u8], ext: &str, tag: Option<&str>) -> Result<DocAren
         "drg" => Ok(drg::build(bytes)),
         "vs2" => Ok(vs2::build(bytes)),
         "inc" => Ok(text::build_plain(bytes, "INC")),
+        "oeb" => Ok(oeb::build(bytes)),
+        "orb" => Ok(orb::build(bytes)),
+        "bst" => Ok(bst::build(bytes)),
         _ => Ok(binary::build(bytes, ext)),
     }
 }
@@ -204,6 +211,114 @@ mod tests {
 
         let arena = parse_bytes(&bytes, "osb", None).expect("osb");
         assert!(arena.total_nodes() > 3);
+    }
+
+    /// 造一个最小 bundle：1 个资源名 + 1 个节点（caption + label + group）。
+    fn build_bundle(
+        magic: &[u8],
+        type_id: u32,
+        caption: &str,
+        label: &str,
+        body_len: usize,
+    ) -> Vec<u8> {
+        let mut body = vec![0u8; body_len.max(0x52)];
+        body[..caption.len()].copy_from_slice(caption.as_bytes());
+        body[0x40..0x40 + label.len()].copy_from_slice(label.as_bytes());
+        body[0x50..0x52].copy_from_slice(&7u16.to_le_bytes());
+
+        // 偏移表占 0x18..0x1c，名字从 0x1c 开始（相对 0x10 的偏移就是 0x0c）。
+        let name = b"Character/a.mbs\0";
+        let pool_size = 0x0c + name.len();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(magic);
+        bytes.extend_from_slice(&4u32.to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 8]);
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // 资源数
+        bytes.extend_from_slice(&(pool_size as u32).to_le_bytes());
+        bytes.extend_from_slice(&0x0cu32.to_le_bytes()); // 相对 0x10 的偏移
+        bytes.extend_from_slice(name);
+        bytes.extend_from_slice(&type_id.to_le_bytes());
+        bytes.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&body);
+        bytes
+    }
+
+    #[test]
+    fn oeb_bundle_closes_and_reads_slots() {
+        // 槽位 body 固定 228 字节，0x52 起是 scale(2) + position(3)。
+        let mut bytes = build_bundle(b"OEB\0", 28, "SLOT01", "JK01A", 228);
+        let body = 0x10 + 0x0c + b"Character/a.mbs\0".len() + 0x10;
+        let floats = [1.0f32, 1.0, 100.0, -200.0, -30.0];
+        for (index, value) in floats.iter().enumerate() {
+            let at = body + 0x52 + index * 4;
+            bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        }
+
+        let arena = parse_bytes(&bytes, "oeb", None).expect("oeb");
+        let checks = arena.checks();
+        for id in ["bundle.magic", "bundle.closed"] {
+            assert!(
+                checks.iter().all(|check| check.id != id || check.ok),
+                "{id} 不成立"
+            );
+        }
+
+        let slots = oeb::slots(&bytes);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].caption, "SLOT01");
+        assert_eq!(slots[0].label, "JK01A");
+        assert_eq!(slots[0].position[0], 100.0);
+        assert_eq!(oeb::resources(&bytes), vec!["Character/a.mbs".to_string()]);
+    }
+
+    #[test]
+    fn orb_bundle_lists_cameras() {
+        let bytes = build_bundle(b"ORB\0", 30, "STAGE01", "00", 0x52);
+        assert!(parse_bytes(&bytes, "orb", None).is_ok());
+        let cameras = orb::cameras(&bytes);
+        assert_eq!(cameras.len(), 1);
+        assert_eq!(cameras[0].stage, "STAGE01");
+        assert_eq!(orb::resources(&bytes), vec!["Character/a.mbs".to_string()]);
+    }
+
+    #[test]
+    fn bst_reads_names_and_identifiers() {
+        let mut bytes = vec![0u8; 0x120];
+        bytes[..4].copy_from_slice(b"BBST");
+        bytes[0x10..0x14].copy_from_slice(&118u32.to_le_bytes());
+        bytes[0x14] = 0x0b;
+        bytes[0x15] = 1;
+        bytes[0x16] = 0x28;
+        bytes[0x17] = 0x0e;
+        bytes[0x1b..0x1b + 14].copy_from_slice(b"BT_STAGE00.fmd");
+        bytes[0x2f..0x2f + 14].copy_from_slice(b"BT_STAGE00.ftx");
+        bytes[0x60..0x6f].copy_from_slice(b"ENE_RANDOMWAVEG");
+
+        let arena = parse_bytes(&bytes, "bst", None).expect("bst");
+        let checks = arena.checks();
+        for id in ["bst.magic", "bst.names"] {
+            assert!(
+                checks.iter().all(|check| check.id != id || check.ok),
+                "{id} 不成立"
+            );
+        }
+        assert_eq!(
+            bst::resources(&bytes),
+            vec!["BT_STAGE00.fmd".to_string(), "BT_STAGE00.ftx".to_string()]
+        );
+        assert!(bst::identifiers(&bytes)
+            .iter()
+            .any(|id| id == "ENE_RANDOMWAVEG"));
+    }
+
+    #[test]
+    fn bundle_view_survives_truncation() {
+        let full = build_bundle(b"OEB\0", 28, "x", "y", 0x52);
+        for len in 0..full.len().min(0x60) {
+            let _ = parse_bytes(&full[..len], "oeb", None);
+        }
     }
 
     #[test]

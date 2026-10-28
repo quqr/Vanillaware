@@ -103,6 +103,9 @@ pub fn project(bytes: &[u8], ext: &str) -> Option<Projection> {
         "fsb" => Some(fsb(bytes)),
         "acf" => Some(acf(bytes)),
         "ufb" => Some(ufb(bytes)),
+        "oeb" => Some(oeb(bytes)),
+        "orb" => Some(orb(bytes)),
+        "bst" => Some(bst(bytes)),
         _ => None,
     }
 }
@@ -358,7 +361,6 @@ fn fsb(bytes: &[u8]) -> Projection {
     let mut resources: Vec<String> = Vec::new();
     let mut catalog: Vec<Vec<String>> = Vec::new();
     let mut scene_note = String::new();
-    let mut head_note = String::new();
 
     for (magic, at, size) in &blocks {
         let body = at + 8;
@@ -367,8 +369,7 @@ fn fsb(bytes: &[u8]) -> Projection {
             b"HEAD" => {
                 let version = rdr::u32_at(bytes, body).unwrap_or(0);
                 let scale = rdr::f32_at(bytes, body + 4).unwrap_or(0.0);
-                head_note = format!("版本 {version:#04x} / 常量 {scale:.3}");
-                head_note.clone()
+                format!("版本 {version:#04x} / 常量 {scale:.3}")
             }
             b"RESL" => {
                 // u32 count，之后每条 = u32 长度（含补零）+ 名字。
@@ -462,6 +463,209 @@ fn fsb(bytes: &[u8]) -> Projection {
             vec![vec!["说明".to_string(), scene_note]],
             1,
         ));
+    }
+    out
+}
+
+// ─── OEB：13 侧的 NPC 摆位 ─────────────────────────
+
+fn oeb(bytes: &[u8]) -> Projection {
+    use super::doc::oeb as doc;
+    let slots = doc::slots(bytes);
+    let resources = doc::resources(bytes);
+    let mut out = Projection::new("OEB 角色摆位");
+    out.note = Some(format!(
+        "{} 个站位 / {} 个外部资源（.mbs 与 .ftx 成对）",
+        slots.len(),
+        resources.len()
+    ));
+
+    if !slots.is_empty() {
+        let rows: Vec<Vec<String>> = slots
+            .iter()
+            .map(|slot| {
+                vec![
+                    slot.caption.clone(),
+                    slot.label.clone(),
+                    format!("{:.1}", slot.position[0]),
+                    format!("{:.1}", slot.position[1]),
+                    format!("{:.1}", slot.position[2]),
+                    format!("{:.2}", slot.scale[0]),
+                ]
+            })
+            .collect();
+        let total = rows.len() as u64;
+        out.sections.push(Section::new(
+            "站位",
+            &["名字", "角色", "X", "Y", "Z", "缩放"],
+            rows,
+            total,
+        ));
+
+        // 俯视散点：横轴 = X，纵轴 = Y（与 .osb 舞台同一套单位）。
+        let min_x = slots.iter().map(|s| s.position[0]).fold(f32::MAX, f32::min);
+        let max_x = slots.iter().map(|s| s.position[0]).fold(f32::MIN, f32::max);
+        let min_y = slots.iter().map(|s| s.position[1]).fold(f32::MAX, f32::min);
+        let max_y = slots.iter().map(|s| s.position[1]).fold(f32::MIN, f32::max);
+        let size = 256usize;
+        let mut values = vec![0u8; size * size];
+        for slot in &slots {
+            let x = scale(slot.position[0], min_x, max_x, size);
+            let y = scale(slot.position[1], min_y, max_y, size);
+            // 点画成十字，单像素在缩略图上会看不见。
+            for (dx, dy) in [(0i32, 0i32), (1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let px = (x as i32 + dx).clamp(0, size as i32 - 1) as usize;
+                let py = (y as i32 + dy).clamp(0, size as i32 - 1) as usize;
+                values[py * size + px] = 255;
+            }
+        }
+        out.bitmap = Some(GrayMap {
+            width: size as u32,
+            height: size as u32,
+            values,
+            legend: format!(
+                "站位俯视图：横轴 X（{min_x:.0}~{max_x:.0}），纵轴 Y（{min_y:.0}~{max_y:.0}），白点 = 一个角色"
+            ),
+        });
+    }
+
+    if !resources.is_empty() {
+        let rows: Vec<Vec<String>> = resources
+            .iter()
+            .enumerate()
+            .map(|(index, name)| vec![index.to_string(), name.clone()])
+            .collect();
+        let total = rows.len() as u64;
+        out.sections
+            .push(Section::new("资源", &["#", "路径"], rows, total));
+    }
+    out
+}
+
+fn scale(value: f32, low: f32, high: f32, size: usize) -> usize {
+    if !value.is_finite() || high <= low {
+        return size / 2;
+    }
+    let ratio = ((value - low) / (high - low)).clamp(0.0, 1.0);
+    ((1.0 - ratio) * (size - 1) as f32) as usize
+}
+
+// ─── ORB：13 侧的轮次镜头 ──────────────────────────
+
+fn orb(bytes: &[u8]) -> Projection {
+    use super::doc::orb as doc;
+    let cameras = doc::cameras(bytes);
+    let resources = doc::resources(bytes);
+    let mut out = Projection::new("ORB 轮次镜头");
+    out.note = Some(format!(
+        "{} 次镜头 / {} 个资源路径",
+        cameras.len(),
+        resources.len()
+    ));
+
+    if !cameras.is_empty() {
+        let rows: Vec<Vec<String>> = cameras
+            .iter()
+            .enumerate()
+            .map(|(index, camera)| {
+                vec![
+                    index.to_string(),
+                    camera.stage.clone(),
+                    camera.label.clone(),
+                    format!("{:.1}", camera.position[0]),
+                    format!("{:.1}", camera.position[1]),
+                    format!("{:.1}", camera.position[2]),
+                ]
+            })
+            .collect();
+        let total = rows.len() as u64;
+        out.sections.push(Section::new(
+            "镜头",
+            &["#", "舞台", "序号", "X", "Y", "Z"],
+            rows,
+            total,
+        ));
+    }
+
+    if !resources.is_empty() {
+        let rows: Vec<Vec<String>> = resources
+            .iter()
+            .enumerate()
+            .map(|(index, path)| {
+                // 资源池里存的是完整工程路径，只显示 Data\ 之后的部分。
+                let short = path
+                    .rsplit_once("Data\\")
+                    .map(|(_, rest)| rest.to_string())
+                    .unwrap_or_else(|| path.clone());
+                vec![index.to_string(), short, path.clone()]
+            })
+            .collect();
+        let total = rows.len() as u64;
+        out.sections.push(Section::new(
+            "资源",
+            &["#", "相对路径", "原始路径"],
+            rows,
+            total,
+        ));
+    }
+    out
+}
+
+// ─── BST：13 侧的战斗关卡 ──────────────────────────
+
+fn bst(bytes: &[u8]) -> Projection {
+    use super::doc::bst as doc;
+    let names = doc::resources(bytes);
+    let idents = doc::identifiers(bytes);
+    let mut out = Projection::new("BST 战斗关卡");
+    if bytes.len() < 0x1b {
+        out.note = Some("文件不足 0x1b 字节".to_string());
+        return out;
+    }
+    let records = rdr::u32_at(bytes, 0x10).unwrap_or(0);
+    out.note = Some(format!(
+        "{records} 条记录 / {} 个资源 / {} 个标识符；条目结构未解",
+        names.len(),
+        idents.len()
+    ));
+
+    let head = vec![
+        vec!["魔数".to_string(), rdr::ascii(&bytes[..4])],
+        vec!["条目数".to_string(), records.to_string()],
+        vec![
+            "名字区".to_string(),
+            format!(
+                "0x{:x} 起，{} 字节",
+                0x10 + bytes[0x14] as usize,
+                bytes[0x16]
+            ),
+        ],
+        vec!["变体号".to_string(), format!("0x{:x}", bytes[0x17])],
+        vec!["文件长".to_string(), bytes.len().to_string()],
+    ];
+    out.sections
+        .push(Section::new("头部", &["项", "值"], head, 5));
+
+    if !names.is_empty() {
+        let rows: Vec<Vec<String>> = names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| vec![index.to_string(), name.clone()])
+            .collect();
+        let total = rows.len() as u64;
+        out.sections
+            .push(Section::new("资源", &["#", "文件"], rows, total));
+    }
+
+    if !idents.is_empty() {
+        let rows: Vec<Vec<String>> = idents
+            .iter()
+            .enumerate()
+            .map(|(index, ident)| vec![index.to_string(), ident.clone()])
+            .collect();
+        let total = rows.len() as u64;
+        out.sections
+            .push(Section::new("标识符", &["#", "名字"], rows, total));
     }
     out
 }

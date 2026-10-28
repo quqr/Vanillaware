@@ -198,6 +198,30 @@ pub const FORMATS: &[Format] = &[
         viewers: CONTENT_DOC_HEX,
         has_thumb: false,
     },
+    // 13 侧的 bundle 容器（与 OSB 同族）与战斗关卡。
+    // 注意：`.bin` 不收 —— 语料里的 `.bin` 除 `Other/Battle*List.bin` 外都是
+    // `fmd_extract.py` 导出的 glTF 缓冲（同目录必有 `.gltf`），属派生产物。
+    Format {
+        ext: "oeb",
+        kind: Kind::Scene,
+        label: "OEB",
+        viewers: CONTENT_DOC_HEX,
+        has_thumb: false,
+    },
+    Format {
+        ext: "orb",
+        kind: Kind::List,
+        label: "ORB",
+        viewers: CONTENT_DOC_HEX,
+        has_thumb: false,
+    },
+    Format {
+        ext: "bst",
+        kind: Kind::List,
+        label: "BST",
+        viewers: CONTENT_DOC_HEX,
+        has_thumb: false,
+    },
     // 大地图与调试参数库：结构已逐字段闭合，查看器给出全量字段。
     Format {
         ext: "nnd",
