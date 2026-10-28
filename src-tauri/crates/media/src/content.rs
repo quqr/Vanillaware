@@ -1,8 +1,3 @@
-//! 内容视图渲染：把 `formats` 的投影转成前端 DTO。
-//!
-//! 位图在这里编成 PNG 并以 data URL 内联，免得再开一条二进制命令；
-//! 灰度位图压缩后通常只有几 KB。
-
 use std::io::Cursor;
 
 use serde::Serialize;
@@ -19,7 +14,6 @@ pub struct ContentDto {
     pub text: Option<Vec<String>>,
     /// `data:image/png;base64,...`
     pub image: Option<String>,
-    /// 位图的坐标口径（横轴/纵轴/灰度含义）。
     pub image_note: Option<String>,
 }
 
@@ -40,7 +34,6 @@ pub struct SeriesDto {
     pub note: Option<String>,
 }
 
-/// 投影并渲染；该扩展名没有内容视图时返回 `None`。
 pub fn open(bytes: &[u8], ext: &str) -> Option<ContentDto> {
     let projection = content::project(bytes, ext)?;
     Some(render(projection))

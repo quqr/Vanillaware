@@ -1,5 +1,3 @@
-//! 真实纹理的解码/编码耗时与产物体积。默认不跑：
-//!
 //! ```text
 //! cargo test -p media --test bench_real -- --ignored --nocapture
 //! ```
@@ -11,15 +9,14 @@ use media::encode::{render_full_png, render_thumb_png};
 const GUI_DIR: &str = r"F:\Codes\UNICORN OVERLORD\extract\000\GUI";
 
 #[test]
-#[ignore = "需要本机 UNICORN OVERLORD 解包语料"]
+#[ignore = "requires the local UNICORN OVERLORD extraction"]
 fn decode_and_encode_cost() {
     let dir = std::path::Path::new(GUI_DIR);
     if !dir.is_dir() {
-        eprintln!("跳过：{} 不存在", dir.display());
+        eprintln!("skipped: {} does not exist", dir.display());
         return;
     }
 
-    // 挑一个最大的 .ftx：最能代表最坏情况。
     let mut best: Option<(u64, std::path::PathBuf)> = None;
     for entry in std::fs::read_dir(dir).unwrap().flatten() {
         let path = entry.path();
@@ -33,31 +30,31 @@ fn decode_and_encode_cost() {
     }
 
     let Some((size, path)) = best else {
-        eprintln!("跳过：目录里没有 .ftx");
+        eprintln!("skipped: no .ftx in the directory");
         return;
     };
     eprintln!(
-        "样本：{}（{:.1} MB）",
+        "sample: {} ({:.1} MB)",
         path.display(),
         size as f64 / 1048576.0
     );
 
     let t = Instant::now();
     let infos = formats::ftx::probe_file(&path).unwrap();
-    eprintln!("probe {} 帧：{:?}", infos.len(), t.elapsed());
+    eprintln!("probe {} frames: {:?}", infos.len(), t.elapsed());
 
     let t = Instant::now();
     let decoded = formats::ftx::decode_file_frame(&path, 0).unwrap();
     let decode_ms = t.elapsed();
     eprintln!(
-        "decode 帧 0（{}×{}，{}ch）：{:?}",
+        "decode frame 0 ({}×{}, {}ch): {:?}",
         decoded.width, decoded.height, decoded.channels, decode_ms
     );
 
     let t = Instant::now();
     let thumb = render_thumb_png(&decoded).unwrap();
     eprintln!(
-        "缩略图 PNG：{:?}，{:.0} KB",
+        "thumbnail PNG: {:?}, {:.0} KB",
         t.elapsed(),
         thumb.len() as f64 / 1024.0
     );
@@ -65,7 +62,7 @@ fn decode_and_encode_cost() {
     let t = Instant::now();
     let full = render_full_png(&decoded).unwrap();
     eprintln!(
-        "原尺寸 PNG：{:?}，{:.1} MB",
+        "full-size PNG: {:?}, {:.1} MB",
         t.elapsed(),
         full.len() as f64 / 1048576.0
     );

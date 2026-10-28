@@ -1,9 +1,3 @@
-//! 缩略图磁盘缓存。
-//!
-//! 布局：`<root>/<fnv1a64(小写路径)>/{meta.json, 0.png, 1.png …}`
-//! 失效判定：`schema + size + mtime`。写入一律 `.tmp → rename` 原子替换。
-//! 并发去重（同一文件多个请求合并）由上层 command 负责，这里只保证单次操作原子。
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -15,13 +9,6 @@ use formats::{DecodedTexture, Error, Result};
 use crate::encode;
 use crate::hash::fnv1a64_path;
 
-/// 缓存目录结构版本：修改解码算法或缓存文件布局时递增，使旧缓存自动失效。
-///
-/// 历史：v1 使用原始 Tegra X1 swizzle（分档位表），对大于 64 块的纹理块映射错误；
-/// v2 按 rip-vanillaware 的 GOB 瓦片算法重写了解码管线；
-/// v3 修正 BC7 解码高度换算与块连续序列重排（此前与 PHP 参考仅 45.88% 一致）；
-/// v4 区分缩略图与原尺寸帧图：此前查看器误用缩略图，图集被压到 256px；
-/// v5 缩略图降到 128px 并改用快速压缩档。
 const SCHEMA: u32 = 5;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -41,7 +28,6 @@ struct Meta {
     frames: Vec<FrameInfo>,
 }
 
-/// 缓存状态汇总。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CacheInfo {
@@ -83,9 +69,6 @@ impl ThumbCache {
         self.root.join(fnv1a64_path(source_lower))
     }
 
-    /// 把 probe 结果落盘成 `meta.json`。返回落盘的帧数。
-    ///
-    /// 缓存已有效时直接返回（不重写），所以可以每次都调用。
     pub fn ensure_meta(&self, source: &Path, frames: &[TextureInfo]) -> Result<usize> {
         let meta = self.current_meta(source)?;
         if let Some(meta) = meta {
@@ -112,10 +95,6 @@ impl ThumbCache {
         Ok(stored.frames.len())
     }
 
-    /// 取第 `index` 帧的 PNG 字节。
-    ///
-    /// 命中时直接读缓存（`hits`）；未命中时调用 `decode_frame` 补一张（`misses`）。
-    /// `frames` 来自 probe，用于写 meta；两者索引必须一致。
     pub fn ensure_png<F>(&self, source: &Path, index: usize, decode_frame: F) -> Result<Vec<u8>>
     where
         F: FnOnce() -> Result<DecodedTexture>,
@@ -136,7 +115,6 @@ impl ThumbCache {
                     return Ok(bytes);
                 }
                 Err(_) => {
-                    // meta 有效但 PNG 缺失：走重建，同时补 meta。
                 }
             }
         }
@@ -148,7 +126,6 @@ impl ThumbCache {
 
         fs::create_dir_all(&dir).map_err(io_err)?;
 
-        // meta 无效则用解码结果重建（保证至少包含被请求的这一帧）。
         if !valid {
             let mut frames = meta.map(|m| m.frames).unwrap_or_default();
             if index >= frames.len() {
@@ -185,10 +162,6 @@ impl ThumbCache {
         Ok(png)
     }
 
-    /// 取第 `index` 帧的**原尺寸** PNG（查看器与图集采样用）。
-    ///
-    /// 与 [`Self::ensure_png`] 共用 meta 失效判定，但落在 `full/{index}.png`，
-    /// 避免把查看器请求的图也压成缩略图。
     pub fn ensure_png_full<F>(
         &self,
         source: &Path,
@@ -222,7 +195,6 @@ impl ThumbCache {
         Ok(png)
     }
 
-    /// 遍历缓存目录统计体积。目录很大时这会慢，只在「缓存信息」按钮里调用。
     pub fn info(&self) -> CacheInfo {
         let (entries, bytes) = walk_stats(&self.root);
         CacheInfo {
@@ -234,7 +206,6 @@ impl ThumbCache {
         }
     }
 
-    /// 清空缓存并重建空目录。返回清掉的内容。
     pub fn clear(&self) -> Result<CacheInfo> {
         let (entries, bytes) = walk_stats(&self.root);
         let info = CacheInfo {

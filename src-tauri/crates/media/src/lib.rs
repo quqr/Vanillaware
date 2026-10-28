@@ -1,8 +1,3 @@
-//! 缩略图磁盘缓存、PNG 编码与音频解码。
-//!
-//! 目录布局：`<root>/<fnv1a64(小写路径)>/{meta.json, 0.png, 1.png …}`
-//! 失效判定：`schema + size + mtime`；写入一律 `.tmp → rename` 原子替换。
-
 pub mod audio;
 pub mod cache;
 pub mod content;

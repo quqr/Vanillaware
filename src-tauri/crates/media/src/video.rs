@@ -1,29 +1,12 @@
-//! USM（CRI Sofdec2）视频索引。
-//!
-//! `.usm` 最大两亿字节，整读进内存不现实，所以全程流式：
-//! 先顺序扫块头建块表，再顺序扫 `@SFV` 载荷里的 AUD（`00 00 00 01 09`）建帧表。
-//! 前端按 GOP 取字节，交给 WebCodecs 解码。
-//!
-//! 载荷不做任何 XOR 掩码：语料里 NAL 头（`67 64` = High）本身就是合法的，
-//! 且整条流拼起来与 `cridecoder` 的抽取结果逐字节一致。
-
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use crate::audio::AudioError;
 
-/// 块头长度：`magic(4) + size(4) + 0x18 参数`。
 const CHUNK_HEADER: usize = 0x20;
-/// `size` 字段只统计它之后的字节（`0x18 参数 + 载荷`），块总长要加回 `magic + size`。
-/// 少算这 8 字节会把每帧 NAL 的尾部截掉（ffmpeg 会报 `bytestream -5` + concealing errors）。
 const CHUNK_SIZE_BIAS: u64 = 8;
-/// `size` 字段覆盖的字节数 = `0x18 参数 + 载荷`，所以载荷恒为 `size - 0x18`。
-/// **按 size 反推而不是按对齐后的块长反推**：块尾到 0x20 对齐之间是填充，
-/// 它不属于码流；把它拼进 Annex-B 会让上一帧的 NAL 末尾多出若干 0 字节，
-/// 在 AVCC 里就变成「NAL 长度包含垃圾」，解码器只能靠容错猜。
 const PAYLOAD_PREFIX: u64 = CHUNK_HEADER as u64 - CHUNK_SIZE_BIAS;
-/// 扫描窗口：块之间只需保留 3 字节，防止起始码跨块。
 const CARRY: usize = 3;
 const MAX_CHUNKS: usize = 2_000_000;
 const MAX_FRAMES: usize = 4_000_000;
@@ -31,11 +14,8 @@ const MAX_FRAMES: usize = 4_000_000;
 #[derive(Clone, Copy, Debug)]
 pub struct VideoChunk {
     pub file_offset: u64,
-    /// 载荷长度（`size - 0x18`，不含块尾对齐填充）。
     pub payload: u32,
-    /// 该块载荷在拼接流里的起始位置。
     pub stream_offset: u64,
-    /// 块头里的帧号（大端 u32 @ +0x0C）。
     pub frame_no: u32,
 }
 
@@ -46,29 +26,22 @@ pub struct VideoFrame {
     pub key: bool,
 }
 
-/// 一条 USM 的视频索引。
 pub struct UsmIndex {
     pub width: u32,
     pub height: u32,
-    /// `avc1.640028` 形式。
     pub codec: String,
     pub profile: u8,
     pub level: u8,
-    /// 块头里的帧率 ×100（2997 = 29.97）。
     pub fps_centi: u32,
-    /// SPS / PPS 原始字节（构造 avcC 用）。
     pub sps: Vec<u8>,
     pub pps: Vec<u8>,
     pub chunks: Vec<VideoChunk>,
     pub frames: Vec<VideoFrame>,
-    /// 拼接流总长。
     pub stream_len: u64,
-    /// `@SFA` 载荷的编码：adx / hca / none。
     pub audio: String,
 }
 
 impl UsmIndex {
-    /// 关键帧序号（按帧表下标）。
     pub fn keyframes(&self) -> Vec<usize> {
         self.frames
             .iter()
@@ -78,7 +51,6 @@ impl UsmIndex {
             .collect()
     }
 
-    /// 取拼接流里 `[from, from+len)` 区间的字节。
     pub fn read_range(&self, path: &Path, from: u64, len: u64) -> Result<Vec<u8>, AudioError> {
         let to = from.saturating_add(len).min(self.stream_len);
         if to <= from {
@@ -104,30 +76,25 @@ impl UsmIndex {
     }
 }
 
-/// 块总长（含 0x20 头，按 0x20 对齐）与真实载荷长度。
-///
-/// 两个量必须分开：**块总长**决定下一个块从哪开始（对齐到 0x20），
-/// **载荷长度**只取 `size` 声明的部分（`size - 0x18`），不含尾部填充。
 pub fn chunk_span(size: u64) -> (u64, u32) {
     let total = (size + CHUNK_SIZE_BIAS).div_ceil(CHUNK_HEADER as u64) * CHUNK_HEADER as u64;
     let payload = size.saturating_sub(PAYLOAD_PREFIX).min(total - CHUNK_HEADER as u64);
     (total, payload as u32)
 }
 
-/// 打开并扫描 USM：块表、帧表、SPS 宽高。
 pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
     let mut file = BufReader::with_capacity(1 << 20, File::open(path)?);
     let mut head = [0u8; 0x800];
     let read = file.read(&mut head)?;
     if read < 0x20 || &head[..4] != b"CRID" {
-        return Err(AudioError::Malformed("不是 USM（缺少 CRID）".to_string()));
+        return Err(AudioError::Malformed("not USM (no CRID)".to_string()));
     }
     let header_size = u32_be(&head, 4)
         .map(|value| value as usize + 8)
         .unwrap_or(0);
     if header_size < 0x20 {
         return Err(AudioError::Malformed(format!(
-            "USM 头长不成立：{header_size}"
+            "invalid USM header size: {header_size}"
         )));
     }
     let _ = read;
@@ -156,7 +123,6 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
         if cursor + total > file_len {
             break;
         }
-        // 块头的 0x18 参数里：+0x0C 帧号、+0x10 保留、+0x14 帧率 ×1000。
         let mut param = [0u8; 0x18];
         file.seek(SeekFrom::Start(cursor + 8))?;
         file.read_exact(&mut param)?;
@@ -170,8 +136,6 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
 
         match &chunk_head[..4] {
             b"@SFV" => {
-                // header / metadata 块（payload 以 `@UTF` 或 `#` 开头）不是码流，
-                // 里面的伪起始码会把 SPS 认错。
                 let mut probe = [0u8; 4];
                 file.seek(SeekFrom::Start(cursor + CHUNK_HEADER as u64))?;
                 let probed = file.read(&mut probe).unwrap_or(0);
@@ -195,7 +159,6 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
                     let probed = file.read(&mut probe).unwrap_or(0);
                     let is_table = probed >= 4 && (&probe == b"@UTF" || probe[0] == b'#');
                     if is_table {
-                        // header / metadata 块，音频数据在后面的块里。
                     } else if probed == 4 {
                         audio = if probe.starts_with(b"HCA\0") {
                             "hca".to_string()
@@ -213,12 +176,12 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
 
         cursor += total;
         if chunks.len() > MAX_CHUNKS {
-            return Err(AudioError::Malformed("块数超过上限".to_string()));
+            return Err(AudioError::Malformed("too many chunks".to_string()));
         }
     }
 
     if chunks.is_empty() {
-        return Err(AudioError::Malformed("USM 里没有 @SFV 块".to_string()));
+        return Err(AudioError::Malformed("the USM has no @SFV chunk".to_string()));
     }
 
     let stream_len = stream_offset;
@@ -230,7 +193,7 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
             .map(|value| format!("{value:02x}"))
             .collect::<Vec<_>>()
             .join(" ");
-        AudioError::Malformed(format!("SPS 解析失败（{} B：{head}）", sps.len()))
+        AudioError::Malformed(format!("SPS parse failed ({} B: {head})", sps.len()))
     })?;
     let codec = format!("avc1.{profile:02x}00{level:02x}");
 
@@ -250,7 +213,6 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
     })
 }
 
-/// 顺序扫 `@SFV` 载荷，按 AUD 切帧，并记住首个 SPS / PPS。
 fn scan_frames(
     file: &mut BufReader<File>,
     chunks: &[VideoChunk],
@@ -259,7 +221,6 @@ fn scan_frames(
     let mut frames: Vec<VideoFrame> = Vec::new();
     let mut sps: Vec<u8> = Vec::new();
     let mut pps: Vec<u8> = Vec::new();
-    // 上一块末尾 3 字节，避免起始码跨块被漏掉。
     let mut carry: Vec<u8> = Vec::new();
     let mut position = 0u64;
 
@@ -272,7 +233,6 @@ fn scan_frames(
         let mut window = carry.clone();
         window.extend_from_slice(&body);
 
-        // AUD：`00 00 00 01 09`，落在 4 字节起始码上。
         let mut index = 0usize;
         while index + 5 <= window.len() {
             let hit = window[index] == 0
@@ -288,7 +248,6 @@ fn scan_frames(
             if let Some(previous) = frames.last_mut() {
                 previous.size = (absolute - previous.stream_offset) as u32;
             }
-            // 帧内的第一个 IDR / SPS 决定它是不是关键帧。
             let tail = &window[index..];
             let key = find_nal(tail, 5).is_some() || find_nal(tail, 7).is_some();
             frames.push(VideoFrame {
@@ -311,7 +270,7 @@ fn scan_frames(
         position += chunk.payload as u64;
         carry = window[window.len().saturating_sub(CARRY)..].to_vec();
         if frames.len() > MAX_FRAMES {
-            return Err(AudioError::Malformed("帧数超过上限".to_string()));
+            return Err(AudioError::Malformed("too many frames".to_string()));
         }
     }
 
@@ -319,12 +278,11 @@ fn scan_frames(
         last.size = (stream_len.saturating_sub(last.stream_offset)) as u32;
     }
     if frames.is_empty() {
-        return Err(AudioError::Malformed("流里没有 AUD，无法切帧".to_string()));
+        return Err(AudioError::Malformed("the stream has no AUD, cannot split frames".to_string()));
     }
     Ok((frames, sps, pps))
 }
 
-/// 在窗口里找指定类型的 NAL（3 或 4 字节起始码），返回 NAL 本体（不含起始码）。
 pub fn find_nal(buffer: &[u8], nal_type: u8) -> Option<Vec<u8>> {
     let mut index = 0usize;
     while index + 5 <= buffer.len() {
@@ -348,7 +306,6 @@ pub fn find_nal(buffer: &[u8], nal_type: u8) -> Option<Vec<u8>> {
             index = header_at;
             continue;
         }
-        // NAL 到下一个起始码为止。
         let mut end = header_at + 1;
         while end + 3 <= buffer.len() {
             if buffer[end] == 0
@@ -365,7 +322,6 @@ pub fn find_nal(buffer: &[u8], nal_type: u8) -> Option<Vec<u8>> {
     None
 }
 
-/// SPS 解析（ITU-T H.264 7.3.2.1.1），只取宽高与 profile/level。
 pub fn parse_sps(sps: &[u8]) -> Option<(u32, u32, u8, u8)> {
     if sps.len() < 4 {
         return None;
@@ -476,7 +432,6 @@ impl<'a> BitReader<'a> {
         Some(value as u32)
     }
 
-    /// 无符号 Exp-Golomb。
     pub fn ue(&mut self) -> Option<u32> {
         let mut zeros = 0u32;
         while self.read_bit()? == 0 {
@@ -492,7 +447,6 @@ impl<'a> BitReader<'a> {
         Some(((1u64 << zeros) - 1 + value as u64) as u32)
     }
 
-    /// 有符号 Exp-Golomb。
     fn se(&mut self) -> Option<i32> {
         let value = self.ue()? as i64;
         let mapped = if value % 2 == 0 {

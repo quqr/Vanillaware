@@ -1,9 +1,4 @@
-//! 取某个 GOP 的字节并附上索引信息，给前端解码链路的自检脚本用。
-//!
 //! `cargo run -p media --example usm_gop_probe -- <file.usm> <gop> <out.h264>`
-//!
-//! 走的是与 `usm_video_gop` 命令相同的路径（`keyframes()` + `read_range()`），
-//! 所以导出的字节就是前端真正拿到的那一段。stdout 打印一行 JSON。
 
 use std::path::Path;
 
@@ -12,17 +7,17 @@ use media::video::open;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 3 {
-        eprintln!("用法: usm_gop_probe <file.usm> <gop> <out.h264>");
+        eprintln!("usage: usm_gop_probe <file.usm> <gop> <out.h264>");
         std::process::exit(2);
     }
     let path = Path::new(&args[0]);
-    let gop: usize = args[1].parse().expect("gop 必须是数字");
+    let gop: usize = args[1].parse().expect("gop must be a number");
     let out = Path::new(&args[2]);
 
     let index = match open(path) {
         Ok(index) => index,
         Err(error) => {
-            eprintln!("索引失败: {error}");
+            eprintln!("indexing failed: {error}");
             std::process::exit(1);
         }
     };
@@ -31,7 +26,7 @@ fn main() {
     let start_frame = match keys.get(gop) {
         Some(value) => *value,
         None => {
-            eprintln!("GOP {gop} 越界（共 {} 个）", keys.len());
+            eprintln!("GOP {gop} out of range ({} total)", keys.len());
             std::process::exit(1);
         }
     };
@@ -45,12 +40,12 @@ fn main() {
     let bytes = match index.read_range(path, from, to.saturating_sub(from)) {
         Ok(bytes) => bytes,
         Err(error) => {
-            eprintln!("取字节失败: {error}");
+            eprintln!("reading bytes failed: {error}");
             std::process::exit(1);
         }
     };
     if let Err(error) = std::fs::write(out, &bytes) {
-        eprintln!("写文件失败: {error}");
+        eprintln!("writing the file failed: {error}");
         std::process::exit(1);
     }
 

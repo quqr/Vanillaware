@@ -1,5 +1,3 @@
-//! 音频容器探针：验证 ACB/AWB 的轨道列表与解码结果。
-//!
 //! `cargo run -p media --example audio_probe -- <acb|awb>...`
 
 use std::collections::BTreeMap;
@@ -10,7 +8,7 @@ use media::audio::{decode_track, open_acb, open_awb, Clip};
 fn main() {
     let paths: Vec<String> = std::env::args().skip(1).collect();
     if paths.is_empty() {
-        eprintln!("用法: audio_probe <acb|awb>...");
+        eprintln!("usage: audio_probe <acb|awb>...");
         return;
     }
     for path in &paths {
@@ -28,7 +26,7 @@ fn main() {
         let bundle = match bundle {
             Ok(bundle) => bundle,
             Err(error) => {
-                println!("{name}: 失败 {error}");
+                println!("{name}: failed {error}");
                 continue;
             }
         };
@@ -38,7 +36,7 @@ fn main() {
             *codecs.entry(track.codec.tag()).or_default() += 1;
         }
         println!(
-            "{name}: {} 条 / {codecs:?} / 外部 AWB {} / 解析 {:?}",
+            "{name}: {} tracks / {codecs:?} / external AWB {} / parsed in {:?}",
             bundle.tracks.len(),
             bundle.external.len(),
             elapsed
@@ -46,7 +44,6 @@ fn main() {
         for warning in &bundle.warnings {
             println!("  ! {warning}");
         }
-        // 每种编码各解一条。
         let mut seen: BTreeMap<String, bool> = BTreeMap::new();
         for track in &bundle.tracks {
             let tag = track.codec.tag();
@@ -67,7 +64,7 @@ fn main() {
                         .fold(0i32, |acc, value| acc.max((*value as i32).abs())) as f32
                         / i16::MAX as f32;
                     println!(
-                        "  · {} [{tag}] {} Hz / {channels} ch / {frames} 帧 / {:.2}s / peak {peak:.3} / {:?}",
+                        "  - {} [{tag}] {} Hz / {channels} ch / {frames} frames / {:.2}s / peak {peak:.3} / {:?}",
                         track.name,
                         sample_rate,
                         frames as f64 / sample_rate.max(1) as f64,
@@ -82,13 +79,13 @@ fn main() {
                     skip,
                     packets,
                 }) => println!(
-                    "  · {} [{tag}] {} Hz / {channels} ch / {frames} 帧 / stride {stride} / skip {skip} / {} 包 / {:?}",
+                    "  - {} [{tag}] {} Hz / {channels} ch / {frames} frames / stride {stride} / skip {skip} / {} packets / {:?}",
                     track.name,
                     sample_rate,
                     packets.len() / stride.max(1) as usize,
                     started.elapsed()
                 ),
-                Err(error) => println!("  · {} [{tag}] 失败 {error}", track.name),
+                Err(error) => println!("  - {} [{tag}] failed {error}", track.name),
             }
         }
     }

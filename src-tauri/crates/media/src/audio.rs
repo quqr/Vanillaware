@@ -1,11 +1,3 @@
-//! 音频容器解析与解码（ACB / AWB）。
-//!
-//! 两种载荷：`.hca`（CRI HCA，走 `cridecoder` 解成 PCM）与 `.lopus`（CRI Opus，
-//! 每帧固定 `frame_size` 字节，前 8 字节是帧头，其后是裸 Opus 包，交给前端 WebCodecs 解码）。
-//!
-//! 列表阶段只解析表，不读音频字节：`voice_*.acb` 有一万三千条 cue，
-//! 逐条探测头会把首次打开拖到秒级。字节按需 `read_track` 从 AWB 里 seek 出来。
-
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -13,12 +5,9 @@ use std::path::{Path, PathBuf};
 use cridecoder::acb::{AfsArchive, TrackList, UtfTable, Value};
 use cridecoder::HcaDecoder;
 
-/// lopus 每帧前 8 字节是帧头（`00 00 00 f0` + 4 字节载荷标记），其后才是 Opus 包。
 pub const LOPUS_FRAME_HEADER: usize = 8;
 
-/// basic info chunk 的标签。
 pub const CHUNK_BASIC: u32 = 0x8000_0001;
-/// data chunk 的标签。
 pub const CHUNK_DATA: u32 = 0x8000_0004;
 
 #[derive(Debug)]
@@ -36,10 +25,10 @@ impl std::fmt::Display for AudioError {
         match self {
             AudioError::Io(error) => write!(f, "IO: {error}"),
             AudioError::Acb(message) => write!(f, "ACB: {message}"),
-            AudioError::Malformed(message) => write!(f, "容器损坏：{message}"),
-            AudioError::NoTracks => write!(f, "该容器没有可播放的轨道"),
-            AudioError::OutOfRange(index) => write!(f, "轨道 {index} 越界"),
-            AudioError::Decode(message) => write!(f, "解码失败：{message}"),
+            AudioError::Malformed(message) => write!(f, "corrupt container: {message}"),
+            AudioError::NoTracks => write!(f, "the container has no playable track"),
+            AudioError::OutOfRange(index) => write!(f, "track {index} out of range"),
+            AudioError::Decode(message) => write!(f, "decode failed: {message}"),
         }
     }
 }
@@ -52,7 +41,6 @@ impl From<std::io::Error> for AudioError {
     }
 }
 
-/// 载荷编码。`Other` 保留原始扩展名（CRI 的 `enc_type` 未知时）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Codec {
     Hca,
@@ -62,7 +50,6 @@ pub enum Codec {
 }
 
 impl Codec {
-    /// 列表里的短标签。
     pub fn tag(&self) -> String {
         match self {
             Codec::Hca => "HCA".to_string(),
@@ -72,7 +59,6 @@ impl Codec {
         }
     }
 
-    /// 是否能在应用内解码播放。
     pub fn playable(&self) -> bool {
         matches!(self, Codec::Hca | Codec::Lopus)
     }
@@ -86,7 +72,6 @@ impl Codec {
         }
     }
 
-    /// 用数据头兜底判定（AWB 没有 `enc_type`）。
     pub fn sniff(bytes: &[u8]) -> Self {
         if bytes.starts_with(b"HCA\0") {
             return Codec::Hca;
@@ -106,22 +91,18 @@ impl Codec {
     }
 }
 
-/// 一条轨道（列表用，不含音频字节）。
 #[derive(Clone, Debug)]
 pub struct TrackInfo {
-    /// 容器内的顺序号，取字节时按它定位。
     pub index: usize,
     pub name: String,
     pub cue_id: i32,
     pub codec: Codec,
-    /// 在外部 AWB 里（`stream_awb_id` 指向 `external`）。
     pub stream: bool,
     pub stream_awb_id: i32,
     pub wav_id: i32,
     pub bytes: u64,
 }
 
-/// 解析后的容器索引。
 pub struct Bundle {
     pub source: PathBuf,
     pub container: &'static str,
@@ -132,7 +113,6 @@ pub struct Bundle {
 }
 
 impl Bundle {
-    /// 取某条轨道的原始载荷字节。
     pub fn read_track(&self, index: usize) -> Result<Vec<u8>, AudioError> {
         let track = self
             .tracks
@@ -150,7 +130,7 @@ impl Bundle {
                 .get(track.stream_awb_id.max(0) as usize)
                 .ok_or_else(|| {
                     AudioError::Malformed(format!(
-                        "轨道 {} 指向外部 AWB #{}，但只找到 {} 个",
+                        "track {} points at external AWB #{}, but only {} were found",
                         track.name,
                         track.stream_awb_id,
                         self.external.len()
@@ -164,7 +144,7 @@ impl Bundle {
         let embedded = self
             .embedded_awb
             .as_ref()
-            .ok_or_else(|| AudioError::Malformed(format!("轨道 {} 没有内嵌 AWB", track.name)))?;
+            .ok_or_else(|| AudioError::Malformed(format!("track {} has no embedded AWB", track.name)))?;
         let mut archive = AfsArchive::new(Cursor::new(embedded.as_slice()))
             .map_err(|error| AudioError::Malformed(error.to_string()))?;
         archive
@@ -178,7 +158,6 @@ fn open_afs(path: &Path) -> Result<AfsArchive<BufReader<File>>, AudioError> {
     AfsArchive::new(file).map_err(|error| AudioError::Malformed(error.to_string()))
 }
 
-/// 解析 `.acb`：cue 表 → 轨道列表；数据在内嵌 AWB 或同目录 `{Name}.awb`。
 pub fn open_acb(path: &Path) -> Result<Bundle, AudioError> {
     let file = BufReader::new(File::open(path)?);
     let utf = UtfTable::new(file).map_err(|error| AudioError::Acb(error.to_string()))?;
@@ -214,15 +193,14 @@ pub fn open_acb(path: &Path) -> Result<Bundle, AudioError> {
         return Err(AudioError::NoTracks);
     }
     if embedded_awb.is_none() && external.is_empty() {
-        warnings.push("ACB 既没有内嵌 AWB，也没有同目录的流式 AWB".to_string());
+        warnings.push("the ACB has neither an embedded AWB nor a sibling streaming AWB".to_string());
     }
 
     let mut seen = std::collections::BTreeSet::new();
     for wave in &external {
         if !wave.exists() {
-            warnings.push(format!("缺少外部 AWB：{}", wave.display()));
+            warnings.push(format!("missing external AWB: {}", wave.display()));
         } else if !seen.insert(wave.clone()) {
-            // 同一 AWB 被两个 acb 共用时不重复提示。
         }
     }
 
@@ -252,21 +230,12 @@ pub fn open_acb(path: &Path) -> Result<Bundle, AudioError> {
     })
 }
 
-/// 解析 `.awb`：AFS2 条目即轨道，名字用 id 表示。
-///
-/// AFS2 **没有** `enc_type`：同一份 `.awb` 里 lopus 与 HCA 混装是常态
-/// （`bgm.awb` 102 + 28、`dlc.awb` 21 + 1）。所以编码必须逐条按数据头判定，
-/// 只看首条会给整包贴错标签，列表里的「Opus」其实是 HCA，
-/// 解码时就会走到 lopus 分支并报「缺少基本块（读到 0x414348 = "HCA\0"）」。
 pub fn open_awb(path: &Path) -> Result<Bundle, AudioError> {
     let archive = open_afs(path)?;
     if archive.files.is_empty() {
         return Err(AudioError::NoTracks);
     }
 
-    // 逐条读 8 字节头：13537 条也只做 13537 次 8 字节读。
-    // 这里**不用** BufReader：随机 seek 会让它每次都丢掉缓冲区并重读一整块，
-    // 1.3 万条实测要 1.4 秒；裸 File 直接 seek + 8 字节读只要几十毫秒。
     let mut heads = File::open(path)?;
     let mut sniff = |offset: u32| -> Codec {
         let mut head = [0u8; 8];
@@ -305,29 +274,23 @@ pub fn open_awb(path: &Path) -> Result<Bundle, AudioError> {
     })
 }
 
-/// 解码结果。
 pub enum Clip {
-    /// HCA：交错 i16 PCM。
     Pcm {
         sample_rate: u32,
         channels: u32,
         frames: u64,
         samples: Vec<i16>,
     },
-    /// lopus：裸 Opus 包按固定步长拼接，交给 WebCodecs。
     OpusPackets {
         sample_rate: u32,
         channels: u32,
         frames: u64,
-        /// 每包字节数（已去掉 8 字节帧头）。
         stride: u32,
-        /// 需要丢弃的前导样本（Opus pre-skip）。
         skip: u32,
         packets: Vec<u8>,
     },
 }
 
-/// 读一条轨道并解码。
 pub fn decode_track(bundle: &Bundle, index: usize) -> Result<Clip, AudioError> {
     let bytes = bundle.read_track(index)?;
     let declared = bundle
@@ -339,14 +302,12 @@ pub fn decode_track(bundle: &Bundle, index: usize) -> Result<Clip, AudioError> {
         Codec::Hca => decode_hca(&bytes),
         Codec::Lopus => parse_lopus(&bytes),
         other => Err(AudioError::Decode(format!(
-            "{} 暂不支持应用内解码",
+            "{} cannot be decoded in the app yet",
             other.tag()
         ))),
     }
 }
 
-/// 容器标签只是提示：AWB 没有 `enc_type`，列表里的编码是按首条轨道猜的，
-/// 混合编码的 AWB 会把后面的 HCA 标成 lopus。解码前始终以数据头为准。
 pub fn effective_codec(declared: &Codec, bytes: &[u8]) -> Codec {
     match Codec::sniff(bytes) {
         Codec::Other(_) => declared.clone(),
@@ -375,20 +336,13 @@ fn decode_hca(bytes: &[u8]) -> Result<Clip, AudioError> {
     })
 }
 
-/// lopus：`0x80000001` 基本块 + `0x80000004` 数据块；数据块里是定长帧，
-/// 每帧前 8 字节为帧头，其后是裸 Opus 包。
-///
-/// 载荷允许有前导 0：AFS2 的条目按 `alignment`（语料是 0x20）对齐，
-/// 起点到实际块头之间可能垫 4~28 个 0 字节。cridecoder 已按对齐取起点，
-/// 但裸 `.lopus` 或将来别的容器不一定，所以这里在前 0x20 字节内找块头，
-/// 找到就整段平移；找不到才报错。
 pub fn parse_lopus(bytes: &[u8]) -> Result<Clip, AudioError> {
     if bytes.len() < 0x20 {
-        return Err(AudioError::Malformed("lopus 头不足 0x20 字节".to_string()));
+        return Err(AudioError::Malformed("lopus header is shorter than 0x20 bytes".to_string()));
     }
     let Some(base) = (0..bytes.len().min(0x20)).find(|&at| u32_at(bytes, at) == CHUNK_BASIC) else {
         return Err(AudioError::Malformed(format!(
-            "lopus 缺少基本块（读到 {:#x}）",
+            "lopus is missing the basic chunk (read {:#x})",
             u32_at(bytes, 0)
         )));
     };
@@ -400,13 +354,13 @@ pub fn parse_lopus(bytes: &[u8]) -> Result<Clip, AudioError> {
     let skip = u16_at(bytes, at(0x1c)) as u32;
     if frame_size <= LOPUS_FRAME_HEADER || sample_rate == 0 {
         return Err(AudioError::Malformed(format!(
-            "lopus 参数不成立：frame_size={frame_size} sample_rate={sample_rate}"
+            "invalid lopus parameters: frame_size={frame_size} sample_rate={sample_rate}"
         )));
     }
     let data_at = at(data_offset);
     if u32_at(bytes, data_at) != CHUNK_DATA {
         return Err(AudioError::Malformed(format!(
-            "{data_at:#x} 处不是数据块"
+            "no data chunk at {data_at:#x}"
         )));
     }
     let data_size = u32_at(bytes, data_at + 4) as usize;

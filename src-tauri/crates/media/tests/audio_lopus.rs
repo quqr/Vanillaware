@@ -1,6 +1,5 @@
 use media::audio::*;
 
-/// 构造最小 lopus：两块 + 两帧定长包。
 fn build_lopus() -> Vec<u8> {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(&CHUNK_BASIC.to_le_bytes());
@@ -26,7 +25,7 @@ fn build_lopus() -> Vec<u8> {
 
 #[test]
 fn lopus_splits_fixed_frames() {
-    let clip = parse_lopus(&build_lopus()).expect("应当解析成功");
+    let clip = parse_lopus(&build_lopus()).expect("must parse");
     match clip {
         Clip::OpusPackets {
             sample_rate,
@@ -44,7 +43,7 @@ fn lopus_splits_fixed_frames() {
             assert_eq!(packets.len(), 480);
             assert_eq!(packets[0], 0xfc);
         }
-        _ => panic!("应当识别成 Opus"),
+        _ => panic!("must be detected as Opus"),
     }
 }
 
@@ -55,12 +54,11 @@ fn lopus_rejects_bad_magic() {
     assert!(parse_lopus(&bytes).is_err());
 }
 
-/// AFS2 按 0x20 对齐，条目起点可能垫几个 0 字节才到块头。
 #[test]
 fn lopus_tolerates_alignment_padding() {
     let mut bytes = vec![0u8; 8];
     bytes.extend_from_slice(&build_lopus());
-    let clip = parse_lopus(&bytes).expect("前导 0 不应被判成损坏");
+    let clip = parse_lopus(&bytes).expect("leading zeros must not count as corruption");
     match clip {
         Clip::OpusPackets {
             sample_rate,
@@ -72,7 +70,7 @@ fn lopus_tolerates_alignment_padding() {
             assert_eq!(stride, 240);
             assert_eq!(frames, 1920);
         }
-        _ => panic!("应当识别成 Opus"),
+        _ => panic!("must be detected as Opus"),
     }
 }
 
@@ -87,13 +85,11 @@ fn codec_sniffs_headers() {
     assert_eq!(Codec::from_wave_ext("hca"), Codec::Hca);
 }
 
-/// 混合编码 AWB：标签按首条轨道猜成 lopus，实际载荷是 HCA。
 #[test]
 fn data_header_overrides_declared_codec() {
     let hca = b"HCA\0\x03\x00\x00\x60";
     assert_eq!(effective_codec(&Codec::Lopus, hca), Codec::Hca);
     let lopus = [0x01, 0x00, 0x00, 0x80, 0x18, 0x00, 0x00, 0x00];
     assert_eq!(effective_codec(&Codec::Hca, &lopus), Codec::Lopus);
-    // 数据头不认识时才回退到标签。
     assert_eq!(effective_codec(&Codec::Adx, b"????"), Codec::Adx);
 }

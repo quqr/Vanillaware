@@ -1,5 +1,3 @@
-//! 缓存失效判定与编码边界。
-
 use std::path::Path;
 
 use tempfile::TempDir;
@@ -26,7 +24,6 @@ fn texture(width: u32, height: u32, channels: u8) -> DecodedTexture {
 }
 
 fn touch_mtime(path: &Path) {
-    // 追加一个字节：size 与 mtime 同时变化，比只改时间戳更贴近真实场景。
     let mut content = std::fs::read(path).unwrap();
     content.push(0);
     std::fs::write(path, content).unwrap();
@@ -42,7 +39,7 @@ fn png_is_bounded_by_max_edge_and_never_upscales() {
 
     let small = render_thumb_png(&texture(96, 96, 4)).unwrap();
     let decoded = image::load_from_memory(&small).unwrap();
-    assert_eq!((decoded.width(), decoded.height()), (96, 96), "小图不放大");
+    assert_eq!((decoded.width(), decoded.height()), (96, 96), "small images are not upscaled");
 
     let odd = render_thumb_png(&texture(960, 540, 4)).unwrap();
     let decoded = image::load_from_memory(&odd).unwrap();
@@ -88,16 +85,15 @@ fn cache_hit_and_invalidation() {
     let second = cache
         .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
         .unwrap();
-    assert_eq!(cache.hits(), hits_at_start + 1, "第二次必须命中");
-    assert_eq!(first, second, "命中内容一致");
+    assert_eq!(cache.hits(), hits_at_start + 1, "the second lookup must hit");
+    assert_eq!(first, second, "a hit returns identical content");
 
-    // 修改文件（mtime/size 变化）→ 缓存失效重建
     touch_mtime(&source);
     let misses_before = cache.misses();
     cache
         .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
         .unwrap();
-    assert_eq!(cache.misses(), misses_before + 1, "mtime 变化必须失效");
+    assert_eq!(cache.misses(), misses_before + 1, "an mtime change must invalidate");
 
     let info = cache.info();
     assert_eq!(info.entries, 1);
@@ -122,9 +118,8 @@ fn clear_empties_cache_but_keeps_other_files() {
     let removed = cache.clear().unwrap();
     assert_eq!(removed.entries, 1);
     assert_eq!(cache_root.read_dir().unwrap().count(), 0);
-    assert!(settings.exists(), "不能误删 app 目录下其他内容");
+    assert!(settings.exists(), "unrelated files in the app directory must survive");
 
-    // 清掉后可重建
     cache
         .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
         .unwrap();

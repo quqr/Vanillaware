@@ -1,5 +1,3 @@
-//! 内容视图探针：打印投影出来的表格 / 位图 / 折线 / 文本规模。
-
 use std::path::Path;
 
 fn main() {
@@ -12,7 +10,7 @@ fn main() {
         let bytes = match std::fs::read(target) {
             Ok(bytes) => bytes,
             Err(error) => {
-                println!("{name}: 读取失败 {error}");
+                println!("{name}: read failed {error}");
                 continue;
             }
         };
@@ -28,7 +26,7 @@ fn main() {
                     .map(|value| format!("{} B", value.len()))
                     .unwrap_or_else(|| "—".to_string());
                 println!(
-                    "{name}: {} / {} 表 / 位图 {image} / 折线 {} / 文本 {}",
+                    "{name}: {} / {} tables / bitmap {image} / lines {} / text {}",
                     content.title,
                     content.sections.len(),
                     content
@@ -39,7 +37,7 @@ fn main() {
                     content
                         .text
                         .as_ref()
-                        .map(|lines| format!("{} 行", lines.len()))
+                        .map(|lines| format!("{} lines", lines.len()))
                         .unwrap_or_else(|| "—".to_string())
                 );
                 for section in content.sections.iter().take(3) {
@@ -49,7 +47,7 @@ fn main() {
                         .map(|row| row.iter().take(4).cloned().collect())
                         .unwrap_or_default();
                     println!(
-                        "   · {} [{}] {} 行 / 共 {} / 首行 {:?}",
+                        "   - {} [{}] {} lines / {} total / first {:?}",
                         section.title,
                         section.columns.join("|"),
                         section.rows.len(),
@@ -57,14 +55,13 @@ fn main() {
                         head
                     );
                 }
-                // `DUMP_DIR=<目录>` 时把位图落盘，方便肉眼核对。
                 if let Some(dir) = std::env::var_os("DUMP_DIR") {
                     if let Some(data) = content.image.as_ref() {
                         if let Some((_, payload)) = data.split_once(",") {
                             let file = Path::new(&dir).join(format!("{name}.png"));
                             if let Some(bytes) = decode_base64(payload) {
                                 std::fs::write(&file, bytes).ok();
-                                println!("   · 位图写入 {}", file.display());
+                                println!("   - bitmap written to {}", file.display());
                             }
                         }
                     }
@@ -75,12 +72,11 @@ fn main() {
                     }
                 }
             }
-            None => println!("{name}: 没有内容视图"),
+            None => println!("{name}: no content view"),
         }
     }
 }
 
-/// 最小 base64 解码（只为探针落盘，不引入依赖）。
 fn decode_base64(text: &str) -> Option<Vec<u8>> {
     fn value(byte: u8) -> Option<u8> {
         match byte {

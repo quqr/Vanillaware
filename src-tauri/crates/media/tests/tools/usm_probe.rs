@@ -1,5 +1,3 @@
-//! USM 探针：验证块表、帧表与 SPS。
-
 use std::path::Path;
 
 use media::video::open;
@@ -11,7 +9,7 @@ fn main() {
             Ok(index) => {
                 let name = path.rsplit(['/', '\\']).next().unwrap_or(&path);
                 println!(
-                    "{name}: {}×{} {} (profile {} level {}) / {:.3} fps / {} 帧 / {} 块 / 流 {} MB / 音频 {} / 扫描 {:?}",
+                    "{name}: {}×{} {} (profile {} level {}) / {:.3} fps / {} frames / {} chunks / stream {} MB / audio {} / scanned in {:?}",
                     index.width,
                     index.height,
                     index.codec,
@@ -26,7 +24,7 @@ fn main() {
                 );
                 let keys = index.keyframes();
                 println!(
-                    "  关键帧 {} 个 / 平均 GOP {:.1} 帧 / 首帧 {} B",
+                    "  {} keyframes / average GOP {:.1} frames / first frame {} B",
                     keys.len(),
                     index.frames.len() as f64 / keys.len().max(1) as f64,
                     index.frames[0].size
@@ -47,13 +45,13 @@ fn main() {
                                 .map(|value| format!("{value:02x}"))
                                 .collect::<Vec<_>>()
                                 .join(" ");
-                            println!("  首个 GOP {} KB / head {head}", bytes.len() / 1024);
+                            println!("  first GOP {} KB / head {head}", bytes.len() / 1024);
                         }
-                        Err(error) => println!("  GOP 读取失败: {error}"),
+                        Err(error) => println!("  reading the GOP failed: {error}"),
                     }
                 }
             }
-            Err(error) => println!("{path}: 失败 {error}"),
+            Err(error) => println!("{path}: failed {error}"),
         }
     }
 }
