@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-KSC = ROOT / "kaitai-struct-compiler-0.11" / "bin" / "kaitai-struct-compiler.bat"
+KSC = ROOT / "tools" / "kaitai-struct-compiler-0.11" / "bin" / "kaitai-struct-compiler.bat"
 KSY_DIR = ROOT / "spec" / "ksy"
 OUT_DIR = ROOT / "src-tauri" / "crates" / "vw-gen" / "src" / "gen"
 HEADER = "// 由 ksc 生成，禁止手改。新增 .ksy 后运行 `python tools/ksc_gen.py` 重新生成本文件。\n"

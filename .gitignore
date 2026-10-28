@@ -15,11 +15,16 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # 外部工具链与生成物
-/kaitai-struct-compiler-0.11
+/tools/kaitai-struct-compiler-0.11/
 /src-tauri/gen/schemas
 
-# 本机语料与黄金数据（体积大，不入库）
-/spec
+# 本机语料与黄金数据（体积大，不入库）；只有 ksy 与 idtag 入库
+/spec/*
+!/spec/ksy/
+!/spec/idtag/
+
+# 设计文档与结论（只留本地）
+/docs
 
 # 智能体工作数据（记忆、日志）
 .workbuddy/

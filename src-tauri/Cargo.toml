@@ -5,12 +5,7 @@ description = "A Tauri App"
 authors = ["you"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "vanillaware_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -27,3 +22,21 @@ tokio = { version = "1", features = ["sync"] }
 vw-core = { path = "crates/vw-core" }
 vw-media = { path = "crates/vw-media" }
 vw-formats = { path = "crates/vw-formats" }
+
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+exclude = ["vendor/kaitai"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
