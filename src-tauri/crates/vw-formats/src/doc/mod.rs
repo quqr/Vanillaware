@@ -284,33 +284,33 @@ mod tests {
     }
 
     #[test]
-    fn bst_reads_names_and_identifiers() {
-        let mut bytes = vec![0u8; 0x120];
+    fn bst_reads_stage_header() {
+        // 头部 0x16 之后是值流：两个字符串 + END。
+        let mut bytes = vec![0u8; 0x16];
         bytes[..4].copy_from_slice(b"BBST");
         bytes[0x10..0x14].copy_from_slice(&118u32.to_le_bytes());
         bytes[0x14] = 0x0b;
         bytes[0x15] = 1;
-        bytes[0x16] = 0x28;
-        bytes[0x17] = 0x0e;
-        bytes[0x1b..0x1b + 14].copy_from_slice(b"BT_STAGE00.fmd");
-        bytes[0x2f..0x2f + 14].copy_from_slice(b"BT_STAGE00.ftx");
-        bytes[0x60..0x6f].copy_from_slice(b"ENE_RANDOMWAVEG");
+        for name in ["BT_STAGE00.fmd", "BT_STAGE00.ftx"] {
+            bytes.push(0x28);
+            bytes.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(name.as_bytes());
+            bytes.push(0);
+        }
+        bytes.push(0x34);
 
         let arena = parse_bytes(&bytes, "bst", None).expect("bst");
         let checks = arena.checks();
-        for id in ["bst.magic", "bst.names"] {
+        for id in ["bst.magic", "bst.names", "bst.closed"] {
             assert!(
                 checks.iter().all(|check| check.id != id || check.ok),
                 "{id} 不成立"
             );
         }
         assert_eq!(
-            bst::resources(&bytes),
+            bst::parse(&bytes).names,
             vec!["BT_STAGE00.fmd".to_string(), "BT_STAGE00.ftx".to_string()]
         );
-        assert!(bst::identifiers(&bytes)
-            .iter()
-            .any(|id| id == "ENE_RANDOMWAVEG"));
     }
 
     #[test]

@@ -217,7 +217,7 @@ pub const FORMATS: &[Format] = &[
     },
     Format {
         ext: "bst",
-        kind: Kind::List,
+        kind: Kind::Scene,
         label: "BST",
         viewers: CONTENT_DOC_HEX,
         has_thumb: false,

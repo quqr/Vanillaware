@@ -615,57 +615,163 @@ fn orb(bytes: &[u8]) -> Projection {
 
 fn bst(bytes: &[u8]) -> Projection {
     use super::doc::bst as doc;
-    let names = doc::resources(bytes);
-    let idents = doc::identifiers(bytes);
+    let stage = doc::parse(bytes);
     let mut out = Projection::new("BST 战斗关卡");
-    if bytes.len() < 0x1b {
-        out.note = Some("文件不足 0x1b 字节".to_string());
-        return out;
-    }
-    let records = rdr::u32_at(bytes, 0x10).unwrap_or(0);
+
     out.note = Some(format!(
-        "{records} 条记录 / {} 个资源 / {} 个标识符；条目结构未解",
-        names.len(),
-        idents.len()
+        "{} 条记录 / {} 块碰撞板 / {} 块地形",
+        stage.records.len(),
+        stage.plates.len(),
+        stage.quads.len()
     ));
 
     let head = vec![
-        vec!["魔数".to_string(), rdr::ascii(&bytes[..4])],
-        vec!["条目数".to_string(), records.to_string()],
+        vec!["魔数".to_string(), rdr::ascii(&bytes[..4.min(bytes.len())])],
         vec![
-            "名字区".to_string(),
-            format!(
-                "0x{:x} 起，{} 字节",
-                0x10 + bytes[0x14] as usize,
-                bytes[0x16]
-            ),
+            "关卡计数".to_string(),
+            rdr::u32_at(bytes, 0x10).unwrap_or(0).to_string(),
         ],
-        vec!["变体号".to_string(), format!("0x{:x}", bytes[0x17])],
-        vec!["文件长".to_string(), bytes.len().to_string()],
+        vec!["资源".to_string(), stage.names.join(" / ")],
+        vec!["记录数".to_string(), stage.records.len().to_string()],
+        vec![
+            "闭合".to_string(),
+            if stage.unknown_tag.is_none() && stage.end == bytes.len() {
+                format!("值流读到 EOF（{:#x}）", stage.end)
+            } else {
+                format!("停在 {:#x} / {:#x}", stage.end, bytes.len())
+            },
+        ],
     ];
     out.sections
         .push(Section::new("头部", &["项", "值"], head, 5));
 
-    if !names.is_empty() {
-        let rows: Vec<Vec<String>> = names
+    // 碰撞板：可站立的一小块地面，带角点索引。
+    if !stage.plates.is_empty() {
+        let rows: Vec<Vec<String>> = stage
+            .plates
             .iter()
-            .enumerate()
-            .map(|(index, name)| vec![index.to_string(), name.clone()])
+            .map(|plate| {
+                vec![
+                    plate.id.to_string(),
+                    format!("{:.1}", plate.position[0]),
+                    format!("{:.1}", plate.position[2]),
+                    plate.corners.len().to_string(),
+                    plate
+                        .corners
+                        .iter()
+                        .map(|value| value.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ]
+            })
             .collect();
         let total = rows.len() as u64;
-        out.sections
-            .push(Section::new("资源", &["#", "文件"], rows, total));
+        out.sections.push(Section::new(
+            "碰撞板",
+            &["id", "X", "Z", "角点数", "角点索引"],
+            rows,
+            total,
+        ));
     }
 
-    if !idents.is_empty() {
-        let rows: Vec<Vec<String>> = idents
+    // 地形块：四角 + 名字。
+    if !stage.quads.is_empty() {
+        let rows: Vec<Vec<String>> = stage
+            .quads
             .iter()
-            .enumerate()
-            .map(|(index, ident)| vec![index.to_string(), ident.clone()])
+            .map(|quad| {
+                vec![
+                    quad.name.clone(),
+                    format!("({:.0}, {:.0})", quad.corners[0][0], quad.corners[0][2]),
+                    format!("({:.0}, {:.0})", quad.corners[1][0], quad.corners[1][2]),
+                    format!("({:.0}, {:.0})", quad.corners[2][0], quad.corners[2][2]),
+                    format!("({:.0}, {:.0})", quad.corners[3][0], quad.corners[3][2]),
+                ]
+            })
             .collect();
         let total = rows.len() as u64;
-        out.sections
-            .push(Section::new("标识符", &["#", "名字"], rows, total));
+        out.sections.push(Section::new(
+            "地形块",
+            &["名字", "角 0", "角 1", "角 2", "角 3"],
+            rows,
+            total,
+        ));
+    }
+
+    // 俯视图：把地形块的四条边连起来，再点上碰撞板中心。
+    let mut xs: Vec<f32> = Vec::new();
+    let mut zs: Vec<f32> = Vec::new();
+    for quad in &stage.quads {
+        for corner in quad.corners {
+            xs.push(corner[0]);
+            zs.push(corner[2]);
+        }
+    }
+    for plate in &stage.plates {
+        xs.push(plate.position[0]);
+        zs.push(plate.position[2]);
+    }
+    let finite: Vec<(f32, f32)> = xs
+        .iter()
+        .copied()
+        .zip(zs.iter().copied())
+        .filter(|(x, z)| x.is_finite() && z.is_finite())
+        .collect();
+    if finite.len() >= 4 {
+        let min_x = finite.iter().map(|p| p.0).fold(f32::MAX, f32::min);
+        let max_x = finite.iter().map(|p| p.0).fold(f32::MIN, f32::max);
+        let min_z = finite.iter().map(|p| p.1).fold(f32::MAX, f32::min);
+        let max_z = finite.iter().map(|p| p.1).fold(f32::MIN, f32::max);
+        let size = 448usize;
+        let span_x = (max_x - min_x).max(1.0);
+        let span_z = (max_z - min_z).max(1.0);
+        let project = |x: f32, z: f32| -> (i32, i32) {
+            let px = ((x - min_x) / span_x * (size - 1) as f32) as i32;
+            // 纵轴反转：Z 小的画在上面。
+            let py = ((z - min_z) / span_z * (size - 1) as f32) as i32;
+            (px.clamp(0, size as i32 - 1), py.clamp(0, size as i32 - 1))
+        };
+        let mut values = vec![0u8; size * size];
+        let line = |a: (i32, i32), b: (i32, i32), shade: u8, values: &mut Vec<u8>| {
+            let steps = (a.0 - b.0).abs().max((a.1 - b.1).abs()).max(1);
+            for step in 0..=steps {
+                let t = step as f32 / steps as f32;
+                let x = (a.0 as f32 + (b.0 - a.0) as f32 * t).round() as i32;
+                let y = (a.1 as f32 + (b.1 - a.1) as f32 * t).round() as i32;
+                if x >= 0 && y >= 0 && (x as usize) < size && (y as usize) < size {
+                    let at = y as usize * size + x as usize;
+                    values[at] = values[at].max(shade);
+                }
+            }
+        };
+        for quad in &stage.quads {
+            let points: Vec<(i32, i32)> = quad
+                .corners
+                .iter()
+                .map(|corner| project(corner[0], corner[2]))
+                .collect();
+            for index in 0..4 {
+                line(points[index], points[(index + 1) % 4], 190, &mut values);
+            }
+        }
+        for plate in &stage.plates {
+            let (px, py) = project(plate.position[0], plate.position[2]);
+            for (dx, dy) in [(0i32, 0i32), (1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let x = px + dx;
+                let y = py + dy;
+                if x >= 0 && y >= 0 && (x as usize) < size && (y as usize) < size {
+                    values[y as usize * size + x as usize] = 255;
+                }
+            }
+        }
+        out.bitmap = Some(GrayMap {
+            width: size as u32,
+            height: size as u32,
+            values,
+            legend: format!(
+                "俯视图（横轴 X {min_x:.0}～{max_x:.0}，纵轴 Z {min_z:.0}～{max_z:.0}）；灰线 = 地形块轮廓，白点 = 碰撞板中心"
+            ),
+        });
     }
     out
 }

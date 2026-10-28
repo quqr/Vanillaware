@@ -1,139 +1,541 @@
-//! BST —— 13 Sentinels 的战斗关卡数据（`EX DATA/BattleStageData/`，43 个）。
+//! BST —— 13 Sentinels 的战斗关卡（`EX DATA/BattleStageData/`，43 个）。
 //!
 //! ```text
 //! +0x00 char[4] "BBST"
-//! +0x04 12 字节 0
-//! +0x10 u32     条目数（语料 116～118）
-//! +0x14 u8      名字区相对 0x10 的偏移，恒为 0x0b
-//! +0x15 u8      恒为 1
-//! +0x16 u8      名字区长度（恒为 0x28）
-//! +0x17 u8      变体号（0x0e / 0x10）
-//! +0x18 3 字节填充
-//! +0x1b ...     名字：`BT_STAGE00.fmd` / `BT_STAGE00.ftx`，各自 NUL 结尾 + 4 字节字段
-//! ...           条目数据（未解）+ 大写标识符（如 `ENE_RANDOMWAVEGEN`）
+//! +0x04 u32     0（版本）
+//! +0x08 u32     0
+//! +0x0c u32     0
+//! +0x10 u32     关卡计数（语料 116～118）
+//! +0x14 u8      名字表首字符相对 0x10 的偏移（恒 0x0b）
+//! +0x15 u8      恒 1
+//! +0x16 ...     带类型标签的值流
 //! ```
 //!
-//! **只解到这里**：名字之后的条目结构尚未闭合（不是 `.osb` 族的节点树，试过多种
-//! 步长与偏移都对不上），所以文档树只报头部、名字与大写标识符，条目数据按字节保留。
+//! 值流是自描述的：**1 字节标签 + 定长载荷**，`0x34` 是记录结束符。
+//!
+//! | 标签 | 载荷 | 含义 |
+//! |---|---|---|
+//! | `0x05` `0x06` | i32 | 整数（两个变体，语义未区分） |
+//! | `0x08` | f32 ×2 | 双精度对（语料仅 1 处） |
+//! | `0x09` | f32 | 浮点 |
+//! | `0x0b` | u8 | 布尔 |
+//! | `0x14` | RGBA | 颜色 |
+//! | `0x15` | u32 | 整数（语料仅 1 处） |
+//! | `0x1f` | f32 ×2 | vec2（UV / 法线 / 平面坐标） |
+//! | `0x20` | f32 ×3 | vec3（角点 / 位置 / 包围盒） |
+//! | `0x23` | f32 ×16 | 4×4 矩阵（语料仅 1 处） |
+//! | `0x28` | u32 长度 + UTF-8 + NUL | 字符串 |
+//! | `0x33` | u32 个数 | 数组 |
+//! | `0x34` | — | 记录结束 |
+//!
+//! **数组的元素有两种形态**（同一套序列化器，由写入端的元素类型决定）：
+//!
+//! - 标量数组：`0x33 n` 之后跟 n 个值，例如碰撞板的角点索引表 `[45, 162, 327, 593]`；
+//! - 记录数组：`0x33 n` 之后跟 n 条「若干值 + `0x34`」的记录，例如 `[621, 522 条碰撞板]`。
+//!
+//! 两者靠「读完 n 个之后必须正好落在 `0x34` 或 EOF」自证：先试标量，不成立再试记录组。
+//! 43/43 个文件按这个判据读到 EOF 恰好用尽，闭合率为 100%。
+//!
+//! 记录形态（按首值分类）：
+//!
+//! - **舞台头**（每文件 1 条）：`fmd 名 / ftx 名 / 4 角 / f32 / 4 色 / 3 bool / 波次生成器数组`；
+//! - **碰撞板**（10 个值）：`1, 0, 0, "", bool, bool, id, 中心 vec3, 0, 角点索引数组`；
+//! - **地形块**（40+ 个值）：4 个角点 vec3 开头，随后是名字、若干标志、包围盒与半径。
 
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 
 const MAGIC: &[u8] = b"BBST";
-/// 名字区起点相对 0x10 的偏移字段所在处。
-const NAME_OFFSET_AT: usize = 0x14;
-const NAME_AREA_AT: usize = 0x16;
-const VARIANT_AT: usize = 0x17;
-const HEADER: usize = 0x1b;
-const MAX_IDENTIFIERS: usize = 64;
-const MIN_IDENT: usize = 6;
+/// 值流起点（名字表第一个字符串的标签处）。
+const STREAM_AT: usize = 0x16;
+/// 记录结束符。
+const RECORD_END: u8 = 0x34;
 
-/// 关卡里引用的资源名。
-///
-/// 名字区起点由 `+0x14` 给（恒为 0x0b，即 0x1b），但名字之间夹的字段宽度随名字长度变
-/// （4～5 字节），`+0x16` 的「名字区长度」只覆盖到第一个名字，所以不按步长切：
-/// 只在前 512 字节里扫「可打印串 + 已知扩展名」，命中的就是资源。
-pub fn resources(bytes: &[u8]) -> Vec<String> {
-    let Some(offset) = bytes.get(NAME_OFFSET_AT).copied() else {
-        return Vec::new();
-    };
-    let start = 0x10 + offset as usize;
-    if start >= bytes.len() {
-        return Vec::new();
-    }
-    let end = (start + 512).min(bytes.len());
+const MAX_RECORDS_SHOWN: usize = 48;
+const MAX_PLATES_SHOWN: usize = 64;
+const MAX_QUADS_SHOWN: usize = 48;
 
-    let mut out = Vec::new();
-    let mut cursor = start;
-    while cursor < end && out.len() < 8 {
-        let byte = bytes[cursor];
-        if byte.is_ascii_alphanumeric() {
-            let mut stop = cursor;
-            while stop < end
-                && (bytes[stop].is_ascii_alphanumeric()
-                    || matches!(bytes[stop], b'_' | b'/' | b'\\' | b'.' | b'-'))
-            {
-                stop += 1;
-            }
-            let text = String::from_utf8_lossy(&bytes[cursor..stop]).to_string();
-            if text.ends_with(".fmd") || text.ends_with(".ftx") || text.ends_with(".mbs") {
-                out.push(text);
-            }
-            cursor = stop.max(cursor + 1);
-        } else {
-            cursor += 1;
-        }
-    }
-    out
+/// 一个值。
+#[derive(Debug, Clone)]
+pub enum Value {
+    Int(i32),
+    Float(f32),
+    Bool(bool),
+    Rgba([u8; 4]),
+    Raw4(u32),
+    Vec2([f32; 2]),
+    Vec3([f32; 3]),
+    Mat4(Vec<f32>),
+    Text(String),
 }
 
-/// 大写标识符（`ENE_RANDOMWAVEGEN` 这类枚举名）。
-pub fn identifiers(bytes: &[u8]) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cursor = 0usize;
-    let limit = bytes.len().min(0x4000);
-    while cursor < limit && out.len() < MAX_IDENTIFIERS {
-        let byte = bytes[cursor];
-        if byte.is_ascii_uppercase() || byte == b'_' {
-            let mut end = cursor;
-            while end < limit
-                && (bytes[end].is_ascii_uppercase()
-                    || bytes[end].is_ascii_digit()
-                    || bytes[end] == b'_')
-            {
-                end += 1;
+/// 解析后的节点：值 / 数组 / 记录。
+#[derive(Debug, Clone)]
+pub enum Node {
+    Value(Value),
+    /// 数组内部的结束符（计数里算作一个元素）。
+    End,
+    /// `grouped = true` 表示元素是「以 0x34 结尾的记录」。
+    Array {
+        count: u32,
+        grouped: bool,
+        items: Vec<Node>,
+    },
+    Record(Vec<Node>),
+}
+
+/// 碰撞板：可站立的一块四边形。
+#[derive(Debug, Clone)]
+pub struct Plate {
+    pub at: usize,
+    pub id: i32,
+    pub position: [f32; 3],
+    pub corners: Vec<i32>,
+}
+
+/// 地形块：带四个角点与名字的舞台面片。
+#[derive(Debug, Clone)]
+pub struct Quad {
+    pub at: usize,
+    pub corners: [[f32; 3]; 4],
+    pub name: String,
+}
+
+/// 整份文件。
+pub struct Bst {
+    pub names: Vec<String>,
+    pub records: Vec<Node>,
+    pub plates: Vec<Plate>,
+    pub quads: Vec<Quad>,
+    /// 值流读完的位置（应与文件长度相等）。
+    pub end: usize,
+    pub unknown_tag: Option<(usize, u8)>,
+}
+
+struct Parser<'a> {
+    bytes: &'a [u8],
+}
+
+impl<'a> Parser<'a> {
+    /// 跳过 `count` 个「标量值」（数组按标量递归），返回结束位置。
+    fn skip_values(&self, at: usize, count: u32) -> Option<usize> {
+        let mut cursor = at;
+        for _ in 0..count {
+            cursor = self.value_end(cursor)?;
+        }
+        Some(cursor)
+    }
+
+    /// 跳过 `count` 条以 `0x34` 结尾的记录。
+    fn skip_groups(&self, at: usize, count: u32) -> Option<usize> {
+        let mut cursor = at;
+        for _ in 0..count {
+            let mut guard = 0usize;
+            while *self.bytes.get(cursor)? != RECORD_END {
+                cursor = self.value_end(cursor)?;
+                guard += 1;
+                if guard > 8192 {
+                    return None;
+                }
             }
-            if end - cursor >= MIN_IDENT {
-                out.push(String::from_utf8_lossy(&bytes[cursor..end]).to_string());
-            }
-            cursor = end.max(cursor + 1);
-        } else {
             cursor += 1;
         }
+        Some(cursor)
     }
-    out
+
+    /// 一个值（数组按「标量」语义）的结束位置。
+    fn value_end(&self, at: usize) -> Option<usize> {
+        let tag = *self.bytes.get(at)?;
+        let fixed = match tag {
+            0x05 | 0x06 | 0x09 | 0x14 | 0x15 => 4usize,
+            0x0b => 1,
+            0x08 | 0x1f => 8,
+            0x20 => 12,
+            0x23 => 64,
+            0x28 => {
+                let len = rdr::u32_at(self.bytes, at + 1)? as usize;
+                let end = at.checked_add(6 + len)?;
+                return (end <= self.bytes.len()).then_some(end);
+            }
+            0x33 => {
+                let count = rdr::u32_at(self.bytes, at + 1)?;
+                return self.skip_values(at + 5, count);
+            }
+            RECORD_END => return Some(at + 1),
+            _ => return None,
+        };
+        let end = at + 1 + fixed;
+        (end <= self.bytes.len()).then_some(end)
+    }
+
+    /// 数组区段：先试标量，再试记录组，取「正好落在 0x34 / EOF」的那一个。
+    ///
+    /// 只有「计数 + 数组」这种两字段记录里的数组才试记录组（`allow_group`）。
+    /// 语料里 43 个文件每个恰好一处：`[顶点数, 碰撞板数组]`。别的数组（角点索引、
+    /// 边线、UV）元素一定是标量，试记录组只会在别处蒙到一个 `0x34` 而读错。
+    fn array_span(&self, at: usize, allow_group: bool) -> Option<(usize, bool)> {
+        let count = rdr::u32_at(self.bytes, at + 1)?;
+        let scalar = self.skip_values(at + 5, count)?;
+        if self.lands(scalar) || !allow_group {
+            return Some((scalar, false));
+        }
+        if let Some(grouped) = self.skip_groups(at + 5, count) {
+            if self.lands(grouped) {
+                return Some((grouped, true));
+            }
+        }
+        Some((scalar, false))
+    }
+
+    fn lands(&self, at: usize) -> bool {
+        at == self.bytes.len() || self.bytes.get(at) == Some(&RECORD_END)
+    }
+
+    /// 解析一个节点。`allow_group` 见 `array_span`。
+    fn node(&self, at: usize, allow_group: bool) -> Option<(Node, usize)> {
+        let tag = *self.bytes.get(at)?;
+        if tag == RECORD_END {
+            // 数组的元素里可能出现结束符（`array 386` 里就有 7 个），
+            // 计数把它们算作元素，所以在数组层要当一个值吃掉。
+            return Some((Node::End, at + 1));
+        }
+        if tag == 0x33 {
+            let count = rdr::u32_at(self.bytes, at + 1)?;
+            let (end, grouped) = self.array_span(at, allow_group)?;
+            let mut items = Vec::new();
+            let mut cursor = at + 5;
+            for _ in 0..count {
+                let (node, next) = if grouped {
+                    self.record(cursor)?
+                } else {
+                    self.node(cursor, false)?
+                };
+                items.push(node);
+                cursor = next;
+                if cursor > end {
+                    return None;
+                }
+            }
+            return Some((
+                Node::Array {
+                    count,
+                    grouped,
+                    items,
+                },
+                end,
+            ));
+        }
+        let (value, end) = self.value(at)?;
+        Some((Node::Value(value), end))
+    }
+
+    /// 解析一条记录（值直到 `0x34`，结束符不计入）。
+    fn record(&self, at: usize) -> Option<(Node, usize)> {
+        let mut items = Vec::new();
+        let mut cursor = at;
+        loop {
+            if *self.bytes.get(cursor)? == RECORD_END {
+                cursor += 1;
+                break;
+            }
+            // 记录数组只出现在第二项，见 `array_span`。
+            let allow_group = items.len() == 1;
+            let (node, next) = self.node(cursor, allow_group)?;
+            if next <= cursor {
+                return None;
+            }
+            items.push(node);
+            cursor = next;
+        }
+        Some((Node::Record(items), cursor))
+    }
+
+    fn value(&self, at: usize) -> Option<(Value, usize)> {
+        let tag = *self.bytes.get(at)?;
+        let end = self.value_end(at)?;
+        let value = match tag {
+            0x05 | 0x06 => Value::Int(rdr::i32_at(self.bytes, at + 1)?),
+            0x09 => Value::Float(rdr::f32_at(self.bytes, at + 1)?),
+            0x0b => Value::Bool(*self.bytes.get(at + 1)? != 0),
+            0x14 => Value::Rgba([
+                *self.bytes.get(at + 1)?,
+                *self.bytes.get(at + 2)?,
+                *self.bytes.get(at + 3)?,
+                *self.bytes.get(at + 4)?,
+            ]),
+            0x15 => Value::Raw4(rdr::u32_at(self.bytes, at + 1)?),
+            0x08 => Value::Vec2([
+                rdr::f32_at(self.bytes, at + 1)?,
+                rdr::f32_at(self.bytes, at + 5)?,
+            ]),
+            0x1f => Value::Vec2([
+                rdr::f32_at(self.bytes, at + 1)?,
+                rdr::f32_at(self.bytes, at + 5)?,
+            ]),
+            0x20 => Value::Vec3([
+                rdr::f32_at(self.bytes, at + 1)?,
+                rdr::f32_at(self.bytes, at + 5)?,
+                rdr::f32_at(self.bytes, at + 9)?,
+            ]),
+            0x23 => {
+                let mut matrix = Vec::with_capacity(16);
+                for index in 0..16 {
+                    matrix.push(rdr::f32_at(self.bytes, at + 1 + index * 4)?);
+                }
+                Value::Mat4(matrix)
+            }
+            0x28 => {
+                let len = rdr::u32_at(self.bytes, at + 1)? as usize;
+                let raw = self.bytes.get(at + 5..at + 5 + len)?;
+                Value::Text(String::from_utf8_lossy(raw).to_string())
+            }
+            // 0x33 由 `node` 处理；0x34 留给记录层。
+            _ => return None,
+        };
+        Some((value, end))
+    }
+}
+
+/// 解析整份文件。
+pub fn parse(bytes: &[u8]) -> Bst {
+    let mut names = Vec::new();
+    let mut records = Vec::new();
+    let mut plates = Vec::new();
+    let mut quads = Vec::new();
+    let mut end = 0usize;
+    let mut unknown_tag = None;
+
+    if bytes.len() <= STREAM_AT {
+        return Bst {
+            names,
+            records,
+            plates,
+            quads,
+            end: bytes.len(),
+            unknown_tag,
+        };
+    }
+
+    let parser = Parser { bytes };
+    let mut cursor = STREAM_AT;
+    while cursor < bytes.len() {
+        let Some((node, next)) = parser.record(cursor) else {
+            unknown_tag = Some((cursor, bytes[cursor]));
+            break;
+        };
+        if let Node::Record(items) = &node {
+            for item in items {
+                if let Node::Value(Value::Text(text)) = item {
+                    if names.len() < 8
+                        && (text.ends_with(".fmd")
+                            || text.ends_with(".ftx")
+                            || text.ends_with(".mbs"))
+                    {
+                        names.push(text.clone());
+                    }
+                }
+            }
+            classify(items, cursor, &mut plates, &mut quads);
+            // 记录数组里的碰撞板也要收集。
+            for item in items {
+                if let Node::Array {
+                    grouped: true,
+                    items: inner,
+                    ..
+                } = item
+                {
+                    for child in inner {
+                        if let Node::Record(child_items) = child {
+                            classify(child_items, cursor, &mut plates, &mut quads);
+                        }
+                    }
+                }
+            }
+        }
+        records.push(node);
+        cursor = next;
+        end = cursor;
+    }
+
+    Bst {
+        names,
+        records,
+        plates,
+        quads,
+        end,
+        unknown_tag,
+    }
+}
+
+/// 按值形态认记录：10 个值的碰撞板、以 4 个 vec3 开头的地形块。
+fn classify(items: &[Node], at: usize, plates: &mut Vec<Plate>, quads: &mut Vec<Quad>) {
+    // 碰撞板：1, 0, 0, "", bool, bool, id, vec3, 0, [角点]
+    if items.len() == 10 {
+        if let (
+            Node::Value(Value::Int(id)),
+            Node::Value(Value::Vec3(position)),
+            Node::Array { items: corners, .. },
+        ) = (&items[6], &items[7], &items[9])
+        {
+            if matches!(items[3], Node::Value(Value::Text(_)))
+                && matches!(items[2], Node::Value(Value::Int(_)))
+            {
+                plates.push(Plate {
+                    at,
+                    id: *id,
+                    position: *position,
+                    corners: corners
+                        .iter()
+                        .filter_map(|node| match node {
+                            Node::Value(Value::Int(value)) => Some(*value),
+                            _ => None,
+                        })
+                        .collect(),
+                });
+            }
+        }
+    }
+
+    // 地形块：4 个角点 vec3 开头，后面字段数量随变体浮动（语料 40～52 个）。
+    if items.len() >= 20 {
+        let corners: Vec<[f32; 3]> = items
+            .iter()
+            .take(4)
+            .filter_map(|node| match node {
+                Node::Value(Value::Vec3(value)) => Some(*value),
+                _ => None,
+            })
+            .collect();
+        if corners.len() == 4 {
+            let name = items
+                .iter()
+                .find_map(|node| match node {
+                    Node::Value(Value::Text(text)) if !text.is_empty() => Some(text.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            let mut fixed = [[0.0f32; 3]; 4];
+            for (slot, corner) in fixed.iter_mut().zip(corners) {
+                *slot = corner;
+            }
+            quads.push(Quad {
+                at,
+                corners: fixed,
+                name,
+            });
+        }
+    }
+}
+
+fn describe(value: &Value) -> String {
+    match value {
+        Value::Int(v) => v.to_string(),
+        Value::Float(v) => format!("{v:.4}"),
+        Value::Bool(v) => if *v { "true" } else { "false" }.to_string(),
+        Value::Rgba(c) => format!("#{:02x}{:02x}{:02x}{:02x}", c[0], c[1], c[2], c[3]),
+        Value::Raw4(v) => format!("0x{v:08x}"),
+        Value::Vec2(v) => format!("({:.3}, {:.3})", v[0], v[1]),
+        Value::Vec3(v) => format!("({:.3}, {:.3}, {:.3})", v[0], v[1], v[2]),
+        Value::Mat4(v) => format!(
+            "[{:.2} {:.2} {:.2} {:.2} / {:.2} {:.2} {:.2} {:.2} / …]",
+            v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]
+        ),
+        Value::Text(v) => v.clone(),
+    }
+}
+
+fn push_node(builder: &mut Builder, parent: u32, node: &Node, key: &str, depth: usize) {
+    match node {
+        Node::End => {
+            builder.field(parent, key, "END");
+        }
+        Node::Value(value) => {
+            builder.field(parent, key, describe(value));
+        }
+        Node::Array {
+            count,
+            grouped,
+            items,
+        } => {
+            let title = if *grouped {
+                format!("Array（{count} 条记录）")
+            } else {
+                format!("Array（{count} 个值）")
+            };
+            let group = builder.group(parent, Some(key), title);
+            if depth > 4 {
+                builder.field(
+                    group,
+                    "note",
+                    format!("{} 项（层级过深，未展开）", items.len()),
+                );
+                return;
+            }
+            for (index, item) in items.iter().take(MAX_RECORDS_SHOWN).enumerate() {
+                push_node(builder, group, item, &index.to_string(), depth + 1);
+            }
+            if items.len() > MAX_RECORDS_SHOWN {
+                builder.truncate();
+            }
+        }
+        Node::Record(items) => {
+            let group = builder.group(parent, Some(key), format!("Record（{} 个值）", items.len()));
+            for (index, item) in items.iter().enumerate().take(16) {
+                push_node(builder, group, item, &index.to_string(), depth + 1);
+            }
+            if items.len() > 16 {
+                builder.field(group, "…", format!("另有 {} 个值", items.len() - 16));
+            }
+        }
+    }
 }
 
 /// 文档树。
 pub fn build(bytes: &[u8]) -> DocArena {
+    let bst = parse(bytes);
     let mut builder = Builder::new();
     let root = builder.root("BST");
     builder.field(root, "size", bytes.len().to_string());
 
-    if bytes.len() < HEADER {
-        builder.warn("文件不足 0x1b 字节");
+    if bytes.len() < STREAM_AT {
+        builder.warn("文件不足 0x16 字节");
         builder.mark(root, DocMark::Error);
         return builder.finish();
     }
 
-    let magic_ok = &bytes[..4] == MAGIC;
-    let count = rdr::u32_at(bytes, 0x10).unwrap_or(0);
-    let name_offset = bytes[NAME_OFFSET_AT];
-    let name_area = bytes[NAME_AREA_AT];
-    let variant = bytes[VARIANT_AT];
-
+    // --- 头部 ---
     let header = builder.group(root, Some("header"), "Header");
     builder.field(header, "magic", rdr::ascii(&bytes[..4]));
-    builder.field(header, "records", count.to_string());
-    builder.field(header, "nameOffset", format!("0x{name_offset:x}"));
-    builder.field(header, "nameArea", name_area.to_string());
-    builder.field(header, "variant", format!("0x{variant:x}"));
+    builder.field(
+        header,
+        "count",
+        rdr::u32_at(bytes, 0x10).unwrap_or(0).to_string(),
+    );
+    builder.field(
+        header,
+        "nameOffset",
+        format!("0x{:02x}", bytes.get(0x14).copied().unwrap_or(0)),
+    );
+    builder.field(
+        header,
+        "variant",
+        format!("0x{:02x}", bytes.get(0x15).copied().unwrap_or(0)),
+    );
 
     builder.check(
         "bst.magic",
         "魔数为 BBST",
-        magic_ok,
+        &bytes[..4] == MAGIC,
         Some(rdr::hex(&bytes[..4])),
     );
 
-    let names = resources(bytes);
+    let names = bst.names.clone();
     builder.check(
         "bst.names",
-        "名字区能解出 .fmd / .ftx",
+        "名字表解出 .fmd / .ftx",
         names.len() >= 2,
         Some(format!("{} 个", names.len())),
     );
-
     let list = builder.array(
         root,
         Some("resources"),
@@ -143,25 +545,298 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.field(list, &format!("r{index}"), name.clone());
     }
 
-    let idents = identifiers(bytes);
-    let ids = builder.array(
-        root,
-        Some("identifiers"),
-        format!("Identifiers ({})", idents.len()),
-    );
-    for (index, ident) in idents.iter().enumerate() {
-        builder.field(ids, &format!("i{index}"), ident.clone());
+    // --- 舞台头（第一条记录）---
+    if let Some(Node::Record(items)) = bst.records.first() {
+        let stage = builder.group(
+            root,
+            Some("stage"),
+            format!("Stage（{} 个值）", items.len()),
+        );
+        let corners = items
+            .iter()
+            .filter_map(|node| match node {
+                Node::Value(Value::Vec3(value)) => Some(*value),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if corners.len() >= 4 {
+            let quad = builder.array(
+                stage,
+                Some("bounds"),
+                format!("Bounds ({})", corners.len().min(4)),
+            );
+            for (index, corner) in corners.iter().take(4).enumerate() {
+                builder.field(
+                    quad,
+                    &format!("c{index}"),
+                    format!("({:.2}, {:.2}, {:.2})", corner[0], corner[1], corner[2]),
+                );
+            }
+        }
+        let colours = items
+            .iter()
+            .filter_map(|node| match node {
+                Node::Value(Value::Rgba(value)) => Some(*value),
+                _ => None,
+            })
+            .count();
+        builder.field(stage, "colours", colours.to_string());
+        let waves = items
+            .iter()
+            .filter_map(|node| match node {
+                Node::Array { items, .. } => Some(items),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|node| match node {
+                Node::Value(Value::Text(text)) if !text.is_empty() => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if !waves.is_empty() {
+            builder.field(stage, "waveGens", waves.join(", "));
+        }
     }
 
-    let data_at = 0x10 + name_offset as usize + name_area as usize;
-    builder.bytes(
-        root,
-        Some("body"),
-        format!("Body ({} B)", bytes.len().saturating_sub(data_at)),
-        data_at as u64,
-        bytes.len().saturating_sub(data_at) as u64,
+    // --- 统计 ---
+    let stats = builder.group(root, Some("stats"), "Stats");
+    builder.field(stats, "records", bst.records.len().to_string());
+    builder.field(stats, "plates", bst.plates.len().to_string());
+    builder.field(stats, "quads", bst.quads.len().to_string());
+
+    builder.check(
+        "bst.closed",
+        "值流恰好读到 EOF",
+        bst.unknown_tag.is_none() && bst.end == bytes.len(),
+        Some(match bst.unknown_tag {
+            Some((at, tag)) => format!("0x{at:x} 处未知标签 0x{tag:02x}"),
+            None => format!("{:#x} / {:#x}", bst.end, bytes.len()),
+        }),
     );
-    builder.field(root, "bodyOffset", format!("0x{data_at:x}"));
+
+    // --- 碰撞板 ---
+    let plates = builder.array(
+        root,
+        Some("plates"),
+        format!("Plates ({})", bst.plates.len()),
+    );
+    for (index, plate) in bst.plates.iter().take(MAX_PLATES_SHOWN).enumerate() {
+        let row = builder.group(plates, Some(&format!("p{index}")), format!("#{}", plate.id));
+        builder.field(
+            row,
+            "position",
+            format!(
+                "({:.2}, {:.2}, {:.2})",
+                plate.position[0], plate.position[1], plate.position[2]
+            ),
+        );
+        builder.field(
+            row,
+            "corners",
+            plate
+                .corners
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        builder.field(row, "at", format!("0x{:x}", plate.at));
+    }
+    if bst.plates.len() > MAX_PLATES_SHOWN {
+        builder.truncate();
+    }
+
+    // --- 地形块 ---
+    let quads = builder.array(root, Some("quads"), format!("Quads ({})", bst.quads.len()));
+    for (index, quad) in bst.quads.iter().take(MAX_QUADS_SHOWN).enumerate() {
+        let row = builder.group(
+            quads,
+            Some(&format!("q{index}")),
+            if quad.name.is_empty() {
+                format!("q{index}")
+            } else {
+                quad.name.clone()
+            },
+        );
+        for (slot, corner) in quad.corners.iter().enumerate() {
+            builder.field(
+                row,
+                &format!("c{slot}"),
+                format!("({:.2}, {:.2}, {:.2})", corner[0], corner[1], corner[2]),
+            );
+        }
+        builder.field(row, "at", format!("0x{:x}", quad.at));
+    }
+    if bst.quads.len() > MAX_QUADS_SHOWN {
+        builder.truncate();
+    }
+
+    // --- 值流（前若干条记录）---
+    let stream = builder.group(
+        root,
+        Some("stream"),
+        format!("Stream（{} 条记录）", bst.records.len()),
+    );
+    for (index, node) in bst.records.iter().take(MAX_RECORDS_SHOWN).enumerate() {
+        push_node(&mut builder, stream, node, &index.to_string(), 0);
+    }
+    if bst.records.len() > MAX_RECORDS_SHOWN {
+        builder.truncate();
+    }
 
     builder.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn push_text(out: &mut Vec<u8>, value: &str) {
+        out.push(0x28);
+        out.extend_from_slice(&(value.len() as u32).to_le_bytes());
+        out.extend_from_slice(value.as_bytes());
+        out.push(0);
+    }
+
+    fn push_int(out: &mut Vec<u8>, value: i32) {
+        out.push(0x05);
+        out.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn push_vec3(out: &mut Vec<u8>, value: [f32; 3]) {
+        out.push(0x20);
+        for axis in value {
+            out.extend_from_slice(&axis.to_le_bytes());
+        }
+    }
+
+    fn header() -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(b"BBST");
+        out.extend_from_slice(&[0u8; 12]);
+        out.extend_from_slice(&118u32.to_le_bytes());
+        out.push(0x0b);
+        out.push(0x01);
+        assert_eq!(out.len(), STREAM_AT);
+        out
+    }
+
+    /// 造一份最小 BST：头部 + 一条舞台头记录 + 一条碰撞板 + 一条地形块。
+    fn sample() -> Vec<u8> {
+        let mut out = header();
+
+        // 舞台头记录
+        push_text(&mut out, "BT_STAGE00.fmd");
+        push_text(&mut out, "BT_STAGE00.ftx");
+        push_vec3(&mut out, [1900.0, 0.0, 1900.0]);
+        push_vec3(&mut out, [-1600.0, 0.0, -1400.0]);
+        push_vec3(&mut out, [1700.0, 0.0, 1700.0]);
+        push_vec3(&mut out, [-1400.0, 0.0, -1200.0]);
+        out.push(RECORD_END);
+
+        // 碰撞板记录
+        push_int(&mut out, 1);
+        push_int(&mut out, 0);
+        push_int(&mut out, 0);
+        push_text(&mut out, "");
+        out.push(0x0b);
+        out.push(0);
+        out.push(0x0b);
+        out.push(0);
+        push_int(&mut out, 30);
+        push_vec3(&mut out, [483.0, 0.0, 48.0]);
+        push_int(&mut out, 0);
+        out.push(0x33);
+        out.extend_from_slice(&4u32.to_le_bytes());
+        for corner in [45, 162, 327, 593] {
+            push_int(&mut out, corner);
+        }
+        out.push(RECORD_END);
+
+        // 地形块记录：4 角 + 名字 + 若干填充
+        for corner in [
+            [0.0f32, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+        ] {
+            push_vec3(&mut out, corner);
+        }
+        push_text(&mut out, "379");
+        for _ in 0..16 {
+            push_int(&mut out, 0);
+        }
+        out.push(RECORD_END);
+        out
+    }
+
+    #[test]
+    fn parses_stage_header_and_records() {
+        let bytes = sample();
+        let bst = parse(&bytes);
+        assert_eq!(bst.names, vec!["BT_STAGE00.fmd", "BT_STAGE00.ftx"]);
+        assert_eq!(bst.records.len(), 3);
+        assert_eq!(bst.end, bytes.len());
+        assert!(bst.unknown_tag.is_none());
+        assert_eq!(bst.plates.len(), 1);
+        assert_eq!(bst.plates[0].id, 30);
+        assert_eq!(bst.plates[0].corners, vec![45, 162, 327, 593]);
+        assert_eq!(bst.quads.len(), 1);
+        assert_eq!(bst.quads[0].name, "379");
+    }
+
+    #[test]
+    fn record_array_is_detected() {
+        // 两条碰撞板放进记录数组：`33 02` + record + record + END
+        let mut out = header();
+        push_int(&mut out, 621);
+        out.push(0x33);
+        out.extend_from_slice(&2u32.to_le_bytes());
+        for id in [30, 31] {
+            push_int(&mut out, 1);
+            push_int(&mut out, 0);
+            push_int(&mut out, 0);
+            out.push(0x28);
+            out.extend_from_slice(&0u32.to_le_bytes());
+            out.push(0);
+            out.push(0x0b);
+            out.push(0);
+            out.push(0x0b);
+            out.push(0);
+            push_int(&mut out, id);
+            push_vec3(&mut out, [1.0, 0.0, 2.0]);
+            push_int(&mut out, 0);
+            out.push(0x33);
+            out.extend_from_slice(&2u32.to_le_bytes());
+            push_int(&mut out, 7);
+            push_int(&mut out, 8);
+            out.push(RECORD_END);
+        }
+        out.push(RECORD_END);
+
+        let bst = parse(&out);
+        assert!(bst.unknown_tag.is_none(), "应当整体闭合");
+        assert_eq!(bst.end, out.len());
+        assert_eq!(bst.plates.len(), 2);
+        assert_eq!(bst.plates[1].id, 31);
+        match &bst.records[0] {
+            Node::Record(items) => match &items[1] {
+                Node::Array { grouped, items, .. } => {
+                    assert!(*grouped, "应当识别成记录数组");
+                    assert_eq!(items.len(), 2);
+                }
+                other => panic!("第二项应当是数组：{other:?}"),
+            },
+            other => panic!("应当是记录：{other:?}"),
+        }
+    }
+
+    #[test]
+    fn truncated_input_never_panics() {
+        let bytes = sample();
+        for len in 0..bytes.len() {
+            let _ = parse(&bytes[..len]);
+            let _ = build(&bytes[..len]);
+        }
+    }
 }
