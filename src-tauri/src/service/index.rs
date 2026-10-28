@@ -1,22 +1,14 @@
-//! 目录索引服务：后台构建、状态查询、条目快照。
-//!
-//! 索引只存元信息（路径/名称/类别），只服务全局搜索；目录列表永远来自实时 `read_dir`。
-//! 换根即整份重建，旧任务被取消且结果作废。
-
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use catalog::{IndexEntry, IndexState, IndexStatusDto};
 
-/// 索引的可变部分：状态 + 条目快照。
 struct IndexSlot {
     status: IndexStatusDto,
-    /// 整体替换而非原地改，读侧克隆 `Arc` 即可无锁遍历。
     entries: Arc<Vec<IndexEntry>>,
 }
 
-/// 可克隆句柄：后台线程与命令层共用同一个索引。
 #[derive(Clone)]
 pub struct IndexService {
     slot: Arc<Mutex<IndexSlot>>,
@@ -54,12 +46,11 @@ impl IndexService {
                 state: IndexState::Failed,
                 count: 0,
                 root: None,
-                error: Some("索引状态锁已失效".to_string()),
+                error: Some("the index state lock is gone".to_string()),
             },
         }
     }
 
-    /// 当前快照。构建中返回已收集的部分，前端据此提示「结果可能不完整」。
     pub fn entries(&self) -> Arc<Vec<IndexEntry>> {
         match self.slot.lock() {
             Ok(slot) => slot.entries.clone(),
@@ -67,7 +58,6 @@ impl IndexService {
         }
     }
 
-    /// 换根重建。旧任务会被取消，其结果不会覆盖新任务。
     pub fn start(&self, root: &Path) {
         let generation = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -90,7 +80,6 @@ impl IndexService {
                 }
             });
 
-            // 期间换过根：本次结果作废。
             if generation_handle.load(Ordering::Relaxed) != generation {
                 return;
             }

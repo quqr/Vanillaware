@@ -1,12 +1,3 @@
-//! Tauri 入口：装配插件、命令与共享状态。
-//!
-//! 分层约定：
-//! - [`command`]：命令薄层（参数 → 阻塞任务 → DTO）；
-//! - [`service`]：业务逻辑（解析、索引、缓存句柄），不依赖命令宏；
-//! - [`model`]：跨进程数据结构；
-//! - [`config`]：路径与可调参数；
-//! - [`state`]：把上述服务装进 Tauri 托管的 `AppState`。
-
 pub mod command;
 pub mod config;
 pub mod model;

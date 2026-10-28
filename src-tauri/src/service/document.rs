@@ -1,7 +1,3 @@
-//! 文档树缓存：按「路径 + tag + 大小 + mtime」命中，容量按份数与近似字节双重限制。
-//!
-//! 解析在锁外进行；淘汰后句柄失效，调用方明确要求前端重新打开。
-
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,7 +17,6 @@ struct DocKey {
     mtime_ms: u64,
 }
 
-/// 一份已解析文档的元信息 + arena。
 pub struct CachedDoc {
     pub arena: DocArena,
     path: String,
@@ -54,7 +49,6 @@ struct Entry {
     doc: Arc<CachedDoc>,
 }
 
-/// 可克隆句柄：命令层与阻塞线程共用同一份缓存。
 #[derive(Clone)]
 pub struct DocCache {
     entries: Arc<Mutex<VecDeque<Entry>>>,
@@ -75,7 +69,6 @@ impl DocCache {
         }
     }
 
-    /// 打开或复用一份文档；返回句柄与缓存中的文档。
     pub fn open(&self, path: &Path, tag: Option<&str>) -> Result<(u64, Arc<CachedDoc>), String> {
         let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
         let ext = catalog::fslist::extension(path);
@@ -126,7 +119,6 @@ impl DocCache {
         Ok((handle, doc))
     }
 
-    /// 按句柄取文档；淘汰后返回 `None`。
     pub fn get(&self, handle: u64) -> Option<Arc<CachedDoc>> {
         let guard = self.entries.lock().ok()?;
         guard

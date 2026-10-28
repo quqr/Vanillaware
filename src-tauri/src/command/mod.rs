@@ -1,8 +1,3 @@
-//! Tauri 命令层：参数校验 + 阻塞任务调度。
-//!
-//! 命令只做三件事：把重活丢进 `spawn_blocking`、把服务结果转成 DTO、把错误转成字符串。
-//! 业务逻辑在 [`crate::service`]，数据结构在 [`crate::model`]。
-
 pub mod animation;
 pub mod audio;
 pub mod cache;
@@ -23,12 +18,10 @@ use media::TextureInfo;
 use crate::model::FrameMetaDto;
 use crate::state::AppState;
 
-/// 统一把任意错误转成前端可读字符串。
 pub(crate) fn err_string(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-/// 纹理帧元信息 → DTO。
 pub(crate) fn frame_metas(infos: &[TextureInfo]) -> Vec<FrameMetaDto> {
     infos
         .iter()
@@ -44,9 +37,6 @@ pub(crate) fn frame_metas(infos: &[TextureInfo]) -> Vec<FrameMetaDto> {
         .collect()
 }
 
-/// 取某一帧的 PNG。
-///
-/// `full = true` 走原尺寸缓存（查看器与图集采样），否则走缩略图缓存。
 pub(crate) async fn decode_frame_png(
     state: &State<'_, AppState>,
     path: String,

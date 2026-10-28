@@ -1,17 +1,11 @@
-//! `.mbs` 解析缓存：按「路径 + tag + 大小 + mtime」命中最近若干份结果。
-//!
-//! 播放、结构、导出三个入口共用，避免同一个文件被解析多次。
-
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use super::scene::{self, LoadedMbs};
 
-/// 缓存容量。一份 Quad 约几 MB～十几 MB，4 份足够覆盖「来回切两个文件」。
 const CAPACITY: usize = 4;
 
-/// 缓存键：文件被改动（size/mtime 变）即视为不同条目。
 #[derive(PartialEq, Eq)]
 struct ParseKey {
     path: String,
@@ -22,7 +16,6 @@ struct ParseKey {
 
 type Entries = Arc<Mutex<VecDeque<(ParseKey, Arc<LoadedMbs>)>>>;
 
-/// 解析缓存的可克隆句柄：可安全移进 `spawn_blocking`。
 #[derive(Clone)]
 pub struct ParseCache {
     entries: Entries,
@@ -41,7 +34,6 @@ impl ParseCache {
         }
     }
 
-    /// 取（或解析）一个 `.mbs`。命中缓存时不再 parse/convert。
     pub fn load(&self, path: &Path, tag: &str) -> Result<Arc<LoadedMbs>, String> {
         let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
         let key = ParseKey {
@@ -63,7 +55,6 @@ impl ParseCache {
             }
         }
 
-        // 解析在锁外进行：同一文件的并发请求会各解析一次，但不会阻塞其他文件。
         let loaded = Arc::new(scene::load(path, tag).map_err(|e| e.to_string())?);
 
         let mut guard = self.entries.lock().map_err(|e| e.to_string())?;

@@ -1,8 +1,3 @@
-//! 预览场景服务：把 `.mbs` 解析成 Quad，再摊平成前端 DTO。
-//!
-//! 这里只做「模型 → 视图」的搬运，不含任何格式判断：字段含义全部由 `formats` 定义。
-//! 解析结果由 [`super::parse::ParseCache`] 缓存，播放与结构两个查看器共用同一份。
-
 use std::path::Path;
 
 use formats::Result;
@@ -18,13 +13,11 @@ use crate::model::scene::{
     LayerDto, SceneDto, SkeletonDto,
 };
 
-/// 一个 `.mbs` 的解析结果：Quad + 图集元信息。
 pub struct LoadedMbs {
     pub quad: Quad,
     pub atlas: Option<Atlas>,
 }
 
-/// 解析 + 转换 + 打开图集。
 pub fn load(mbs_path: &Path, tag: &str) -> Result<LoadedMbs> {
     let v55 = formats::mbs::parse_file(mbs_path, tag)?;
     let quad = formats::mbs::convert(&v55)?;
@@ -33,7 +26,6 @@ pub fn load(mbs_path: &Path, tag: &str) -> Result<LoadedMbs> {
 }
 
 impl LoadedMbs {
-    /// 摊平成前端 DTO。
     pub fn scene(&self, mbs_path: &Path, tag: &str) -> SceneDto {
         let atlas = self
             .atlas
@@ -115,7 +107,6 @@ fn layer_dto(cell: &Pad<KeyframeLayer>) -> Option<LayerDto> {
     }
 }
 
-/// 单色雾色展开成 4 份，前端只取 `[0]` 也不会错。
 fn fog_dto(fog: &FogQuad) -> Vec<String> {
     match fog {
         FogQuad::One(color) => vec![color.clone(); 4],

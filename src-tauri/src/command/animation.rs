@@ -1,7 +1,3 @@
-//! 动画命令：预览场景、结构转换、导出 Quad。
-//!
-//! 三者共用 [`crate::service::ParseCache`]，同一个文件只会解析一次。
-
 use std::path::PathBuf;
 
 use tauri::State;
@@ -11,7 +7,6 @@ use crate::model::ConvertDto;
 use crate::model::SceneDto;
 use crate::state::AppState;
 
-/// 打开一个 `.mbs` 并摊平成预览场景。
 #[tauri::command]
 pub async fn preview_scene(
     state: State<'_, AppState>,
@@ -28,7 +23,6 @@ pub async fn preview_scene(
     .map_err(|e| format!("join error: {e}"))?
 }
 
-/// 转换一个 `.mbs`。golden 比对是测试套件（`mbs_golden_quad`）的事，界面不暴露。
 #[tauri::command]
 pub async fn convert_mbs(
     state: State<'_, AppState>,
@@ -53,7 +47,6 @@ pub async fn convert_mbs(
     .map_err(|e| format!("join error: {e}"))?
 }
 
-/// 导出 Quad JSON 到指定路径；返回写入的字节数。
 #[tauri::command]
 pub async fn export_quad(
     state: State<'_, AppState>,

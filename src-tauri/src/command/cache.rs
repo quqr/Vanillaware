@@ -1,5 +1,3 @@
-//! 缓存命令：统计与清空。
-
 use tauri::State;
 
 use super::err_string;

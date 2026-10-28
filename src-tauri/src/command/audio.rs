@@ -1,8 +1,3 @@
-//! 音频命令：取容器索引、片段元信息、片段二进制。
-//!
-//! 分离三件事是为了不把几十兆 PCM 塞进 JSON：
-//! `audio_clip_info` 只回元信息，`audio_clip_data` 用二进制响应回载荷。
-
 use std::path::PathBuf;
 
 use tauri::State;
@@ -13,7 +8,6 @@ use media::audio::{Clip, decode_track};
 use crate::model::audio::{AudioBundleDto, AudioClipDto, AudioCodecCountDto, AudioTrackDto};
 use crate::state::AppState;
 
-/// 打开 ACB/AWB，列出全部轨道。
 #[tauri::command]
 pub async fn audio_bundle(
     state: State<'_, AppState>,
@@ -64,7 +58,6 @@ pub async fn audio_bundle(
     .map_err(|error| format!("join error: {error}"))?
 }
 
-/// 片段元信息 + 载荷长度。
 #[tauri::command]
 pub async fn audio_clip_info(
     state: State<'_, AppState>,
@@ -83,7 +76,6 @@ pub async fn audio_clip_info(
     .map_err(|error| format!("join error: {error}"))?
 }
 
-/// 片段载荷：HCA 为交错 i16 PCM，lopus 为定长裸 Opus 包拼接。
 #[tauri::command]
 pub async fn audio_clip_data(
     state: State<'_, AppState>,

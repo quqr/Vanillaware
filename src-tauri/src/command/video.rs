@@ -1,5 +1,3 @@
-//! 影片命令：索引、按 GOP 取码流。
-
 use std::path::PathBuf;
 
 use tauri::State;
@@ -8,7 +6,6 @@ use tauri::ipc::Response;
 use crate::model::video::UsmVideoDto;
 use crate::state::AppState;
 
-/// 建索引：尺寸、帧率、帧表、关键帧、SPS/PPS。
 #[tauri::command]
 pub async fn usm_video_info(
     state: State<'_, AppState>,
@@ -51,7 +48,6 @@ pub async fn usm_video_info(
     .map_err(|error| format!("join error: {error}"))?
 }
 
-/// 取第 `gop` 个关键帧到下一个关键帧之间的码流（Annex-B）。
 #[tauri::command]
 pub async fn usm_video_gop(
     state: State<'_, AppState>,
@@ -67,7 +63,7 @@ pub async fn usm_video_gop(
         let position = gop as usize;
         let start_frame = *keys
             .get(position)
-            .ok_or_else(|| format!("GOP {gop} 越界（共 {} 个）", keys.len()))?;
+            .ok_or_else(|| format!("GOP {gop} out of range ({} total)", keys.len()))?;
         let end_frame = keys
             .get(position + 1)
             .copied()

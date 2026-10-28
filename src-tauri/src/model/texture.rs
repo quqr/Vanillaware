@@ -1,8 +1,5 @@
-//! 纹理帧相关的 DTO。
-
 use serde::Serialize;
 
-/// 单帧元信息（不含像素）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FrameMetaDto {
@@ -14,7 +11,6 @@ pub struct FrameMetaDto {
     pub channels: u8,
 }
 
-/// 一个纹理容器的帧清单。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FrameListDto {
