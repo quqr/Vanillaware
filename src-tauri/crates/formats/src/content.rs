@@ -911,7 +911,7 @@ fn ucb(bytes: &[u8]) -> Projection {
     }
 
     out.note = Some(format!(
-        "{cells} cells laid out as {grid_width}×{grid_height} (x right, y down) · {} areas · {outside} cells all zero. This grid stores no pixels: the map screen art ships as GUI/Worldmap.mbs + GUI/Worldmap.ftx, and each area's field background as FieldBG/AC*.mpd + AC*.ftx.",
+        "{cells} cells laid out as {grid_width}×{grid_height} (x right, y down) · {} areas · {outside} cells with no region. Cell x runs along world x from -42480 at 32 units per cell, cell y along world z from -18416; the id is the mask index in Field.ufb, and re-painting those masks in +0x34 order reproduces this whole grid. The file stores no pixels: the map screen art ships as GUI/Worldmap.mbs + GUI/Worldmap.ftx, and each area's field background as FieldBG/AC*.mpd + AC*.ftx.",
         areas.len()
     ));
 
@@ -944,7 +944,7 @@ fn ucb(bytes: &[u8]) -> Projection {
         vec![
             "+0x08".to_string(),
             "u32 packed".to_string(),
-            "low 16 bits = mask index in Field.ufb, bits 22..31 = terrain class".to_string(),
+            "0 = outside the map; otherwise bits 0..15 = mask index in Field.ufb, bit 16..21 = 1 on every in-map cell, bits 22..31 = terrain class".to_string(),
         ],
         vec![
             "+0x0c".to_string(),
@@ -1011,7 +1011,7 @@ fn ucb(bytes: &[u8]) -> Projection {
         height: out_height as u32,
         rgba,
         legend: format!(
-            "Canvas {out_width}×{out_height} px = the {grid_width}×{grid_height} world grid (x right, y down, 1 px = {step}×{step} cells). Hue = the area each cell belongs to, i.e. the low 16 bits of `+0x08`; that number is the mask index inside Field.ufb, so one colour = one field area. Dark seams = where the area changes between neighbouring cells. Terrain class is not drawn (see the table); the {outside} all-zero cells are left near-black.",
+            "Canvas {out_width}×{out_height} px = the {grid_width}×{grid_height} world grid (x right, y down, 1 px = {step}×{step} cells). Hue = the area each cell belongs to, i.e. the low 16 bits of `+0x08`; that number is the mask index inside Field.ufb, so one colour = one field area. Painting every Field.ufb mask cell at 32 world units per cell, in ascending +0x34 order, reproduces this grid cell for cell. Dark seams = where the area changes between neighbouring cells. Terrain class is not drawn (see the table); the {outside} cells with no region are left near-black.",
         ),
     });
 

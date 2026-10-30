@@ -45,7 +45,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     let mut index_ok = 0usize;
     let mut group_ok = 0usize;
-    let mut types: Vec<u32> = Vec::new();
+    let mut classes: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    let mut presence_ok = 0usize;
+    let mut outside = 0usize;
+    let mut tail_ok = 0usize;
+    let mut areas: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
     for index in 0..count {
         let at = index * RECORD;
         let Some(local) = rdr::u32_at(bytes, at) else {
@@ -60,11 +64,24 @@ pub fn build(bytes: &[u8]) -> DocArena {
         if group as usize == index / GROUP_SIZE {
             group_ok += 1;
         }
-        let kind = rdr::u32_at(bytes, at + 8).unwrap_or(0);
-        if !types.contains(&kind) {
-            types.push(kind);
+        let word = rdr::u32_at(bytes, at + 8).unwrap_or(0);
+        let inside = word != 0;
+        if (word & 0x003f_0000 != 0) == inside {
+            presence_ok += 1;
+        }
+        if inside {
+            classes.insert(word >> 22);
+            areas.insert(word & 0xffff);
+        } else {
+            outside += 1;
+        }
+        let color = rdr::u32_at(bytes, at + 0x0c).unwrap_or(0);
+        let zero = (0..4).all(|slot| rdr::u32_at(bytes, at + 0x10 + slot * 4).unwrap_or(1) == 0);
+        if color == 0xff00_0000 && zero {
+            tail_ok += 1;
         }
     }
+    let types: Vec<u32> = classes.into_iter().collect();
 
     builder.check(
         "ucb.index",
@@ -77,6 +94,30 @@ pub fn build(bytes: &[u8]) -> DocArena {
         "group equals sequence / 2199",
         group_ok == count,
         Some(format!("{group_ok}/{count}")),
+    );
+    builder.check(
+        "ucb.presence",
+        "bits 16..21 are set exactly when the cell is inside the map",
+        presence_ok == count,
+        Some(format!(
+            "{presence_ok}/{count}, {outside} cells are all zero"
+        )),
+    );
+    builder.check(
+        "ucb.tail",
+        "the color word is 0xff000000 and the last 16 bytes are zero",
+        tail_ok == count,
+        Some(format!("{tail_ok}/{count}")),
+    );
+    builder.check(
+        "ucb.ids",
+        "area ids stay inside the 1647 masks of Field.ufb",
+        areas.iter().next_back().copied().unwrap_or(0) < 1647,
+        Some(format!(
+            "{} distinct ids, max {:?}",
+            areas.len(),
+            areas.iter().next_back()
+        )),
     );
 
     let summary = builder.group(root, Some("summary"), "Summary");

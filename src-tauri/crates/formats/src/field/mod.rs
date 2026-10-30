@@ -6,43 +6,110 @@ use super::document::rdr;
 use super::raster::{paint_quad, Page, Raster};
 
 pub const HEAD: usize = 0x88;
-const LAYER: usize = 0x40;
-const PANEL: usize = 0xa0;
+pub const RECORD_HEAD: usize = 0x24;
+pub const LAYER: usize = 0x40;
+pub const EXT: usize = 0x90;
+pub const MASK_HEAD: usize = 0x3c;
+pub const GROUP_HEAD: usize = 4;
+pub const GROUP_ENTRY: usize = 0xf0;
+pub const VERTEX: usize = 0x18;
+pub const PANEL: usize = 0xa0;
+pub const COLUMNS: usize = 138;
+pub const ROWS: usize = 105;
+pub const MASK_CELL: f32 = 32.0;
+pub const GRID_COLUMNS: usize = 2199;
+pub const GRID_ROWS: usize = 1311;
+pub const WORLD_X0: f32 = -42480.0;
+pub const WORLD_Z0: f32 = -18416.0;
+pub const MASK_DORMANT: u16 = 0x4700;
+
 const MAX_AREAS: usize = 24;
 
 #[derive(Clone, Copy, Default)]
-pub struct Header {
+pub struct Counts {
     pub records: u32,
-    pub layers: u32,
-    pub areas: u32,
+    pub group_blocks: u32,
+    pub objects: u32,
+    pub model_objects: u32,
+    pub panel_objects: u32,
+    pub masks: u32,
     pub f_records: u32,
     pub words: u32,
     pub pairs: u32,
     pub samples: u32,
+    pub groups: u32,
     pub names: u32,
-    pub records_end: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Vertex {
+    pub x: f32,
+    pub y: f32,
+    pub u: f32,
+    pub v: f32,
+    pub color: u32,
 }
 
 #[derive(Clone, Copy)]
 pub struct Layer {
-    pub pair: i32,
-    pub panel: u16,
-    pub flags: u16,
     pub min: [f32; 3],
     pub max: [f32; 3],
+    pub color: u32,
+    pub fog: u32,
+    pub center_x: f32,
+    pub center_z: f32,
+    pub distance: f32,
+    pub scale_x: u16,
+    pub scale_y: u16,
+    pub flags: u16,
+    pub ext: u8,
+    pub pair: i32,
+    pub panel: u16,
+    pub sample: u16,
+    pub at: usize,
+}
+
+pub struct GroupBlock {
+    pub at: usize,
+    pub id: u16,
+    pub slot: u8,
+    pub count: u8,
 }
 
 pub struct Record {
     pub index: usize,
+    pub at: usize,
+    pub size: usize,
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+    pub column: u32,
+    pub row: u32,
     pub layers: Vec<Layer>,
+    pub ext_at: usize,
+    pub ext_count: usize,
+    pub groups: Vec<GroupBlock>,
+    pub groups_at: usize,
 }
 
 #[derive(Clone, Copy)]
-pub struct Area {
+pub struct Mask {
+    pub at: usize,
+    pub world: [f32; 6],
     pub rect: [i32; 4],
     pub marked: u32,
     pub cells: u32,
+    pub sample: u16,
+    pub group: i16,
+    pub flag: u16,
+    pub id: u16,
+    pub data: usize,
+}
+
+#[derive(Clone, Copy)]
+pub struct FRecord {
     pub at: usize,
+    pub raw: [u16; 4],
+    pub point: [f32; 4],
 }
 
 #[derive(Clone, Default)]
@@ -51,78 +118,159 @@ pub struct Pair {
     pub texture: String,
 }
 
+impl Pair {
+    pub fn is_panel(&self) -> bool {
+        self.model.to_ascii_uppercase().ends_with(".MPD")
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct Derived {
+    pub layers: u64,
+    pub ext_blocks: u64,
+    pub group_blocks: u64,
+    pub group_entries: u64,
+    pub panel_layers: u64,
+    pub model_layers: u64,
+}
+
 pub struct Layout {
-    pub header: Header,
+    pub counts: Counts,
     pub records: Vec<Record>,
-    pub areas: Vec<Area>,
+    pub masks: Vec<Mask>,
+    pub f_records: Vec<FRecord>,
+    pub words: Vec<u32>,
     pub pairs: Vec<Pair>,
+    pub samples: Vec<String>,
+    pub group_names: Vec<String>,
+    pub names: Vec<String>,
+    pub derived: Derived,
+    pub end: usize,
+}
+
+pub fn record_size(bytes: &[u8], at: usize) -> Option<(usize, usize, usize, usize)> {
+    let layers = rdr::u16_at(bytes, at + 0x20)? as usize;
+    let ext = rdr::u8_at(bytes, at + 0x22)? as usize;
+    let groups = rdr::u8_at(bytes, at + 0x23)? as usize;
+    let mut cursor = at + RECORD_HEAD + layers * LAYER + ext * EXT;
+    for _ in 0..groups {
+        let count = rdr::u8_at(bytes, cursor + 3)? as usize;
+        cursor += GROUP_HEAD + count * GROUP_ENTRY;
+    }
+    Some((cursor - at, layers, ext, groups))
 }
 
 pub fn parse(bytes: &[u8]) -> Option<Layout> {
     if bytes.len() < HEAD {
         return None;
     }
-    let header = Header {
+    let counts = Counts {
         records: rdr::u32_at(bytes, 0x40)?,
-        layers: rdr::u32_at(bytes, 0x44).unwrap_or(0),
-        areas: rdr::u32_at(bytes, 0x48).unwrap_or(0),
+        group_blocks: rdr::u32_at(bytes, 0x44).unwrap_or(0),
+        objects: rdr::u32_at(bytes, 0x48).unwrap_or(0),
+        model_objects: rdr::u32_at(bytes, 0x4c).unwrap_or(0),
+        panel_objects: rdr::u32_at(bytes, 0x50).unwrap_or(0),
+        masks: rdr::u32_at(bytes, 0x54).unwrap_or(0),
         f_records: rdr::u32_at(bytes, 0x58).unwrap_or(0),
         words: rdr::u32_at(bytes, 0x5c).unwrap_or(0),
         pairs: rdr::u32_at(bytes, 0x60).unwrap_or(0),
         samples: rdr::u32_at(bytes, 0x64).unwrap_or(0),
+        groups: rdr::u32_at(bytes, 0x68).unwrap_or(0),
         names: rdr::u32_at(bytes, 0x6c).unwrap_or(0),
-        records_end: HEAD,
     };
-    let area_count = rdr::u32_at(bytes, 0x54).unwrap_or(0);
 
     let mut cursor = HEAD;
-    let mut records = Vec::with_capacity(header.records as usize);
-    for index in 0..header.records as usize {
-        let layers = rdr::u16_at(bytes, cursor + 0x20)? as usize;
-        let ext = rdr::u8_at(bytes, cursor + 0x22)? as usize;
-        let groups = rdr::u8_at(bytes, cursor + 0x23)? as usize;
-        let body = cursor + 0x24;
-        let end = body + layers * LAYER + ext * 0x90;
-        if end > bytes.len() {
-            break;
-        }
-        let mut list = Vec::with_capacity(layers);
-        for slot in 0..layers {
-            let desc = body + slot * LAYER;
-            list.push(Layer {
-                pair: bytes.get(desc + 0x39).copied().unwrap_or(0xff) as i8 as i32,
-                panel: rdr::u16_at(bytes, desc + 0x3a).unwrap_or(0) & 0x7ff,
-                flags: rdr::u16_at(bytes, desc + 0x34).unwrap_or(0),
+    let mut derived = Derived::default();
+    let mut records = Vec::with_capacity(counts.records as usize);
+    for index in 0..counts.records as usize {
+        let layers_count = rdr::u16_at(bytes, cursor + 0x20)? as usize;
+        let ext_count = rdr::u8_at(bytes, cursor + 0x22)? as usize;
+        let group_count = rdr::u8_at(bytes, cursor + 0x23)? as usize;
+        let body = cursor + RECORD_HEAD;
+        let ext_at = body + layers_count * LAYER;
+        let groups_at = ext_at + ext_count * EXT;
+
+        let mut layers = Vec::with_capacity(layers_count);
+        for slot in 0..layers_count {
+            let at = body + slot * LAYER;
+            let pair = bytes.get(at + 0x39).copied().unwrap_or(0xff) as i8 as i32;
+            layers.push(Layer {
                 min: [
-                    rdr::f32_at(bytes, desc).unwrap_or(0.0),
-                    rdr::f32_at(bytes, desc + 4).unwrap_or(0.0),
-                    rdr::f32_at(bytes, desc + 8).unwrap_or(0.0),
+                    rdr::f32_at(bytes, at).unwrap_or(0.0),
+                    rdr::f32_at(bytes, at + 4).unwrap_or(0.0),
+                    rdr::f32_at(bytes, at + 8).unwrap_or(0.0),
                 ],
                 max: [
-                    rdr::f32_at(bytes, desc + 0x0c).unwrap_or(0.0),
-                    rdr::f32_at(bytes, desc + 0x10).unwrap_or(0.0),
-                    rdr::f32_at(bytes, desc + 0x14).unwrap_or(0.0),
+                    rdr::f32_at(bytes, at + 0x0c).unwrap_or(0.0),
+                    rdr::f32_at(bytes, at + 0x10).unwrap_or(0.0),
+                    rdr::f32_at(bytes, at + 0x14).unwrap_or(0.0),
                 ],
+                color: rdr::u32_at(bytes, at + 0x18).unwrap_or(0),
+                fog: rdr::u32_at(bytes, at + 0x1c).unwrap_or(0),
+                center_x: rdr::f32_at(bytes, at + 0x20).unwrap_or(0.0),
+                distance: rdr::f32_at(bytes, at + 0x24).unwrap_or(0.0),
+                center_z: rdr::f32_at(bytes, at + 0x28).unwrap_or(0.0),
+                scale_x: rdr::u16_at(bytes, at + 0x30).unwrap_or(0),
+                scale_y: rdr::u16_at(bytes, at + 0x32).unwrap_or(0),
+                flags: rdr::u16_at(bytes, at + 0x34).unwrap_or(0),
+                ext: rdr::u8_at(bytes, at + 0x36).unwrap_or(0),
+                panel: rdr::u16_at(bytes, at + 0x3a).unwrap_or(0) & 0x7ff,
+                sample: rdr::u16_at(bytes, at + 0x3e).unwrap_or(0) & 0x7ff,
+                pair,
+                at,
             });
         }
+
+        let mut groups = Vec::with_capacity(group_count);
+        let mut group_cursor = groups_at;
+        for _ in 0..group_count {
+            let id = rdr::u16_at(bytes, group_cursor)?;
+            let slot = rdr::u8_at(bytes, group_cursor + 2)?;
+            let count = rdr::u8_at(bytes, group_cursor + 3)?;
+            groups.push(GroupBlock {
+                at: group_cursor,
+                id,
+                slot,
+                count,
+            });
+            derived.group_entries += count as u64;
+            group_cursor += GROUP_HEAD + count as usize * GROUP_ENTRY;
+        }
+
+        derived.layers += layers_count as u64;
+        derived.ext_blocks += ext_count as u64;
+        derived.group_blocks += group_count as u64;
+
         records.push(Record {
             index,
-            layers: list,
+            at: cursor,
+            size: group_cursor - cursor,
+            min: [
+                rdr::f32_at(bytes, cursor).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 4).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 8).unwrap_or(0.0),
+            ],
+            max: [
+                rdr::f32_at(bytes, cursor + 0x0c).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x10).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x14).unwrap_or(0.0),
+            ],
+            column: rdr::u32_at(bytes, cursor + 0x18).unwrap_or(0),
+            row: rdr::u32_at(bytes, cursor + 0x1c).unwrap_or(0),
+            ext_at,
+            ext_count,
+            groups,
+            groups_at,
+            layers,
         });
-        cursor = end;
-        for _ in 0..groups {
-            let count = rdr::u8_at(bytes, cursor + 3)? as usize;
-            cursor += 4 + count * 0xF0;
-        }
+        cursor = group_cursor;
         if cursor > bytes.len() {
             break;
         }
     }
-    let mut header = header;
-    header.records_end = cursor;
 
-    let mut areas = Vec::with_capacity(area_count as usize);
-    for _ in 0..area_count {
+    let mut masks = Vec::with_capacity(counts.masks as usize);
+    for _ in 0..counts.masks {
         let rect = [
             rdr::i32_at(bytes, cursor + 0x24)?,
             rdr::i32_at(bytes, cursor + 0x28)?,
@@ -134,46 +282,120 @@ pub fn parse(bytes: &[u8]) -> Option<Layout> {
         }
         let width = (rect[2] - rect[0] + 1) as usize;
         let height = (rect[3] - rect[1] + 1) as usize;
-        let at = cursor + 0x3c;
-        let end = at + width * height * 4;
-        if end > bytes.len() {
+        let data = cursor + MASK_HEAD;
+        let area = width * height;
+        if data + area * 4 > bytes.len() {
             break;
         }
         let mut marked = 0u32;
-        for cell in 0..width * height {
-            let word = rdr::u32_at(bytes, at + cell * 4).unwrap_or(0);
-            if word >> 16 == 0x6641 {
+        for cell in 0..area {
+            if rdr::u32_at(bytes, data + cell * 4).unwrap_or(0) >> 16 == 0x6641 {
                 marked += 1;
             }
         }
-        areas.push(Area {
+        masks.push(Mask {
+            at: cursor,
+            world: [
+                rdr::f32_at(bytes, cursor).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 4).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 8).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x0c).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x10).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x14).unwrap_or(0.0),
+            ],
             rect,
             marked,
-            cells: (width * height) as u32,
-            at,
+            cells: area as u32,
+            sample: rdr::u16_at(bytes, cursor + 0x34).unwrap_or(0),
+            group: rdr::u16_at(bytes, cursor + 0x36).unwrap_or(0) as i16,
+            flag: rdr::u16_at(bytes, cursor + 0x3a).unwrap_or(0),
+            id: rdr::u16_at(bytes, cursor + 0x38).unwrap_or(0),
+            data,
         });
-        cursor = end;
+        cursor = data + area * 4;
     }
 
-    let mut pairs = Vec::new();
-    let mut tail = cursor + header.f_records as usize * 0x18 + header.words as usize * 4;
-    for _ in 0..header.pairs {
-        let Some((model, after)) = cstr(bytes, tail) else {
+    let mut f_records = Vec::with_capacity(counts.f_records as usize);
+    for _ in 0..counts.f_records {
+        if cursor + 0x18 > bytes.len() {
+            break;
+        }
+        f_records.push(FRecord {
+            at: cursor,
+            raw: [
+                rdr::u16_at(bytes, cursor).unwrap_or(0),
+                rdr::u16_at(bytes, cursor + 2).unwrap_or(0),
+                rdr::u16_at(bytes, cursor + 4).unwrap_or(0),
+                rdr::u16_at(bytes, cursor + 6).unwrap_or(0),
+            ],
+            point: [
+                rdr::f32_at(bytes, cursor + 8).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x0c).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x10).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 0x14).unwrap_or(0.0),
+            ],
+        });
+        cursor += 0x18;
+    }
+
+    let mut words = Vec::with_capacity(counts.words as usize);
+    for index in 0..counts.words as usize {
+        words.push(rdr::u32_at(bytes, cursor + index * 4)?);
+    }
+    cursor += counts.words as usize * 4;
+
+    let mut pairs = Vec::with_capacity(counts.pairs as usize);
+    for _ in 0..counts.pairs {
+        let Some((model, after)) = cstr(bytes, cursor) else {
             break;
         };
         let Some((texture, next)) = cstr(bytes, after) else {
             break;
         };
         pairs.push(Pair { model, texture });
-        tail = next;
+        cursor = next;
+    }
+
+    let samples = take_names(bytes, counts.samples, &mut cursor);
+    let group_names = take_names(bytes, counts.groups, &mut cursor);
+    let names = take_names(bytes, counts.names, &mut cursor);
+    let end = cursor;
+
+    for record in &records {
+        for layer in &record.layers {
+            if layer.flags & 4 != 0 {
+                derived.panel_layers += 1;
+            } else {
+                derived.model_layers += 1;
+            }
+        }
     }
 
     Some(Layout {
-        header,
+        counts,
         records,
-        areas,
+        masks,
+        f_records,
+        words,
         pairs,
+        samples,
+        group_names,
+        names,
+        derived,
+        end,
     })
+}
+
+fn take_names(bytes: &[u8], count: u32, cursor: &mut usize) -> Vec<String> {
+    let mut out = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let Some((value, next)) = cstr(bytes, *cursor) else {
+            break;
+        };
+        out.push(value);
+        *cursor = next;
+    }
+    out
 }
 
 fn cstr(bytes: &[u8], at: usize) -> Option<(String, usize)> {
@@ -186,6 +408,21 @@ fn cstr(bytes: &[u8], at: usize) -> Option<(String, usize)> {
         .position(|byte| *byte == 0)
         .unwrap_or(rest.len());
     Some((rdr::utf8_string(&rest[..end]), at + end + 1))
+}
+
+pub fn vertices(bytes: &[u8], at: usize, count: usize) -> Vec<Vertex> {
+    let mut out = Vec::with_capacity(count);
+    for index in 0..count {
+        let base = at + index * VERTEX;
+        out.push(Vertex {
+            x: rdr::f32_at(bytes, base).unwrap_or(0.0),
+            y: rdr::f32_at(bytes, base + 4).unwrap_or(0.0),
+            color: rdr::u32_at(bytes, base + 0x0c).unwrap_or(0),
+            u: rdr::f32_at(bytes, base + 0x10).unwrap_or(0.0),
+            v: rdr::f32_at(bytes, base + 0x14).unwrap_or(0.0),
+        });
+    }
+    out
 }
 
 pub struct Panel {
@@ -212,7 +449,7 @@ pub fn panels(bytes: &[u8]) -> Vec<Panel> {
         let mut corners = [(0.0f32, 0.0f32); 4];
         let mut uv = [(0.0f32, 0.0f32); 4];
         for corner in 0..4usize {
-            let base = 8 + corner * 0x18;
+            let base = 8 + corner * VERTEX;
             corners[corner] = (
                 rdr::f32_at(block, base).unwrap_or(0.0),
                 rdr::f32_at(block, base + 4).unwrap_or(0.0),
@@ -260,7 +497,7 @@ pub fn compose(
     }
     let span_x = (max_x - min_x).max(1.0);
     let span_y = (max_y - min_y).max(1.0);
-    let scale = (max_side as f32 / span_x.max(span_y)).min(1.0).max(0.02);
+    let scale = (max_side as f32 / span_x.max(span_y)).clamp(0.02, 2.0);
 
     let width = (span_x * scale).ceil().max(1.0) as u32;
     let height = (span_y * scale).ceil().max(1.0) as u32;
@@ -287,32 +524,26 @@ pub fn compose(
             skipped += 1;
             continue;
         };
-        let key = layer.pair as usize;
-        if !panel_cache.contains_key(&key) {
-            let list = load(pair)
-                .map(|(model, _)| panels(&model))
-                .unwrap_or_default();
-            panel_cache.insert(key, list);
-        }
-        let Some(list) = panel_cache.get(&key) else {
+        if !pair.is_panel() || layer.flags & 4 == 0 {
             skipped += 1;
             continue;
-        };
+        }
+        let key = layer.pair as usize;
+        let list = panel_cache.entry(key).or_insert_with(|| {
+            load(pair)
+                .map(|(model, _)| panels(&model))
+                .unwrap_or_default()
+        });
         let Some(panel) = list.get(layer.panel as usize) else {
             skipped += 1;
             continue;
         };
 
-        if !page_cache.contains_key(&key) {
-            let pages = load(pair)
+        let pages = page_cache.entry(key).or_insert_with(|| {
+            load(pair)
                 .and_then(|(_, texture)| decode_pages(&texture))
-                .unwrap_or_default();
-            page_cache.insert(key, pages);
-        }
-        let Some(pages) = page_cache.get(&key) else {
-            skipped += 1;
-            continue;
-        };
+                .unwrap_or_default()
+        });
         let Some((page_w, page_h, rgba)) = pages.get(panel.page as usize) else {
             skipped += 1;
             continue;
@@ -338,6 +569,7 @@ pub fn compose(
         let fit_w = (layer.max[0] - layer.min[0]) / panel_w;
         let fit_h = (layer.max[1] - layer.min[1]) / panel_h;
         let fit = fit_w.min(fit_h).clamp(0.02, 4.0);
+        let tint = color_bytes(layer.color);
 
         let mut dst = [(0.0f32, 0.0f32); 4];
         for corner in 0..4 {
@@ -345,7 +577,7 @@ pub fn compose(
             let world_y = target.1 + (panel.corners[corner].1 - panel_center.1) * fit;
             dst[corner] = ((world_x - min_x) * scale, (max_y - world_y) * scale);
         }
-        paint_quad(&mut raster, dst, panel.uv, &page, [255, 255, 255, 255]);
+        paint_quad(&mut raster, dst, panel.uv, &page, tint);
         drawn += 1;
     }
 
@@ -358,6 +590,15 @@ pub fn compose(
         scale,
         window: [min_x, min_y, max_x, max_y],
     })
+}
+
+fn color_bytes(color: u32) -> [u8; 4] {
+    [
+        (color >> 24) as u8,
+        (color >> 16) as u8,
+        (color >> 8) as u8,
+        color as u8,
+    ]
 }
 
 fn decode_pages(texture: &[u8]) -> Option<Vec<(u32, u32, Vec<u8>)>> {
@@ -385,34 +626,305 @@ fn base_name(path: &str) -> Option<PathBuf> {
     Some(PathBuf::from(name))
 }
 
+pub struct Check {
+    pub id: &'static str,
+    pub what: &'static str,
+    pub ok: bool,
+    pub detail: String,
+}
+
+pub fn checks(layout: &Layout, size: usize) -> Vec<Check> {
+    let counts = layout.counts;
+    let derived = layout.derived;
+    let mut out = Vec::new();
+
+    out.push(Check {
+        id: "ufb.eof",
+        what: "every byte is consumed by a section (slack = 0)",
+        ok: layout.end == size,
+        detail: format!("ends at 0x{:x} / file 0x{size:x}", layout.end),
+    });
+    out.push(Check {
+        id: "ufb.tiles",
+        what: "records fill the 138 x 105 tile grid and carry column = index % 138, row = index / 138",
+        ok: layout.records.len() == counts.records as usize
+            && counts.records as usize == COLUMNS * ROWS
+            && layout
+                .records
+                .iter()
+                .enumerate()
+                .all(|(index, record)| {
+                    record.column as usize == index % COLUMNS
+                        && record.row as usize == index / COLUMNS
+                }),
+        detail: format!(
+            "{}/{} records, {} x {} tiles",
+            layout.records.len(),
+            counts.records,
+            COLUMNS,
+            ROWS
+        ),
+    });
+    out.push(Check {
+        id: "ufb.objects",
+        what: "model objects + panel objects equals the object count, and both match the layers",
+        ok: counts.model_objects + counts.panel_objects == counts.objects
+            && derived.model_layers + counts.f_records as u64 == counts.model_objects as u64
+            && derived.panel_layers == counts.panel_objects as u64,
+        detail: format!(
+            "{} + {} = {} ; {} model layers + {} F records, {} panel layers",
+            counts.model_objects,
+            counts.panel_objects,
+            counts.objects,
+            derived.model_layers,
+            counts.f_records,
+            derived.panel_layers
+        ),
+    });
+    out.push(Check {
+        id: "ufb.groups",
+        what: "group block count equals the sum of the per-record group counts",
+        ok: derived.group_blocks == counts.group_blocks as u64,
+        detail: format!(
+            "{} blocks, {} entries",
+            derived.group_blocks, derived.group_entries
+        ),
+    });
+    out.push(Check {
+        id: "ufb.masks",
+        what: "mask count matches the header and every mask carries its own index",
+        ok: layout.masks.len() == counts.masks as usize
+            && layout
+                .masks
+                .iter()
+                .enumerate()
+                .all(|(index, mask)| mask.id as usize == index),
+        detail: format!("{} masks", layout.masks.len()),
+    });
+    out.push(Check {
+        id: "ufb.mask.cell",
+        what: "every mask rectangle spans its world box at 32 world units per cell",
+        ok: layout.masks.iter().all(|mask| {
+            let width = (mask.rect[2] - mask.rect[0] + 1) as f32 * MASK_CELL;
+            let height = (mask.rect[3] - mask.rect[1] + 1) as f32 * MASK_CELL;
+            (width - (mask.world[3] - mask.world[0])).abs() < 1.0
+                && (height - (mask.world[5] - mask.world[2])).abs() < 1.0
+        }),
+        detail: format!("{} masks at {MASK_CELL} units per cell", layout.masks.len()),
+    });
+    out.push(Check {
+        id: "ufb.world",
+        what: "every mask box sits inside the 2199 x 1311 world grid of Field.ucb",
+        ok: layout.masks.iter().all(|mask| {
+            mask.world[0] >= WORLD_X0 - 1.0
+                && mask.world[3] <= WORLD_X0 + GRID_COLUMNS as f32 * MASK_CELL + 1.0
+                && mask.world[2] >= WORLD_Z0 - 1.0
+                && mask.world[5] <= WORLD_Z0 + GRID_ROWS as f32 * MASK_CELL + 1.0
+        }),
+        detail: format!(
+            "world x {}..{}, z {}..{} at {MASK_CELL} units per cell",
+            WORLD_X0,
+            WORLD_X0 + GRID_COLUMNS as f32 * MASK_CELL,
+            WORLD_Z0,
+            WORLD_Z0 + GRID_ROWS as f32 * MASK_CELL
+        ),
+    });
+    out.push(Check {
+        id: "ufb.pairs",
+        what: "resource pair count matches the header",
+        ok: layout.pairs.len() == counts.pairs as usize,
+        detail: format!("{}/{}", layout.pairs.len(), counts.pairs),
+    });
+    out.push(Check {
+        id: "ufb.names",
+        what: "the name pool holds samples + group names + names and ends at EOF",
+        ok: layout.samples.len() == counts.samples as usize
+            && layout.group_names.len() == counts.groups as usize
+            && layout.names.len() == counts.names as usize
+            && layout.end == size,
+        detail: format!(
+            "{} samples + {} groups + {} names = {}",
+            layout.samples.len(),
+            layout.group_names.len(),
+            layout.names.len(),
+            layout.samples.len() + layout.group_names.len() + layout.names.len()
+        ),
+    });
+
+    out
+}
+
+pub struct Grid {
+    pub ids: Vec<u16>,
+    pub painted: u64,
+    pub dormant: u32,
+    pub outside: u64,
+}
+
+impl Grid {
+    pub fn at(&self, column: usize, row: usize) -> u16 {
+        self.ids[row * GRID_COLUMNS + column]
+    }
+}
+
+pub fn grid_x(world_x: f32) -> f32 {
+    (world_x - WORLD_X0) / MASK_CELL
+}
+
+pub fn grid_y(world_z: f32) -> f32 {
+    (world_z - WORLD_Z0) / MASK_CELL
+}
+
+pub fn rasterise(layout: &Layout, bytes: &[u8]) -> Grid {
+    let mut ids = vec![0u16; GRID_COLUMNS * GRID_ROWS];
+    let mut order: Vec<usize> = (0..layout.masks.len()).collect();
+    order.sort_by_key(|index| {
+        let mask = &layout.masks[*index];
+        (mask.sample, std::cmp::Reverse(*index))
+    });
+
+    let mut painted = 0u64;
+    let mut dormant = 0u32;
+    let mut outside = 0u64;
+    for index in order {
+        let mask = &layout.masks[index];
+        if mask.flag == MASK_DORMANT {
+            dormant += 1;
+            continue;
+        }
+        let width = (mask.rect[2] - mask.rect[0] + 1).max(1) as usize;
+        let height = (mask.rect[3] - mask.rect[1] + 1).max(1) as usize;
+        for row in 0..height {
+            let y = grid_y(mask.world[2] + row as f32 * MASK_CELL).round();
+            let inside_row = (0.0..GRID_ROWS as f32).contains(&y);
+            let py = if inside_row { y as usize } else { 0 };
+            for column in 0..width {
+                let word = rdr::u32_at(bytes, mask.data + (row * width + column) * 4).unwrap_or(0);
+                if word >> 16 != 0x6641 {
+                    continue;
+                }
+                let x = grid_x(mask.world[0] + column as f32 * MASK_CELL).round();
+                if !inside_row || !(0.0..GRID_COLUMNS as f32).contains(&x) {
+                    outside += 1;
+                    continue;
+                }
+                ids[py * GRID_COLUMNS + x as usize] = index as u16;
+                painted += 1;
+            }
+        }
+    }
+
+    Grid {
+        ids,
+        painted,
+        dormant,
+        outside,
+    }
+}
+
+pub struct Match {
+    pub cells: u64,
+    pub same: u64,
+    pub open: u64,
+    pub painted: u64,
+    pub clipped: u64,
+    pub dormant: u32,
+    pub first: Option<(usize, usize, u16, u16)>,
+}
+
+impl Match {
+    pub fn share(&self) -> f64 {
+        self.same as f64 / self.cells.max(1) as f64
+    }
+}
+
+pub fn cross_check(layout: &Layout, bytes: &[u8], ucb: &[u8]) -> Option<Match> {
+    let cells = GRID_COLUMNS * GRID_ROWS;
+    if ucb.len() != cells * super::document::ucb::RECORD {
+        return None;
+    }
+    let grid = rasterise(layout, bytes);
+    let mut same = 0u64;
+    let mut open = 0u64;
+    let mut first = None;
+    for index in 0..cells {
+        let word = rdr::u32_at(ucb, index * super::document::ucb::RECORD + 8).unwrap_or(0);
+        let actual = (word & 0xffff) as u16;
+        if word == 0 {
+            open += 1;
+        }
+        if actual == grid.ids[index] {
+            same += 1;
+        } else if first.is_none() {
+            first = Some((
+                index % GRID_COLUMNS,
+                index / GRID_COLUMNS,
+                actual,
+                grid.ids[index],
+            ));
+        }
+    }
+    Some(Match {
+        cells: cells as u64,
+        same,
+        open,
+        painted: grid.painted,
+        clipped: grid.outside,
+        dormant: grid.dormant,
+        first,
+    })
+}
+
 pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
     let mut out = Projection::new("UFB · field background");
     let Some(layout) = parse(bytes) else {
         out.note = Some("file is shorter than 0x88 bytes".to_string());
         return out;
     };
-    let header = layout.header;
+    let counts = layout.counts;
+    let derived = layout.derived;
+    let total_names = layout.samples.len() + layout.group_names.len() + layout.names.len();
 
     out.note = Some(format!(
-        "{} placement records · {} layers · {} area masks · {} resource pairs",
-        header.records,
-        header.layers,
-        layout.areas.len(),
-        layout.pairs.len()
+        "{} records on a {}×{} tile grid · {} layers ({} panel / {} model) · {} masks · {} pairs · {} strings",
+        counts.records,
+        COLUMNS,
+        ROWS,
+        derived.layers,
+        derived.panel_layers,
+        derived.model_layers,
+        counts.masks,
+        counts.pairs,
+        total_names
     ));
 
     let mut header_rows = vec![
-        row2("placement records", header.records),
-        row2("layers", header.layers),
-        row2("area masks", layout.areas.len() as u32),
-        row2("F records", header.f_records),
-        row2("word table", header.words),
-        row2("resource pairs", layout.pairs.len() as u32),
-        row2("samples", header.samples),
-        row2("names", header.names),
+        row2("records", counts.records),
+        row2("group blocks", counts.group_blocks),
+        row2("objects", counts.objects),
+        row2("model objects", counts.model_objects),
+        row2("panel objects", counts.panel_objects),
+        row2("area masks", counts.masks),
+        row2("F records", counts.f_records),
+        row2("u32 table", counts.words),
+        row2("resource pairs", counts.pairs),
+        row2("samples", counts.samples),
+        row2("group names", counts.groups),
+        row2("names", counts.names),
         vec![
-            "record area".to_string(),
-            format!("0x{HEAD:x}..0x{:x}", header.records_end),
+            "tile grid".to_string(),
+            format!("{} × {} = {}", COLUMNS, ROWS, COLUMNS as u64 * ROWS as u64),
+        ],
+        vec![
+            "layers".to_string(),
+            format!(
+                "{} ({} panel, {} model)",
+                derived.layers, derived.panel_layers, derived.model_layers
+            ),
+        ],
+        vec![
+            "group entries".to_string(),
+            derived.group_entries.to_string(),
         ],
     ];
     if let Some(scene) = dir.and_then(|dir| pick_scene(&layout, dir, max_side)) {
@@ -423,7 +935,7 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
             legend: format!(
                 "Scene record #{} of {}: {} layers, {} textured panels drawn, {} skipped (3D model layers are not painted), 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. Each panel is a textured quad from the paired .mpd; its atlas page comes from the paired .ftx; the quad is scaled into the layer box from the record and painted back to front by depth.",
                 scene.record,
-                header.records,
+                counts.records,
                 scene.layers,
                 scene.drawn,
                 scene.skipped,
@@ -446,8 +958,53 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
             legend,
         });
     }
-    out.sections
-        .push(Section::new("Header", &["item", "value"], header_rows, 9));
+    if let Some(dir) = dir {
+        if let Ok(ucb) = std::fs::read(dir.join("Field.ucb")) {
+            if let Some(m) = cross_check(&layout, bytes, &ucb) {
+                header_rows.push(vec![
+                    "ucb match".to_string(),
+                    format!("{:.3}% of {} cells", m.share() * 100.0, m.cells),
+                ]);
+                let rows = vec![
+                    row2("cells compared", m.cells as u32),
+                    vec!["identical".to_string(), m.same.to_string()],
+                    vec!["mask cells painted".to_string(), m.painted.to_string()],
+                    vec!["mask cells clipped".to_string(), m.clipped.to_string()],
+                    vec!["cells with no region".to_string(), m.open.to_string()],
+                    vec!["dormant masks skipped".to_string(), m.dormant.to_string()],
+                    vec![
+                        "first mismatch".to_string(),
+                        match m.first {
+                            Some((x, y, actual, painted)) => format!(
+                                "({x}, {y}) ucb {actual} vs painted {painted}"
+                            ),
+                            None => "none".to_string(),
+                        },
+                    ],
+                    vec![
+                        "rule".to_string(),
+                        format!(
+                            "paint every mask cell (0x6641) at grid({}, {}) + cell x {MASK_CELL} in order of its +0x34 field, skipping masks flagged {MASK_DORMANT:#06x}; the last painter wins",
+                            WORLD_X0, WORLD_Z0
+                        ),
+                    ],
+                ];
+                let total = m.cells;
+                out.sections.push(Section::new(
+                    "UCB cross-check",
+                    &["item", "value"],
+                    rows,
+                    total,
+                ));
+            }
+        }
+    }
+    out.sections.push(Section::new(
+        "Header (cross-checked counts)",
+        &["item", "value"],
+        header_rows,
+        15,
+    ));
 
     let mut ranked: Vec<&Record> = layout
         .records
@@ -471,6 +1028,7 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
             }
             vec![
                 record.index.to_string(),
+                format!("{}, {}", record.column, record.row),
                 record.layers.len().to_string(),
                 format!("{}×{}", (max_x - min_x).round(), (max_y - min_y).round()),
                 format!("({:.0}, {:.0})..({:.0}, {:.0})", min_x, min_y, max_x, max_y),
@@ -479,41 +1037,118 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
         .collect();
     out.sections.push(Section::new(
         "Scene records (by layer count)",
-        &["record", "layers", "size", "bounds"],
+        &["record", "tile col,row", "layers", "size", "bounds"],
         record_rows,
         ranked.len() as u64,
     ));
 
+    let layer_rows = vec![
+        row3("+0x00", "3 × f32", "layer box min (x, y, z)"),
+        row3("+0x0c", "3 × f32", "layer box max"),
+        row3("+0x18", "u32", "tint RGBA"),
+        row3("+0x1c", "u32", "fog RGB, 0xffffff = none"),
+        row3("+0x20", "f32", "box center x"),
+        row3("+0x24", "f32", "view distance"),
+        row3("+0x28", "f32", "box center z"),
+        row3("+0x2c", "u32", "rotation words, zero in 92% of layers"),
+        row3("+0x30", "2 × u16", "scale x / y, 1.0 = 0x1000"),
+        row3("+0x34", "u16", "flags, bit 2 = has extension block"),
+        row3("+0x36", "u8", "extension block index"),
+        row3("+0x37", "u8", "0 or 1"),
+        row3("+0x38", "u8", "16..37 counter"),
+        row3("+0x39", "s8", "resource pair index"),
+        row3("+0x3a", "u16", "panel index, & 0x7ff"),
+        row3("+0x3c", "u16", "zero in 123267 of 123280 layers"),
+        row3("+0x3e", "u16", "sample index, & 0x7ff, 2047 = none"),
+    ];
+    out.sections.push(Section::new(
+        "Layer record (0x40 bytes)",
+        &["offset", "type", "meaning"],
+        layer_rows,
+        17,
+    ));
+
+    let vertex_rows = vec![
+        row3("+0x00", "f32 x", "local x"),
+        row3("+0x04", "f32 y", "local y"),
+        row3("+0x08", "f32", "zero in all 1587606 extension vertices"),
+        row3("+0x0c", "u32", "vertex RGBA"),
+        row3("+0x10", "f32 u", "atlas u"),
+        row3("+0x14", "f32 v", "atlas v"),
+    ];
+    out.sections.push(Section::new(
+        "Vertex (0x18 bytes, shared by extension blocks and group entries)",
+        &["offset", "type", "meaning"],
+        vertex_rows,
+        6,
+    ));
+
     let area_rows: Vec<Vec<String>> = layout
-        .areas
+        .masks
         .iter()
         .take(MAX_AREAS)
         .enumerate()
-        .map(|(index, area)| {
+        .map(|(index, mask)| {
             vec![
                 index.to_string(),
                 format!(
-                    "({}, {})..({}, {})",
-                    area.rect[0], area.rect[1], area.rect[2], area.rect[3]
+                    "({:.0}, {:.0})..({:.0}, {:.0})",
+                    mask.world[0], mask.world[2], mask.world[3], mask.world[5]
                 ),
                 format!(
-                    "{}×{}",
-                    area.rect[2] - area.rect[0] + 1,
-                    area.rect[3] - area.rect[1] + 1
+                    "({}, {})..({}, {})",
+                    mask.rect[0], mask.rect[1], mask.rect[2], mask.rect[3]
                 ),
                 format!(
                     "{:.1}%",
-                    100.0 * area.marked as f64 / area.cells.max(1) as f64
+                    100.0 * mask.marked as f64 / mask.cells.max(1) as f64
                 ),
-                format!("{:#x}", area.at),
+                mask.sample.to_string(),
+                if mask.group < 0 {
+                    "—".to_string()
+                } else {
+                    mask.group.to_string()
+                },
+                format!("{:#06x}", mask.flag),
             ]
         })
         .collect();
     out.sections.push(Section::new(
         "Area masks (first 24)",
-        &["#", "rect", "size", "marked", "data"],
+        &[
+            "#",
+            "world box",
+            "cell rect",
+            "marked",
+            "sample",
+            "group",
+            "kind",
+        ],
         area_rows,
-        layout.areas.len() as u64,
+        layout.masks.len() as u64,
+    ));
+
+    let f_rows: Vec<Vec<String>> = layout
+        .f_records
+        .iter()
+        .map(|record| {
+            vec![
+                format!("{:#x}", record.at),
+                record
+                    .raw
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                format!("({:.1}, {:.1})", record.point[0], record.point[1]),
+            ]
+        })
+        .collect();
+    out.sections.push(Section::new(
+        "F records (world points)",
+        &["offset", "4 × u16", "x, y"],
+        f_rows,
+        layout.f_records.len() as u64,
     ));
 
     let pair_rows: Vec<Vec<String>> = layout
@@ -529,10 +1164,27 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
         layout.pairs.len() as u64,
     ));
 
+    let mut name_rows: Vec<Vec<String>> = Vec::new();
+    for (index, name) in layout.samples.iter().take(6).enumerate() {
+        name_rows.push(vec!["sample".to_string(), index.to_string(), name.clone()]);
+    }
+    for (index, name) in layout.group_names.iter().take(6).enumerate() {
+        name_rows.push(vec!["group".to_string(), index.to_string(), name.clone()]);
+    }
+    for (index, name) in layout.names.iter().enumerate() {
+        name_rows.push(vec!["name".to_string(), index.to_string(), name.clone()]);
+    }
+    out.sections.push(Section::new(
+        "Name pool (first of each block)",
+        &["block", "#", "text"],
+        name_rows,
+        total_names as u64,
+    ));
+
     out
 }
 
-fn pick_scene<'a>(layout: &Layout, dir: &Path, max_side: u32) -> Option<Scene> {
+fn pick_scene(layout: &Layout, dir: &Path, max_side: u32) -> Option<Scene> {
     let mut order: Vec<usize> = layout
         .records
         .iter()
@@ -558,25 +1210,25 @@ fn pick_scene<'a>(layout: &Layout, dir: &Path, max_side: u32) -> Option<Scene> {
 
 fn area_image(layout: &Layout, bytes: &[u8]) -> Option<(u32, u32, Vec<u8>, String)> {
     let index = layout
-        .areas
+        .masks
         .iter()
         .enumerate()
-        .filter(|(_, area)| {
-            let ratio = area.marked as f64 / area.cells.max(1) as f64;
+        .filter(|(_, mask)| {
+            let ratio = mask.marked as f64 / mask.cells.max(1) as f64;
             (0.2..=0.6).contains(&ratio)
         })
-        .max_by_key(|(_, area)| area.cells)
+        .max_by_key(|(_, mask)| mask.cells)
         .or_else(|| {
             layout
-                .areas
+                .masks
                 .iter()
                 .enumerate()
-                .max_by_key(|(_, area)| area.marked)
+                .max_by_key(|(_, mask)| mask.marked)
         })
         .map(|(index, _)| index)?;
-    let area = layout.areas[index];
-    let width = (area.rect[2] - area.rect[0] + 1).max(1) as usize;
-    let height = (area.rect[3] - area.rect[1] + 1).max(1) as usize;
+    let mask = layout.masks[index];
+    let width = (mask.rect[2] - mask.rect[0] + 1).max(1) as usize;
+    let height = (mask.rect[3] - mask.rect[1] + 1).max(1) as usize;
     let step = width.max(height).div_ceil(800).max(1);
     let out_width = width.div_ceil(step) as u32;
     let out_height = height.div_ceil(step) as u32;
@@ -586,7 +1238,7 @@ fn area_image(layout: &Layout, bytes: &[u8]) -> Option<(u32, u32, Vec<u8>, Strin
         let py = (row / step) as u32;
         for column in 0..width {
             let px = (column / step) as u32;
-            let word = rdr::u32_at(bytes, area.at + (row * width + column) * 4).unwrap_or(0);
+            let word = rdr::u32_at(bytes, mask.data + (row * width + column) * 4).unwrap_or(0);
             let color = if word >> 16 == 0x6641 {
                 super::content::hsv(hue, 0.55, 0.98)
             } else {
@@ -600,16 +1252,24 @@ fn area_image(layout: &Layout, bytes: &[u8]) -> Option<(u32, u32, Vec<u8>, Strin
         out_height,
         raster.rgba,
         format!(
-            "Area mask #{index} of {}: rectangle ({}, {})..({}, {}). Bright cells carry 0x6641 (inside the area), dark cells 0x6640. The paired .ftx and .mpd files hold the pixels; open the folder next to Field.ufb to render the textured scene.",
-            layout.areas.len(),
-            area.rect[0],
-            area.rect[1],
-            area.rect[2],
-            area.rect[3]
+            "Area mask #{index} of {}: cell rect ({}, {})..({}, {}), world box ({:.0}, {:.0})..({:.0}, {:.0}). Bright cells carry 0x6641 (inside the area), dark cells 0x6640. The paired .ftx and .mpd files hold the pixels; open the folder next to Field.ufb to render the textured scene.",
+            layout.masks.len(),
+            mask.rect[0],
+            mask.rect[1],
+            mask.rect[2],
+            mask.rect[3],
+            mask.world[0],
+            mask.world[2],
+            mask.world[3],
+            mask.world[5]
         ),
     ))
 }
 
 fn row2(key: &str, value: u32) -> Vec<String> {
     vec![key.to_string(), value.to_string()]
+}
+
+fn row3(offset: &str, kind: &str, meaning: &str) -> Vec<String> {
+    vec![offset.to_string(), kind.to_string(), meaning.to_string()]
 }

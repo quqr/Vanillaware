@@ -123,11 +123,11 @@ fn ufb_bytes(area: [i32; 4], marked: bool, pair: (&str, &str)) -> Vec<u8> {
 fn layout_reads_areas_and_resource_pairs() {
     let bytes = ufb_bytes([0, 0, 1, 0], true, ("FieldBG/A.MPD", "FieldBG\\A.ftx"));
     let layout = field::parse(&bytes).expect("layout");
-    assert_eq!(layout.header.records, 0);
-    assert_eq!(layout.areas.len(), 1);
-    assert_eq!(layout.areas[0].rect, [0, 0, 1, 0]);
-    assert_eq!(layout.areas[0].marked, 2);
-    assert_eq!(layout.areas[0].cells, 2);
+    assert_eq!(layout.counts.records, 0);
+    assert_eq!(layout.masks.len(), 1);
+    assert_eq!(layout.masks[0].rect, [0, 0, 1, 0]);
+    assert_eq!(layout.masks[0].marked, 2);
+    assert_eq!(layout.masks[0].cells, 2);
     assert_eq!(layout.pairs.len(), 1);
     assert_eq!(layout.pairs[0].model, "FieldBG/A.MPD");
     assert_eq!(layout.pairs[0].texture, "FieldBG\\A.ftx");
@@ -148,4 +148,121 @@ fn view_without_assets_paints_the_area_mask() {
         .collect();
     assert!(titles.contains(&"Resource pairs"));
     assert!(titles.contains(&"Scene records (by layer count)"));
+}
+
+struct MaskSpec {
+    world: [f32; 3],
+    rect: [i32; 4],
+    sample: u16,
+    flag: u16,
+    marked: bool,
+}
+
+fn ufb_masks(masks: &[MaskSpec]) -> Vec<u8> {
+    let mut bytes = vec![0u8; 0x88];
+    bytes[0..4].copy_from_slice(b"UCFB");
+    bytes[0x54..0x58].copy_from_slice(&(masks.len() as u32).to_le_bytes());
+
+    for (index, mask) in masks.iter().enumerate() {
+        let width = (mask.rect[2] - mask.rect[0] + 1) as usize;
+        let height = (mask.rect[3] - mask.rect[1] + 1) as usize;
+        let mut block = vec![0u8; 0x3c];
+        block[0..4].copy_from_slice(&mask.world[0].to_le_bytes());
+        block[8..12].copy_from_slice(&mask.world[2].to_le_bytes());
+        block[0x0c..0x10]
+            .copy_from_slice(&(mask.world[0] + (width as f32 - 1.0) * 32.0).to_le_bytes());
+        block[0x14..0x18]
+            .copy_from_slice(&(mask.world[2] + (height as f32 - 1.0) * 32.0).to_le_bytes());
+        block[0x24..0x28].copy_from_slice(&mask.rect[0].to_le_bytes());
+        block[0x28..0x2c].copy_from_slice(&mask.rect[1].to_le_bytes());
+        block[0x2c..0x30].copy_from_slice(&mask.rect[2].to_le_bytes());
+        block[0x30..0x34].copy_from_slice(&mask.rect[3].to_le_bytes());
+        block[0x34..0x36].copy_from_slice(&mask.sample.to_le_bytes());
+        block[0x38..0x3a].copy_from_slice(&(index as u16).to_le_bytes());
+        block[0x3a..0x3c].copy_from_slice(&mask.flag.to_le_bytes());
+        bytes.extend_from_slice(&block);
+        for _ in 0..width * height {
+            let value = if mask.marked {
+                0x6641_0000u32
+            } else {
+                0x6640_0000
+            };
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+    bytes
+}
+
+#[test]
+fn rasterise_maps_world_units_onto_the_ucb_grid() {
+    assert_eq!(field::grid_x(field::WORLD_X0), 0.0);
+    assert_eq!(field::grid_x(field::WORLD_X0 + 320.0), 10.0);
+    assert_eq!(field::grid_y(field::WORLD_Z0 + 64.0), 2.0);
+
+    let bytes = ufb_masks(&[
+        MaskSpec {
+            world: [field::WORLD_X0, 0.0, field::WORLD_Z0],
+            rect: [0, 0, 1, 0],
+            sample: 5,
+            flag: 0x4600,
+            marked: true,
+        },
+        MaskSpec {
+            world: [field::WORLD_X0, 0.0, field::WORLD_Z0],
+            rect: [0, 0, 1, 0],
+            sample: 9,
+            flag: 0x4700,
+            marked: true,
+        },
+    ]);
+    let layout = field::parse(&bytes).expect("layout");
+    let grid = field::rasterise(&layout, &bytes);
+    assert_eq!(grid.painted, 2);
+    assert_eq!(grid.dormant, 1);
+    assert_eq!(grid.outside, 0);
+    assert_eq!(grid.at(0, 0), 0);
+    assert_eq!(grid.at(1, 0), 0);
+    assert_eq!(grid.at(2, 0), 0);
+}
+
+#[test]
+fn rasterise_lets_the_highest_sample_win() {
+    let bytes = ufb_masks(&[
+        MaskSpec {
+            world: [field::WORLD_X0, 0.0, field::WORLD_Z0],
+            rect: [0, 0, 1, 0],
+            sample: 5,
+            flag: 0x4600,
+            marked: true,
+        },
+        MaskSpec {
+            world: [field::WORLD_X0, 0.0, field::WORLD_Z0],
+            rect: [0, 0, 1, 0],
+            sample: 9,
+            flag: 0x4600,
+            marked: true,
+        },
+    ]);
+    let layout = field::parse(&bytes).expect("layout");
+    let grid = field::rasterise(&layout, &bytes);
+    assert_eq!(grid.painted, 4);
+    assert_eq!(grid.at(0, 0), 1);
+    assert_eq!(grid.at(1, 0), 1);
+}
+
+#[test]
+fn rasterise_counts_cells_that_fall_outside_the_grid() {
+    let bytes = ufb_masks(&[MaskSpec {
+        world: [field::WORLD_X0 - 32.0, 0.0, field::WORLD_Z0],
+        rect: [0, 0, 2, 0],
+        sample: 1,
+        flag: 0x4600,
+        marked: true,
+    }]);
+    let layout = field::parse(&bytes).expect("layout");
+    let grid = field::rasterise(&layout, &bytes);
+    assert_eq!(grid.outside, 1);
+    assert_eq!(grid.painted, 2);
+    assert_eq!(grid.at(0, 0), 0);
+    assert_eq!(grid.at(1, 0), 0);
 }
