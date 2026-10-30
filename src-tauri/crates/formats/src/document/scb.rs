@@ -4,11 +4,13 @@
 //! ```text
 //! ```
 
+use kaitai::{BytesReader, KStruct};
+use schema::gen::scb::Scb;
+
 use super::arena::{Builder, DocArena, DocMark};
 use super::rdr;
 
-const MAX_TOKENS: u32 = 200_000;
-const MAX_TOKEN_BYTES: usize = 0x4000;
+const TOKEN_FLOOR: usize = 4;
 
 struct Token {
     text: String,
@@ -34,8 +36,12 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.check(
         "scb.eof",
         "the token stream ends exactly at EOF",
-        tokens.len() == count.min(MAX_TOKENS) as usize && end == bytes.len(),
-        Some(format!("{} tokens, ends at 0x{end:x} / 0x{:x}", tokens.len(), bytes.len())),
+        tokens.len() == count as usize && end == bytes.len(),
+        Some(format!(
+            "{} tokens, ends at 0x{end:x} / 0x{:x}",
+            tokens.len(),
+            bytes.len()
+        )),
     );
 
     let doc = builder.group(root, Some("root"), "ROOT");
@@ -45,32 +51,35 @@ pub fn build(bytes: &[u8]) -> DocArena {
 }
 
 fn read_tokens(bytes: &[u8], count: u32, builder: &mut Builder) -> (Vec<Token>, usize) {
-    let mut tokens = Vec::new();
-    let mut pos = 4usize;
+    if 4 + count as usize * TOKEN_FLOOR > bytes.len() {
+        builder.warn(format!(
+            "{count} tokens cannot fit in {} bytes",
+            bytes.len()
+        ));
+        return (Vec::new(), 4);
+    }
 
-    for index in 0..count.min(MAX_TOKENS) {
-        let Some(len) = rdr::u32_at(bytes, pos) else {
-            builder.warn(format!("token {index} length field out of range"));
-            break;
-        };
-        let len = len as usize;
-        if len == 0 || len > MAX_TOKEN_BYTES || pos + 4 + len > bytes.len() {
-            builder.warn(format!("token {index} has an invalid length: {len}"));
-            break;
+    let io = BytesReader::from(bytes);
+    let parsed = match <Scb as KStruct>::read_into::<_, Scb>(&io, None, None) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            builder.warn(format!("kaitai parse error: {error:?}"));
+            return (Vec::new(), 4);
         }
+    };
 
-        let raw = &bytes[pos + 4..pos + 4 + len];
-        let body = raw.strip_suffix(&[0u8]).unwrap_or(raw);
-        let text = String::from_utf8_lossy(body).into_owned();
+    let handles = parsed.tokens();
+    let mut tokens = Vec::with_capacity(handles.len());
+    let mut pos = 4usize;
+    for handle in handles.iter() {
+        let raw = handle.raw();
+        let len = *handle.len() as usize;
+        let body = raw.strip_suffix(&[0u8]).unwrap_or(raw.as_slice());
         tokens.push(Token {
-            text,
+            text: String::from_utf8_lossy(body).into_owned(),
             offset: pos as u64,
         });
         pos += 4 + len;
-    }
-
-    if count > MAX_TOKENS {
-        builder.truncate();
     }
 
     (tokens, pos)
@@ -90,9 +99,7 @@ fn parse_document(tokens: &[Token], parent: u32, builder: &mut Builder) {
 }
 
 fn parse_body(tokens: &[Token], cursor: &mut usize, parent: u32, builder: &mut Builder) {
-    let braced = tokens
-        .get(*cursor)
-        .is_some_and(|token| token.text == "{");
+    let braced = tokens.get(*cursor).is_some_and(|token| token.text == "{");
     if braced {
         *cursor += 1;
     }

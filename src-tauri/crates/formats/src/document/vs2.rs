@@ -68,7 +68,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     let summary = builder.group(root, Some("summary"), "Summary");
     builder.field(summary, "ids", count.to_string());
-    builder.field(summary, "first", ids.first().copied().unwrap_or(0).to_string());
+    builder.field(
+        summary,
+        "first",
+        ids.first().copied().unwrap_or(0).to_string(),
+    );
     if let Some(last) = ids.last() {
         builder.field(summary, "last", last.to_string());
     }

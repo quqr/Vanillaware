@@ -5,4 +5,5 @@ pub mod ftex_switch;
 pub mod mbs_v77;
 pub mod rsc;
 pub mod rsc_command;
+pub mod scb;
 pub mod vs2;
