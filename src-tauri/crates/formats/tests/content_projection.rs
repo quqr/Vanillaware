@@ -146,7 +146,7 @@ fn ufb_picks_a_mask_and_lists_resources() {
     let listed = projection
         .sections
         .iter()
-        .find(|section| section.title == "Resources")
+        .find(|section| section.title == "Resource pairs")
         .expect("resource table");
     assert_eq!(listed.rows.len(), 2);
     assert_eq!(listed.rows[0][0], "FieldBG/AC00_00P.MBS");

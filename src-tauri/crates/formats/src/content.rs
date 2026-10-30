@@ -12,7 +12,7 @@ pub struct Section {
 }
 
 impl Section {
-    fn new(title: &str, columns: &[&str], rows: Vec<Vec<String>>, total: u64) -> Self {
+    pub(crate) fn new(title: &str, columns: &[&str], rows: Vec<Vec<String>>, total: u64) -> Self {
         Self {
             title: title.to_string(),
             columns: columns.iter().map(|value| value.to_string()).collect(),
@@ -71,7 +71,7 @@ pub struct Projection {
 }
 
 impl Projection {
-    fn new(title: &str) -> Self {
+    pub(crate) fn new(title: &str) -> Self {
         Self {
             title: title.to_string(),
             note: None,
@@ -104,7 +104,7 @@ pub fn project(bytes: &[u8], ext: &str) -> Option<Projection> {
     }
 }
 
-fn hsv(hue: f32, saturation: f32, value: f32) -> [u8; 3] {
+pub(crate) fn hsv(hue: f32, saturation: f32, value: f32) -> [u8; 3] {
     let sector = (hue.rem_euclid(360.0)) / 60.0;
     let chroma = value * saturation;
     let second = chroma * (1.0 - ((sector % 2.0) - 1.0).abs());
@@ -121,7 +121,7 @@ fn hsv(hue: f32, saturation: f32, value: f32) -> [u8; 3] {
     [scale(red), scale(green), scale(blue)]
 }
 
-fn area_hue(id: u32) -> f32 {
+pub(crate) fn area_hue(id: u32) -> f32 {
     (id as f32 * 137.508).rem_euclid(360.0)
 }
 
@@ -821,230 +821,7 @@ fn acf(bytes: &[u8]) -> Projection {
 }
 
 fn ufb(bytes: &[u8]) -> Projection {
-    const HEAD: usize = 0x88;
-    const MAX_SIDE: usize = 1000;
-    const MAX_MASKS: usize = 24;
-    const MAX_RESOURCES: usize = 40;
-
-    let mut out = Projection::new("UFB · field background");
-    if bytes.len() < HEAD {
-        out.note = Some("file is shorter than 0x88 bytes".to_string());
-        return out;
-    }
-
-    let records = rdr::u32_at(bytes, 0x40).unwrap_or(0) as usize;
-    let masks = rdr::u32_at(bytes, 0x54).unwrap_or(0) as usize;
-    let f_records = rdr::u32_at(bytes, 0x58).unwrap_or(0) as usize;
-    let words = rdr::u32_at(bytes, 0x5c).unwrap_or(0) as usize;
-    let pairs = rdr::u32_at(bytes, 0x60).unwrap_or(0) as usize;
-    let samples = rdr::u32_at(bytes, 0x64).unwrap_or(0) as usize;
-    let names = rdr::u32_at(bytes, 0x6c).unwrap_or(0) as usize;
-
-    let mut cursor = HEAD;
-    let mut layers_total = 0u64;
-    for _ in 0..records {
-        let Some(layers) = rdr::u16_at(bytes, cursor + 0x20) else {
-            break;
-        };
-        let ext = rdr::u8_at(bytes, cursor + 0x22).unwrap_or(0);
-        let groups = rdr::u8_at(bytes, cursor + 0x23).unwrap_or(0);
-        layers_total += layers as u64;
-        cursor += 0x24 + layers as usize * 0x40 + ext as usize * 0x90;
-        for _ in 0..groups {
-            let count = rdr::u8_at(bytes, cursor + 3).unwrap_or(0);
-            cursor += 4 + count as usize * 0xF0;
-        }
-        if cursor > bytes.len() {
-            break;
-        }
-    }
-    let records_end = cursor;
-
-    struct Mask {
-        x0: i32,
-        y0: i32,
-        x1: i32,
-        y1: i32,
-        width: usize,
-        height: usize,
-        data: usize,
-        marked: usize,
-    }
-
-    let mut list: Vec<Mask> = Vec::with_capacity(masks);
-    for _ in 0..masks {
-        let Some(x0) = rdr::i32_at(bytes, cursor + 0x24) else {
-            break;
-        };
-        let Some(y0) = rdr::i32_at(bytes, cursor + 0x28) else {
-            break;
-        };
-        let Some(x1) = rdr::i32_at(bytes, cursor + 0x2c) else {
-            break;
-        };
-        let Some(y1) = rdr::i32_at(bytes, cursor + 0x30) else {
-            break;
-        };
-        if x1 < x0 || y1 < y0 {
-            break;
-        }
-        let width = (x1 - x0 + 1) as usize;
-        let height = (y1 - y0 + 1) as usize;
-        let data = cursor + 0x3c;
-        if data + width * height * 4 > bytes.len() {
-            break;
-        }
-        let mut marked = 0usize;
-        for index in 0..width * height {
-            let word = rdr::u32_at(bytes, data + index * 4).unwrap_or(0);
-            if word >> 16 == 0x6641 {
-                marked += 1;
-            }
-        }
-        list.push(Mask {
-            x0,
-            y0,
-            x1,
-            y1,
-            width,
-            height,
-            data,
-            marked,
-        });
-        cursor = data + width * height * 4;
-    }
-    let masks_found = list.len();
-    let masks_end = cursor;
-
-    let mut pair_rows = Vec::new();
-    let mut tail = masks_end + f_records * 0x18 + words * 4;
-    for _ in 0..pairs.min(MAX_RESOURCES) {
-        let Some((left, after)) = cstr(bytes, tail) else {
-            break;
-        };
-        let Some((right, next)) = cstr(bytes, after) else {
-            break;
-        };
-        pair_rows.push(vec![left, right]);
-        tail = next;
-    }
-
-    out.note = Some(format!(
-        "{records} placement records · {masks_found}/{masks} area masks · {pairs} resource paths"
-    ));
-
-    let header = vec![
-        vec!["placement records".to_string(), records.to_string()],
-        vec!["layers".to_string(), layers_total.to_string()],
-        vec!["area masks".to_string(), masks.to_string()],
-        vec!["F records".to_string(), f_records.to_string()],
-        vec!["word table".to_string(), words.to_string()],
-        vec!["resource pairs".to_string(), pairs.to_string()],
-        vec!["samples".to_string(), samples.to_string()],
-        vec!["names".to_string(), names.to_string()],
-        vec![
-            "records area".to_string(),
-            format!("0x{HEAD:x}..0x{records_end:x}"),
-        ],
-    ];
-    out.sections
-        .push(Section::new("Header", &["item", "value"], header, 9));
-
-    if list.is_empty() {
-        return out;
-    }
-
-    let rows: Vec<Vec<String>> = list
-        .iter()
-        .take(MAX_MASKS)
-        .enumerate()
-        .map(|(index, mask)| {
-            vec![
-                index.to_string(),
-                format!("({}, {})..({}, {})", mask.x0, mask.y0, mask.x1, mask.y1),
-                format!("{}×{}", mask.width, mask.height),
-                format!(
-                    "{:.1}%",
-                    100.0 * mask.marked as f64 / (mask.width * mask.height).max(1) as f64
-                ),
-                format!("{:#x}", mask.data),
-            ]
-        })
-        .collect();
-    out.sections.push(Section::new(
-        "Area masks (first 24)",
-        &["#", "rect", "size", "marked", "data"],
-        rows,
-        masks_found as u64,
-    ));
-
-    if !pair_rows.is_empty() {
-        let total = pair_rows.len() as u64;
-        out.sections.push(Section::new(
-            "Resources",
-            &["model / mesh", "texture"],
-            pair_rows,
-            total,
-        ));
-    }
-
-    let ratio = |mask: &Mask| mask.marked as f64 / (mask.width * mask.height).max(1) as f64;
-    let index = list
-        .iter()
-        .enumerate()
-        .filter(|(_, mask)| (0.2..=0.6).contains(&ratio(mask)))
-        .max_by_key(|(_, mask)| mask.width * mask.height)
-        .or_else(|| list.iter().enumerate().max_by_key(|(_, mask)| mask.marked))
-        .map(|(index, _)| index)
-        .unwrap_or(0);
-    let mask = &list[index];
-    let step = mask.width.max(mask.height).div_ceil(MAX_SIDE).max(1);
-    let out_width = mask.width.div_ceil(step);
-    let out_height = mask.height.div_ceil(step);
-    let mut rgba = vec![0u8; out_width * out_height * 4];
-    for pixel in rgba.chunks_exact_mut(4) {
-        pixel.copy_from_slice(&[10, 12, 18, 255]);
-    }
-
-    let hue = area_hue(index as u32);
-    for row in 0..mask.height {
-        let py = row / step;
-        if py >= out_height {
-            continue;
-        }
-        for column in 0..mask.width {
-            let px = column / step;
-            if px >= out_width {
-                continue;
-            }
-            let at = mask.data + (row * mask.width + column) * 4;
-            let word = rdr::u32_at(bytes, at).unwrap_or(0);
-            let color = if word >> 16 == 0x6641 {
-                hsv(hue, 0.55, 0.98)
-            } else {
-                hsv(hue, 0.55, 0.16)
-            };
-            put(&mut rgba, (py * out_width + px) * 4, color);
-        }
-    }
-
-    out.color = Some(ColorMap {
-        width: out_width as u32,
-        height: out_height as u32,
-        rgba,
-        legend: format!(
-            "One of the {masks_found} area masks: #{index}, the largest whose fill ratio lands between 20% and 60% ({:.1}% of {}×{} cells), drawn at 1 px = {step}×{step} cells. Its rectangle is ({}, {})..({}, {}) in field coordinates. Bright = cell tagged `0x6641_xxxx` (inside the area), dark = `0x6640_xxxx` (inside the rectangle but outside the area). Every other mask has the same shape of data; the table lists their rectangles and fill ratios.",
-            100.0 * mask.marked as f64 / (mask.width * mask.height).max(1) as f64,
-            mask.width,
-            mask.height,
-            mask.x0,
-            mask.y0,
-            mask.x1,
-            mask.y1
-        ),
-    });
-
-    out
+    super::field::view(bytes, None, 1500)
 }
 
 fn ucb(bytes: &[u8]) -> Projection {
@@ -1134,7 +911,7 @@ fn ucb(bytes: &[u8]) -> Projection {
     }
 
     out.note = Some(format!(
-        "{cells} cells laid out as {grid_width}×{grid_height} (x right, y down) · {} areas · {outside} cells all zero",
+        "{cells} cells laid out as {grid_width}×{grid_height} (x right, y down) · {} areas · {outside} cells all zero. This grid stores no pixels: the map screen art ships as GUI/Worldmap.mbs + GUI/Worldmap.ftx, and each area's field background as FieldBG/AC*.mpd + AC*.ftx.",
         areas.len()
     ));
 
@@ -1239,18 +1016,6 @@ fn ucb(bytes: &[u8]) -> Projection {
     });
 
     out
-}
-
-fn cstr(bytes: &[u8], at: usize) -> Option<(String, usize)> {
-    if at >= bytes.len() {
-        return None;
-    }
-    let rest = &bytes[at..];
-    let end = rest
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(rest.len());
-    Some((rdr::utf8_string(&rest[..end]), at + end + 1))
 }
 
 fn scb(bytes: &[u8]) -> Projection {

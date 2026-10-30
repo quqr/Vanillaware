@@ -34,3 +34,11 @@ path = "tests/tools/usm_dump.rs"
 [[example]]
 name = "usm_gop_probe"
 path = "tests/tools/usm_gop_probe.rs"
+
+[[example]]
+name = "quad_probe"
+path = "tests/tools/quad_probe.rs"
+
+[[example]]
+name = "ftx_page"
+path = "tests/tools/ftx_page.rs"

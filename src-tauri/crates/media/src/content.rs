@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::path::Path;
 
 use serde::Serialize;
 
@@ -36,6 +37,20 @@ pub struct SeriesDto {
 
 pub fn open(bytes: &[u8], ext: &str) -> Option<ContentDto> {
     let projection = content::project(bytes, ext)?;
+    Some(render(projection))
+}
+
+pub fn open_path(path: &Path) -> Option<ContentDto> {
+    let ext = path
+        .extension()
+        .map(|value| value.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    let bytes = std::fs::read(path).ok()?;
+    let projection = if ext == "ufb" {
+        formats::field::view(&bytes, path.parent(), 1500)
+    } else {
+        content::project(&bytes, &ext)?
+    };
     Some(render(projection))
 }
 

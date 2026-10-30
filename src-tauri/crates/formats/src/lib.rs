@@ -2,9 +2,11 @@ pub mod atlas;
 pub mod codec;
 pub mod content;
 pub mod document;
+pub mod field;
 pub mod ftx;
 pub mod mbs;
 pub mod primitives;
+pub mod raster;
 pub mod rsc;
 
 #[derive(Debug)]

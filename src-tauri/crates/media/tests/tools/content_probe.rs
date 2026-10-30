@@ -7,7 +7,7 @@ fn main() {
             .file_name()
             .map(|value| value.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.clone());
-        let bytes = match std::fs::read(target) {
+        let _unused = match std::fs::read(target) {
             Ok(bytes) => bytes,
             Err(error) => {
                 println!("{name}: read failed {error}");
@@ -18,7 +18,7 @@ fn main() {
             .extension()
             .map(|value| value.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
-        match media::content::open(&bytes, &ext) {
+        match media::content::open_path(target) {
             Some(content) => {
                 let image = content
                     .image
@@ -40,6 +40,12 @@ fn main() {
                         .map(|lines| format!("{} lines", lines.len()))
                         .unwrap_or_else(|| "—".to_string())
                 );
+                if let Some(note) = content.image_note.as_ref() {
+                    println!("   ! {note}");
+                }
+                if let Some(note) = content.note.as_ref() {
+                    println!("   * {note}");
+                }
                 for section in content.sections.iter().take(3) {
                     let head: Vec<String> = section
                         .rows
