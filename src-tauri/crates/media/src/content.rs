@@ -40,11 +40,17 @@ pub fn open(bytes: &[u8], ext: &str) -> Option<ContentDto> {
 }
 
 fn render(projection: Projection) -> ContentDto {
-    let image = projection.bitmap.as_ref().and_then(render_gray_png);
-    let projection_legend = projection
-        .bitmap
-        .as_ref()
-        .map(|bitmap| bitmap.legend.clone());
+    let color = projection.color.as_ref();
+    let (image, projection_legend) = match color {
+        Some(map) => (render_color_png(map), Some(map.legend.clone())),
+        None => (
+            projection.bitmap.as_ref().and_then(render_gray_png),
+            projection
+                .bitmap
+                .as_ref()
+                .map(|bitmap| bitmap.legend.clone()),
+        ),
+    };
     ContentDto {
         title: projection.title,
         note: projection.note,
@@ -67,6 +73,22 @@ fn render(projection: Projection) -> ContentDto {
         image,
         image_note: projection_legend,
     }
+}
+
+fn render_color_png(map: &formats::content::ColorMap) -> Option<String> {
+    if map.width == 0 || map.height == 0 {
+        return None;
+    }
+    if map.rgba.len() != (map.width as usize) * (map.height as usize) * 4 {
+        return None;
+    }
+    let image = image::RgbaImage::from_raw(map.width, map.height, map.rgba.clone())?;
+    let mut buffer = Cursor::new(Vec::new());
+    image.write_to(&mut buffer, image::ImageFormat::Png).ok()?;
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64(&buffer.into_inner())
+    ))
 }
 
 fn render_gray_png(bitmap: &formats::content::GrayMap) -> Option<String> {
