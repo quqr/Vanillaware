@@ -29,6 +29,7 @@ pub fn run() {
             command::audio::audio_clip_info,
             command::audio::audio_clip_data,
             command::content::content_open,
+            command::dialogue::dialogue_open,
             command::video::usm_video_info,
             command::video::usm_video_gop,
             command::document::open_doc,

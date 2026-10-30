@@ -476,6 +476,46 @@ export interface Content {
   imageNote: string | null;
 }
 
+export interface DialoguePool {
+  path: string | null;
+  strings: number;
+}
+
+export interface DialogueStats {
+  entries: number;
+  commands: number;
+  textCommands: number;
+  uniqueIds: number;
+  missingText: number;
+}
+
+export interface DialogueLine {
+  at: number;
+  opcode: number;
+  textId: number | null;
+  speaker: string | null;
+  voice: number | null;
+  text: string | null;
+}
+
+export interface DialogueEntry {
+  index: number;
+  name: string;
+  group: number;
+  link: number;
+  kind: number;
+  offset: number;
+  commands: number;
+  lines: DialogueLine[];
+}
+
+export interface Dialogue {
+  entries: DialogueEntry[];
+  stats: DialogueStats;
+  pool: DialoguePool;
+  warnings: string[];
+}
+
 export const api = {
   listDir: (path: string) => invoke<DirListing>("list_dir", { path }),
   listFormats: () => invoke<FormatInfo[]>("list_formats"),
@@ -521,6 +561,8 @@ export const api = {
     invoke<ArrayBuffer>("audio_clip_data", { path, index }),
 
   contentOpen: (path: string) => invoke<Content>("content_open", { path }),
+
+  dialogueOpen: (path: string) => invoke<Dialogue>("dialogue_open", { path }),
 
   usmVideoInfo: (path: string) => invoke<UsmVideo>("usm_video_info", { path }),
   usmVideoGop: (path: string, gop: number) =>

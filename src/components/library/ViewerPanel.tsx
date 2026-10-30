@@ -9,6 +9,7 @@ import { AudioViewer } from "../viewers/AudioViewer";
 import { BbsLayoutViewer } from "../viewers/BbsLayoutViewer";
 import { AnimationViewer } from "../viewers/AnimationViewer";
 import { ContentViewer } from "../viewers/ContentViewer";
+import { DialogueViewer } from "../viewers/DialogueViewer";
 import { DocViewer } from "../viewers/DocViewer";
 import { FmdMeshViewer } from "../viewers/FmdMeshViewer";
 import { FmsTableViewer } from "../viewers/FmsTableViewer";
@@ -26,6 +27,7 @@ const VIEWERS: Record<
   animation: { labelKey: "viewer.animation", render: (entry, tag) => <AnimationViewer entry={entry} tag={tag} /> },
   audio: { labelKey: "viewer.audio", render: (entry) => <AudioViewer entry={entry} /> },
   content: { labelKey: "viewer.content", render: (entry) => <ContentViewer entry={entry} /> },
+  dialogue: { labelKey: "viewer.dialogue", render: (entry) => <DialogueViewer entry={entry} /> },
   doc: { labelKey: "viewer.doc", render: (entry, tag) => <DocViewer entry={entry} tag={tag} /> },
   layout: { labelKey: "viewer.layout", render: (entry) => <BbsLayoutViewer entry={entry} /> },
   mesh: { labelKey: "viewer.mesh", render: (entry) => <FmdMeshViewer entry={entry} /> },

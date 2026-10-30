@@ -8,7 +8,9 @@ use catalog::{IndexEntry, IndexStatusDto};
 use media::ThumbCache;
 
 use crate::config;
-use crate::service::{AudioService, DocCache, IndexService, ParseCache, VideoService};
+use crate::service::{
+    AudioService, DialogueService, DocCache, IndexService, ParseCache, VideoService,
+};
 
 pub struct AppState {
     pub cache: Arc<ThumbCache>,
@@ -16,6 +18,7 @@ pub struct AppState {
     pub inflight: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     pub doc_sem: Arc<Semaphore>,
     pub audio: Arc<AudioService>,
+    pub dialogue: Arc<DialogueService>,
     pub video: Arc<VideoService>,
     index: IndexService,
     parse: ParseCache,
@@ -30,6 +33,7 @@ impl AppState {
             doc_sem: Arc::new(Semaphore::new(config::DOC_PERMITS)),
             inflight: Arc::new(Mutex::new(HashMap::new())),
             audio: Arc::new(AudioService::new()),
+            dialogue: Arc::new(DialogueService::new()),
             video: Arc::new(VideoService::new()),
             index: IndexService::new(),
             parse: ParseCache::new(),

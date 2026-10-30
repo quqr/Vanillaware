@@ -144,9 +144,9 @@ pub const FORMATS: &[Format] = &[
     },
     Format {
         ext: "rsc",
-        kind: Kind::List,
+        kind: Kind::Script,
         label: "RSC",
-        viewers: &["graph", "doc", "hex"],
+        viewers: &["dialogue", "graph", "doc", "hex"],
         has_thumb: false,
     },
     Format {

@@ -2,6 +2,7 @@ pub mod animation;
 pub mod audio;
 pub mod cache;
 pub mod content;
+pub mod dialogue;
 pub mod document;
 pub mod index;
 pub mod library;
@@ -10,8 +11,8 @@ pub mod video;
 
 use std::path::PathBuf;
 
-use tauri::State;
 use tauri::ipc::Response;
+use tauri::State;
 
 use media::TextureInfo;
 

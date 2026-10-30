@@ -1,11 +1,15 @@
 pub mod animation;
 pub mod audio;
+pub mod dialogue;
 pub mod scene;
 pub mod texture;
 pub mod video;
 
 pub use animation::ConvertDto;
 pub use audio::{AudioBundleDto, AudioClipDto, AudioCodecCountDto, AudioTrackDto};
+pub use dialogue::{
+    DialogueDto, DialogueEntryDto, DialogueLineDto, DialoguePoolDto, DialogueStatsDto,
+};
 pub use scene::{
     AnimationDto, AtlasFrameDto, AttachDto, FrameDto, HitboxDto, HitboxLayerDto, KeyframeDto,
     LayerDto, SceneDto, SkeletonDto,

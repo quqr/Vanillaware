@@ -5,6 +5,7 @@ pub mod document;
 pub mod ftx;
 pub mod mbs;
 pub mod primitives;
+pub mod rsc;
 
 #[derive(Debug)]
 pub enum Error {
