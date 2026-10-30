@@ -4,39 +4,11 @@ meta:
   file-extension: mbs
   endian: le
   ks-version: "0.11"
-
-doc: |
-  结构来源（真值）：rip-vanillaware/FMBP_FMBS_vanillaware.php（Rufas Wan，PHP），
-  分节表读法见同目录 vanillaware.inc 的 $gp_data['ver72'|'ver76'|'ver77']。
-
-  MBS 不是顺序结构：
-    1. 从分节表给出的 sp_at 处读 4 字节 -> 该节数据的绝对偏移 sp；
-    2. 从 count_at 处读 count_bytes 字节 -> 记录条数；
-    3. 按固定步长读记录；记录之间靠索引互引（s4->s0/s1/s2，s5->s3，s6->s4/s5）。
-
-  分节表（sp_at / count_at / count_bytes / stride）的权威落地是
-  formats/src/mbs/profile.rs, transcribed line by line from the PHP $gp_data table.
-  本文件只描述「记录长什么样」：s0..sb 的 sp 位置三版本一致（0x0b0 + 8*i），
-  而 count 的位置与宽度随版本变化，故由调用方（Rust 侧读 profile.rs）
-  通过 params 传入，避免在 ksy 里复刻版本分支。
-
-  之所以不把 count 写成带 switch-on 的 instance：ksc 0.11 的 rust 后端不支持
-  「repeat + switch-on」的类型级分派（会漏生成枚举定义，且 repeat-expr 拿到枚举
-  而非整数），生成的代码无法编译。故统一走 params。
-
-  像素 / 图集解码（内嵌 FTEX、BC 解码、swizzle）不进本文件，走 formats 的 codec 层。
-
 params:
   - id: kind
     type: u1
-    doc: |
-      0 = v72 家族（ps3_odin / ps4_odin / ps4_drag）
-      1 = v76 家族（ps4_sent）
-      2 = v77 家族（swi_sent / swi_grim / swi_unic / ps4_grim / ps4_unic / ps5_* / xbx_unic）
-      仅用于区分 s4 的记录步长：v72 为 0x10，v76/v77 为 0x14。
   - id: num_s0
     type: u4
-    doc: s0 记录条数
   - id: num_s1
     type: u4
   - id: num_s2
@@ -65,14 +37,10 @@ seq:
     contents: "FMBS"
   - id: header_pad
     size: 0x10
-    doc: 0x04..0x14，PHP 不读
   - id: version
     type: u2
-    doc: 0x72 / 0x76 / 0x77，仅用于自校验
 
 instances:
-  # sp 的位置三版本一致（0x0b0 + 8*i），可直接写死。
-  # ---- s0：4 个 RGBA 颜色（nds_quad18c），步长 0x18 ----
   s0_sp:
     pos: 0x0b0
     type: u4
@@ -82,7 +50,6 @@ instances:
     repeat: expr
     repeat-expr: num_s0
 
-  # ---- s1：12 个 f4（nds_quad30p），步长 0x30 ----
   s1_sp:
     pos: 0x0b8
     type: u4
@@ -92,7 +59,6 @@ instances:
     repeat: expr
     repeat-expr: num_s1
 
-  # ---- s2：12 个 f4（nds_quad30p），步长 0x30 ----
   s2_sp:
     pos: 0x0c0
     type: u4
@@ -102,7 +68,6 @@ instances:
     repeat: expr
     repeat-expr: num_s2
 
-  # ---- s3：rect(8 f4) + xyz(12 f4)，步长 0x50 ----
   s3_sp:
     pos: 0x0c8
     type: u4
@@ -112,7 +77,6 @@ instances:
     repeat: expr
     repeat-expr: num_s3
 
-  # ---- s4：层记录；v72 步长 0x10，v76/v77 步长 0x14 ----
   s4_sp:
     pos: 0x0d0
     type: u4
@@ -129,7 +93,6 @@ instances:
     repeat-expr: num_s4
     if: kind != 0
 
-  # ---- s5：判定框引用，步长 0x08 ----
   s5_sp:
     pos: 0x0d8
     type: u4
@@ -139,7 +102,6 @@ instances:
     repeat: expr
     repeat-expr: num_s5
 
-  # ---- s6：帧矩形 + s4/s5 区间，步长 0x1c ----
   s6_sp:
     pos: 0x0e0
     type: u4
@@ -149,7 +111,6 @@ instances:
     repeat: expr
     repeat-expr: num_s6
 
-  # ---- s7：变换 + 雾色，步长 0x24 ----
   s7_sp:
     pos: 0x0e8
     type: u4
@@ -159,7 +120,6 @@ instances:
     repeat: expr
     repeat-expr: num_s7
 
-  # ---- s8：时间线条目，步长 0x20 ----
   s8_sp:
     pos: 0x0f0
     type: u4
@@ -169,7 +129,6 @@ instances:
     repeat: expr
     repeat-expr: num_s8
 
-  # ---- s9：具名矩形 + sa/b 区间，步长 0x30 ----
   s9_sp:
     pos: 0x0f8
     type: u4
@@ -179,7 +138,6 @@ instances:
     repeat: expr
     repeat-expr: num_s9
 
-  # ---- sa：s8 区间，步长 0x18 ----
   sa_sp:
     pos: 0x100
     type: u4
@@ -189,7 +147,6 @@ instances:
     repeat: expr
     repeat-expr: num_sa
 
-  # ---- sb：次要区间，步长 0x14 ----
   sb_sp:
     pos: 0x108
     type: u4
@@ -200,7 +157,6 @@ instances:
     repeat-expr: num_sb
 
 types:
-  # s0：中心 + 4 颜色 + 尾部填充（nds_quad18c 取 offset 4/8/c/10 的 4 字节 RGBA）
   rec_s0:
     seq:
       - id: center
@@ -216,7 +172,6 @@ types:
       - id: tail
         size: 4
 
-  # s1 / s2：12 个 f4，PHP nds_quad30p 取下标 2..9
   rec_quad30:
     seq:
       - id: floats
@@ -224,7 +179,6 @@ types:
         repeat: expr
         repeat-expr: 12
 
-  # s3：rect(x1,y1,x2,y2,x3,y3,x4,y4) + xyz(4 x n)
   rec_s3:
     seq:
       - id: rect
@@ -236,7 +190,6 @@ types:
         repeat: expr
         repeat-expr: 12
 
-  # s4（v72）：步长 0x10
   rec_s4_v72:
     seq:
       - id: b00
@@ -258,7 +211,6 @@ types:
       - id: s2
         type: u2
 
-  # s4（v76 / v77）：步长 0x14
   rec_s4_v76:
     seq:
       - id: b00
@@ -282,7 +234,6 @@ types:
       - id: tail
         size: 2
 
-  # s5：s3 索引 + flags
   rec_s5:
     seq:
       - id: s3
@@ -294,7 +245,6 @@ types:
       - id: flags
         type: u4
 
-  # s6：帧矩形 + s4/s5 引用区间
   rec_s6:
     seq:
       - id: left
@@ -318,7 +268,6 @@ types:
       - id: tail
         size: 2
 
-  # s7：move / rotate / scale + 雾色 4 字节（`move` 是 Rust 关键字，故记作 move_）
   rec_s7:
     seq:
       - id: move_
@@ -336,7 +285,6 @@ types:
       - id: fog
         size: 4
 
-  # s8：时间线条目
   rec_s8:
     seq:
       - id: s6
@@ -351,7 +299,6 @@ types:
         type: u4
       - id: loop_
         type: u2
-        doc: 回跳目标 s8 索引（`loop` 是 Rust 关键字）
       - id: in_s5s3
         type: u1
       - id: in_rate
@@ -373,7 +320,6 @@ types:
       - id: sfx
         type: u4
 
-  # s9：具名矩形 + sa/b 引用区间
   rec_s9:
     seq:
       - id: left
@@ -399,7 +345,6 @@ types:
       - id: b2f
         type: u1
 
-  # sa：s8 引用区间（字段止于 0x16，尾部 2 字节填充凑满步长 0x18）
   rec_sa:
     seq:
       - id: s8_set
@@ -423,7 +368,6 @@ types:
       - id: tail
         size: 2
 
-  # sb：次要区间
   rec_sb:
     seq:
       - id: b00

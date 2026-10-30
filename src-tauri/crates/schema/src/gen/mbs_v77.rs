@@ -12,28 +12,6 @@ use std::convert::{TryFrom, TryInto};
 use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-/**
- * 结构来源（真值）：rip-vanillaware/FMBP_FMBS_vanillaware.php（Rufas Wan，PHP），
- * 分节表读法见同目录 vanillaware.inc 的 $gp_data['ver72'|'ver76'|'ver77']。
- * 
- * MBS 不是顺序结构：
- *   1. 从分节表给出的 sp_at 处读 4 字节 -> 该节数据的绝对偏移 sp；
- *   2. 从 count_at 处读 count_bytes 字节 -> 记录条数；
- *   3. 按固定步长读记录；记录之间靠索引互引（s4->s0/s1/s2，s5->s3，s6->s4/s5）。
- * 
- * 分节表（sp_at / count_at / count_bytes / stride）的权威落地是
- * crates/formats/src/mbs/profile.rs，它逐行抄自 PHP 的 $gp_data 表。
- * 本文件只描述「记录长什么样」：s0..sb 的 sp 位置三版本一致（0x0b0 + 8*i），
- * 而 count 的位置与宽度随版本变化，故由调用方（Rust 侧读 profile.rs）
- * 通过 params 传入，避免在 ksy 里复刻版本分支。
- * 
- * 之所以不把 count 写成带 switch-on 的 instance：ksc 0.11 的 rust 后端不支持
- * 「repeat + switch-on」的类型级分派（会漏生成枚举定义，且 repeat-expr 拿到枚举
- * 而非整数），生成的代码无法编译。故统一走 params。
- * 
- * 像素 / 图集解码（内嵌 FTEX、BC 解码、swizzle）不进本文件，走 formats 的 codec 层。
- */
-
 #[derive(Default, Debug, Clone)]
 pub struct MbsV77 {
     pub _root: SharedType<MbsV77>,
@@ -716,19 +694,11 @@ impl MbsV77 {
         self.magic.borrow()
     }
 }
-
-/**
- * 0x04..0x14，PHP 不读
- */
 impl MbsV77 {
     pub fn header_pad(&self) -> Ref<'_, Vec<u8>> {
         self.header_pad.borrow()
     }
 }
-
-/**
- * 0x72 / 0x76 / 0x77，仅用于自校验
- */
 impl MbsV77 {
     pub fn version(&self) -> Ref<'_, u16> {
         self.version.borrow()
@@ -1452,10 +1422,6 @@ impl MbsV77_RecS8 {
         self.flags.borrow()
     }
 }
-
-/**
- * 回跳目标 s8 索引（`loop` 是 Rust 关键字）
- */
 impl MbsV77_RecS8 {
     pub fn loop_(&self) -> Ref<'_, u16> {
         self.loop_.borrow()

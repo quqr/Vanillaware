@@ -1,5 +1,5 @@
-//! M0 门禁：用真实样本验证 .ksy 生成的解析器能读对结构字段。
-//! 只验证「结构」，不涉及像素解码。
+//! M0 gate: a real sample proves the generated parser reads the structure.
+//! Structure only; pixel decoding is out of scope.
 
 use kaitai::{BytesReader, KStruct};
 use schema::gen::ftex_switch::FtexSwitch;

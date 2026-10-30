@@ -4,12 +4,6 @@ meta:
   file-extension: ftx
   endian: le
   ks-version: "0.11"
-
-doc: |
-  Same layout as ftex_switch.ksy but without pixel data: NVT stops at data_offset/data_size.
-  用途：帧数/尺寸/格式补全（probe）。整块像素由 Kaitai 读进 Vec<u8> 的话，一个 83MB 的
-  Allocating the 83MB payload just to count frames is wasteful, so the field stays empty here; decoding goes through ftex_switch.ksy.
-
 seq:
   - id: magic
     contents: "FTEX"
@@ -76,4 +70,3 @@ types:
         type: u4
       - id: data_size
         type: u4
-      # 到此为止：不解析 data
