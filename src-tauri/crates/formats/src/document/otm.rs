@@ -41,7 +41,15 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(header, "magic", magic.clone());
     builder.field(header, "dataSize", data_size.to_string());
     builder.field(header, "dataOffset", format!("0x{data_offset:x}"));
-    builder.field(header, "mbsName", if mbs_name.is_empty() { "—".into() } else { mbs_name });
+    builder.field(
+        header,
+        "mbsName",
+        if mbs_name.is_empty() {
+            "—".into()
+        } else {
+            mbs_name
+        },
+    );
     builder.field(header, "flags", format!("0x{flags:02x}"));
     builder.field(header, "version", version.to_string());
     builder.field(header, "countA", count_a.to_string());
@@ -51,7 +59,12 @@ pub fn build(bytes: &[u8]) -> DocArena {
     builder.field(header, "offB", format!("0x{off_b:x}"));
     builder.field(header, "offC", format!("0x{off_c:x}"));
 
-    builder.check("otm.magic", "magic is OTBM", magic == "OTBM", Some(format!("read {magic}")));
+    builder.check(
+        "otm.magic",
+        "magic is OTBM",
+        magic == "OTBM",
+        Some(format!("read {magic}")),
+    );
     builder.check(
         "otm.size",
         "dataSize equals the file length minus 0x78",
@@ -99,9 +112,15 @@ fn build_a(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count: u
     let array = builder.array(root, Some("secA"), format!("A ({count})"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * A_RECORD;
-        let Some(_) = bytes.get(at..at + A_RECORD) else { break };
+        let Some(_) = bytes.get(at..at + A_RECORD) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("A[{index}]"));
-        builder.field(group, "bStart", rdr::u16_at(bytes, at).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "bStart",
+            rdr::u16_at(bytes, at).unwrap_or(0).to_string(),
+        );
         builder.field(group, "count", bytes[at + 2].to_string());
         builder.field(group, "pad", bytes[at + 3].to_string());
     }
@@ -114,9 +133,15 @@ fn build_b(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count: u
     let array = builder.array(root, Some("secB"), format!("B ({count})"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * B_RECORD;
-        let Some(_) = bytes.get(at..at + B_RECORD) else { break };
+        let Some(_) = bytes.get(at..at + B_RECORD) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("B[{index}]"));
-        builder.field(group, "cStart", rdr::u16_at(bytes, at).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "cStart",
+            rdr::u16_at(bytes, at).unwrap_or(0).to_string(),
+        );
         builder.field(group, "count", bytes[at + 2].to_string());
         builder.field(group, "key", bytes[at + 3].to_string());
     }
@@ -129,16 +154,50 @@ fn build_c(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count: u
     let array = builder.array(root, Some("secC"), format!("C ({count})"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * C_RECORD;
-        let Some(_) = bytes.get(at..at + C_RECORD) else { break };
+        let Some(_) = bytes.get(at..at + C_RECORD) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("C[{index}]"));
-        builder.field(group, "frame", rdr::u16_at(bytes, at).unwrap_or(0).to_string());
-        builder.field(group, "type", rdr::i8_at(bytes, at + 2).unwrap_or(0).to_string());
-        builder.field(group, "key", rdr::u8_at(bytes, at + 3).unwrap_or(0).to_string());
-        builder.field(group, "id", rdr::u32_at(bytes, at + 4).unwrap_or(0).to_string());
-        builder.field(group, "flags", format!("0x{:x}", rdr::u16_at(bytes, at + 8).unwrap_or(0)));
-        builder.field(group, "x", rdr::i16_at(bytes, at + 0x0a).unwrap_or(0).to_string());
-        builder.field(group, "y", rdr::i16_at(bytes, at + 0x0c).unwrap_or(0).to_string());
-        builder.field(group, "z", rdr::i16_at(bytes, at + 0x0e).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "frame",
+            rdr::u16_at(bytes, at).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "type",
+            rdr::i8_at(bytes, at + 2).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "key",
+            rdr::u8_at(bytes, at + 3).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "id",
+            rdr::u32_at(bytes, at + 4).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "flags",
+            format!("0x{:x}", rdr::u16_at(bytes, at + 8).unwrap_or(0)),
+        );
+        builder.field(
+            group,
+            "x",
+            rdr::i16_at(bytes, at + 0x0a).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "y",
+            rdr::i16_at(bytes, at + 0x0c).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "z",
+            rdr::i16_at(bytes, at + 0x0e).unwrap_or(0).to_string(),
+        );
     }
     if count > MAX_RECORDS {
         builder.truncate();

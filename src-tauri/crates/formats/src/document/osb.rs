@@ -132,7 +132,11 @@ pub fn scene(bytes: &[u8], osb_path: &Path) -> VizSceneDto {
     }
 
     VizSceneDto {
-        bounds: if bounds[0].is_finite() { bounds } else { [0.0; 6] },
+        bounds: if bounds[0].is_finite() {
+            bounds
+        } else {
+            [0.0; 6]
+        },
         nodes,
         references,
         truncated: budget.truncated,
@@ -181,7 +185,10 @@ fn collect_scene(
     let body = &bytes[body_start..body_start + body_size];
 
     let caption = body.get(0..0x40).map(text::sjis_slot).unwrap_or_default();
-    let label = body.get(0x40..0x50).map(text::sjis_slot).unwrap_or_default();
+    let label = body
+        .get(0x40..0x50)
+        .map(text::sjis_slot)
+        .unwrap_or_default();
     let type_name = node_name(type_id);
     let title = if !caption.is_empty() {
         caption
@@ -338,9 +345,17 @@ fn add_reference(
     };
     let reference = VizReferenceDto {
         path: path.to_string_lossy().into_owned(),
-        ext: rel.rsplit('.').next().unwrap_or_default().to_ascii_lowercase(),
+        ext: rel
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase(),
         role: role.to_string(),
-        status: if *status { "resolved".into() } else { "missing".into() },
+        status: if *status {
+            "resolved".into()
+        } else {
+            "missing".into()
+        },
     };
     references.push(reference.clone());
     nodes.push(VizNodeDto {
@@ -505,7 +520,14 @@ pub fn build(bytes: &[u8]) -> DocArena {
     }
 
     let scene_group = builder.group(root, Some("scene"), "Scene");
-    let walk_end = parse_node(&mut builder, bytes, scene as usize, bytes.len(), 0, scene_group);
+    let walk_end = parse_node(
+        &mut builder,
+        bytes,
+        scene as usize,
+        bytes.len(),
+        0,
+        scene_group,
+    );
     builder.check(
         "osb.closed",
         "the scene tree closes exactly at EOF",
@@ -545,15 +567,15 @@ fn parse_node(
     }
 
     let body = &bytes[body_start..body_start + body_size];
-    let caption = body
-        .get(0..0x40)
-        .map(text::sjis_slot)
-        .unwrap_or_default();
+    let caption = body.get(0..0x40).map(text::sjis_slot).unwrap_or_default();
     let label = body
         .get(0x40..0x50)
         .map(text::sjis_slot)
         .unwrap_or_default();
-    let group_id = body.get(0x50..0x52).and_then(|raw| rdr::u16_at(raw, 0)).unwrap_or(0);
+    let group_id = body
+        .get(0x50..0x52)
+        .and_then(|raw| rdr::u16_at(raw, 0))
+        .unwrap_or(0);
     let type_name = node_name(type_id);
     let title = if !caption.is_empty() {
         caption.clone()
@@ -583,7 +605,9 @@ fn parse_node(
     let children = child_count.min(MAX_CHILDREN);
     if child_count > children {
         builder.truncate();
-        builder.warn(format!("node {title} has too many children ({child_count})"));
+        builder.warn(format!(
+            "node {title} has too many children ({child_count})"
+        ));
     }
     for _ in 0..children {
         cursor = parse_node(builder, bytes, cursor, end, depth + 1, node);
@@ -748,7 +772,9 @@ fn u32s(body: &[u8], at: usize) -> String {
 }
 
 fn byte(body: &[u8], at: usize) -> String {
-    body.get(at).map(u8::to_string).unwrap_or_else(|| "—".into())
+    body.get(at)
+        .map(u8::to_string)
+        .unwrap_or_else(|| "—".into())
 }
 
 fn hex(body: &[u8], at: usize, len: usize) -> String {

@@ -413,7 +413,11 @@ fn push_node(builder: &mut Builder, parent: u32, node: &Node, key: &str, depth: 
             }
         }
         Node::Record(items) => {
-            let group = builder.group(parent, Some(key), format!("Record ({} values)", items.len()));
+            let group = builder.group(
+                parent,
+                Some(key),
+                format!("Record ({} values)", items.len()),
+            );
             for (index, item) in items.iter().enumerate().take(16) {
                 push_node(builder, group, item, &index.to_string(), depth + 1);
             }

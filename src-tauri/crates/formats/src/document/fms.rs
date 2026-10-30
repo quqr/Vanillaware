@@ -88,7 +88,11 @@ pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix
     builder.field(parent, "payloadSize", payload.to_string());
     builder.field(parent, "headerSize", format!("0x{header_size:x}"));
     builder.field(parent, "stringCount", count.to_string());
-    builder.field(parent, "encoding", format!("{encoding} ({})", encoding_name(encoding)));
+    builder.field(
+        parent,
+        "encoding",
+        format!("{encoding} ({})", encoding_name(encoding)),
+    );
 
     builder.check(
         &format!("{prefix}.magic"),
@@ -170,16 +174,13 @@ pub fn parse(builder: &mut Builder, parent: u32, bytes: &[u8], base: u64, prefix
     }
 
     let aligned = cursor.div_ceil(16) * 16;
-    let trailer_ok = aligned + TRAILER <= bytes.len()
-        && bytes.get(aligned..aligned + 4) == Some(b"FEOC");
+    let trailer_ok =
+        aligned + TRAILER <= bytes.len() && bytes.get(aligned..aligned + 4) == Some(b"FEOC");
     builder.check(
         &format!("{prefix}.trailer"),
         "the 16-byte FEOC trailer closes exactly",
         trailer_ok,
-        Some(format!(
-            "aligned={aligned:#x} size={:#x}",
-            bytes.len()
-        )),
+        Some(format!("aligned={aligned:#x} size={:#x}", bytes.len())),
     );
     if trailer_ok {
         builder.check(

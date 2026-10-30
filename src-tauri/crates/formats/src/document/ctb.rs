@@ -21,7 +21,8 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     let counts: [u32; 7] = std::array::from_fn(|index| rdr::u32_at(bytes, index * 4).unwrap_or(0));
     let build_tag = rdr::u32_at(bytes, 0x1c).unwrap_or(0);
-    let offsets: [u64; 7] = std::array::from_fn(|index| rdr::u64_at(bytes, 0x20 + index * 8).unwrap_or(0));
+    let offsets: [u64; 7] =
+        std::array::from_fn(|index| rdr::u64_at(bytes, 0x20 + index * 8).unwrap_or(0));
 
     let header = builder.group(root, Some("header"), "Header");
     const NAMES: [&str; 7] = ["clips", "sec1", "sec2", "sec3", "sec4", "sec5", "sec6"];
@@ -58,8 +59,15 @@ pub fn build(bytes: &[u8]) -> DocArena {
             4 => build_sec4(&mut builder, root, bytes, offset, count),
             6 => build_sec6(&mut builder, root, bytes, offset, count),
             1 | 5 if offset != 0 && count > 0 => {
-                let group = builder.group(root, Some(name), format!("{name} ({count} × {stride:#x})"));
-                builder.bytes(group, Some("raw"), "raw", offset, count as u64 * stride as u64);
+                let group =
+                    builder.group(root, Some(name), format!("{name} ({count} × {stride:#x})"));
+                builder.bytes(
+                    group,
+                    Some("raw"),
+                    "raw",
+                    offset,
+                    count as u64 * stride as u64,
+                );
             }
             _ => {}
         }
@@ -75,11 +83,23 @@ fn build_clips(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, coun
     let array = builder.array(root, Some("clips"), format!("Clips ({count})"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x58;
-        let Some(_) = bytes.get(at..at + 0x58) else { break };
+        let Some(_) = bytes.get(at..at + 0x58) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("clip[{index}]"));
         builder.field(group, "name", text::utf8_or_sjis(&bytes[at..at + 0x40]));
-        for (field, delta) in [("0x40", 0x40), ("0x44", 0x44), ("0x48", 0x48), ("0x4c", 0x4c), ("0x50", 0x50)] {
-            builder.field(group, field, rdr::u32_at(bytes, at + delta).unwrap_or(0).to_string());
+        for (field, delta) in [
+            ("0x40", 0x40),
+            ("0x44", 0x44),
+            ("0x48", 0x48),
+            ("0x4c", 0x4c),
+            ("0x50", 0x50),
+        ] {
+            builder.field(
+                group,
+                field,
+                rdr::u32_at(bytes, at + delta).unwrap_or(0).to_string(),
+            );
         }
     }
     if count > MAX_RECORDS {
@@ -94,12 +114,30 @@ fn build_sec2(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("sec2"), format!("sec2 ({count})"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x0c;
-        let Some(_) = bytes.get(at..at + 0x0c) else { break };
+        let Some(_) = bytes.get(at..at + 0x0c) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("sec2[{index}]"));
-        builder.field(group, "seq", rdr::u32_at(bytes, at).unwrap_or(0).to_string());
-        builder.field(group, "a", rdr::u16_at(bytes, at + 4).unwrap_or(0).to_string());
-        builder.field(group, "b", rdr::u16_at(bytes, at + 6).unwrap_or(0).to_string());
-        builder.field(group, "pad", rdr::u32_at(bytes, at + 8).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "seq",
+            rdr::u32_at(bytes, at).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "a",
+            rdr::u16_at(bytes, at + 4).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "b",
+            rdr::u16_at(bytes, at + 6).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "pad",
+            rdr::u32_at(bytes, at + 8).unwrap_or(0).to_string(),
+        );
     }
     if count > MAX_RECORDS {
         builder.truncate();
@@ -113,7 +151,9 @@ fn build_sec3(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("sec3"), format!("sec3 ({count} × 6f)"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x18;
-        let Some(_) = bytes.get(at..at + 0x18) else { break };
+        let Some(_) = bytes.get(at..at + 0x18) else {
+            break;
+        };
         let key = format!("[{index}]");
         let value = (0..6)
             .map(|slot| {
@@ -137,7 +177,9 @@ fn build_sec4(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("sec4"), format!("sec4 ({count} u32)"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 4;
-        let Some(value) = rdr::u32_at(bytes, at) else { break };
+        let Some(value) = rdr::u32_at(bytes, at) else {
+            break;
+        };
         let key = format!("[{index}]");
         builder.field(array, &key, value.to_string());
     }
@@ -153,7 +195,9 @@ fn build_sec6(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("sec6"), format!("sec6 ({count} × 3f)"));
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x0c;
-        let Some(_) = bytes.get(at..at + 0x0c) else { break };
+        let Some(_) = bytes.get(at..at + 0x0c) else {
+            break;
+        };
         let key = format!("[{index}]");
         let value = (0..3)
             .map(|slot| {

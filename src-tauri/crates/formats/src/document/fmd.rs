@@ -69,14 +69,21 @@ pub fn build(bytes: &[u8]) -> DocArena {
         let tag = &bytes[pos..pos + 4];
         let size = rdr::u32_at(bytes, pos + 4).unwrap_or(0) as usize;
         if size < 8 || pos + size > bytes.len() {
-            builder.warn(format!("block {} has an invalid size={size}", rdr::ascii(tag)));
+            builder.warn(format!(
+                "block {} has an invalid size={size}",
+                rdr::ascii(tag)
+            ));
             break;
         }
 
         let body_start = pos + 8;
         let end = pos + size;
         let tag_name = rdr::ascii(tag);
-        let group = builder.group(chunks, Some(&format!("@{pos:x}")), format!("{tag_name} @{pos:#x}"));
+        let group = builder.group(
+            chunks,
+            Some(&format!("@{pos:x}")),
+            format!("{tag_name} @{pos:#x}"),
+        );
         builder.field(group, "tag", tag_name.clone());
         builder.field(group, "size", size.to_string());
         builder.bytes(group, Some("range"), "block range", pos as u64, size as u64);
@@ -154,7 +161,15 @@ fn parse_jint(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
 
         let key = format!("[{index}]");
         let name = text::utf8_or_sjis(name_raw);
-        let node = builder.group(joints, Some(&key), if name.is_empty() { format!("joint[{index}]") } else { name });
+        let node = builder.group(
+            joints,
+            Some(&key),
+            if name.is_empty() {
+                format!("joint[{index}]")
+            } else {
+                name
+            },
+        );
         builder.field(node, "parent", parent_index.to_string());
         builder.field(node, "children", child_count.to_string());
         builder.field(node, "nameLength", name_len.to_string());
@@ -172,7 +187,9 @@ fn parse_mtrl(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     let materials = builder.array(parent, Some("materials"), format!("Materials ({count})"));
     for index in 0..count.min(MAX_ITEMS) {
         let Some(name_len) = cur.u32() else { break };
-        let Some(name_raw) = cur.take(name_len as usize) else { break };
+        let Some(name_raw) = cur.take(name_len as usize) else {
+            break;
+        };
         let Some(tex_ref) = cur.i32() else { break };
         let Some(rgba) = cur.take(4) else { break };
         let Some(_a_flag) = cur.u32() else { break };
@@ -189,7 +206,15 @@ fn parse_mtrl(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
 
         let key = format!("[{index}]");
         let name = text::utf8_or_sjis(name_raw);
-        let node = builder.group(materials, Some(&key), if name.is_empty() { format!("material[{index}]") } else { name });
+        let node = builder.group(
+            materials,
+            Some(&key),
+            if name.is_empty() {
+                format!("material[{index}]")
+            } else {
+                name
+            },
+        );
         builder.field(node, "texRef", tex_ref.to_string());
         builder.field(node, "rgba", rdr::hex(rgba));
     }
@@ -206,9 +231,17 @@ fn parse_txtr(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     let textures = builder.array(parent, Some("textures"), format!("Textures ({count})"));
     for index in 0..count.min(MAX_ITEMS) {
         let Some(name_len) = cur.u32() else { break };
-        let Some(raw) = cur.take(name_len as usize) else { break };
+        let Some(raw) = cur.take(name_len as usize) else {
+            break;
+        };
         let key = format!("[{index}]");
-        builder.text(textures, &key, format!("texture[{index}]"), text::utf8_or_sjis(raw), None);
+        builder.text(
+            textures,
+            &key,
+            format!("texture[{index}]"),
+            text::utf8_or_sjis(raw),
+            None,
+        );
     }
     if count > MAX_ITEMS {
         builder.truncate();
@@ -268,7 +301,9 @@ fn collect_materials(bytes: &[u8], start: usize, end: usize, out: &mut Vec<Mater
             tex_ref,
         };
         if skip_count > 0 {
-            let Some(page) = rdr::u32_at(bytes, cur.pos) else { break };
+            let Some(page) = rdr::u32_at(bytes, cur.pos) else {
+                break;
+            };
             material.page = page as i32;
             if cur.skip(skip_count as usize * 4).is_none() {
                 break;
@@ -290,7 +325,14 @@ pub fn mesh_scene(bytes: &[u8]) -> Result<VizSceneDto, String> {
         mesh_ref: None,
         reference: None,
     }];
-    let mut scene_bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+    let mut scene_bounds = [
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    ];
     let mut truncated = false;
 
     let mut pos = 0usize;
@@ -431,7 +473,9 @@ fn collect_meshes(
                     if n == vtx_count {
                         uvs = raw
                             .chunks_exact(4)
-                            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                            .map(|chunk| {
+                                f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+                            })
                             .collect();
                     }
                 } else if cur.skip(payload).is_none() {
@@ -479,7 +523,14 @@ fn collect_meshes(
             continue;
         }
 
-        let mut bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+        let mut bounds = [
+            f32::INFINITY,
+            f32::INFINITY,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NEG_INFINITY,
+            f32::NEG_INFINITY,
+        ];
         for point in positions.chunks_exact(3) {
             bounds[0] = bounds[0].min(point[0]);
             bounds[1] = bounds[1].min(point[1]);
@@ -501,7 +552,11 @@ fn collect_meshes(
         nodes.push(VizNodeDto {
             id: nodes.len() as u32,
             parent: Some(0),
-            name: if name.is_empty() { format!("mesh[{index}]") } else { name },
+            name: if name.is_empty() {
+                format!("mesh[{index}]")
+            } else {
+                name
+            },
             kind: "mesh".into(),
             transform: identity(),
             mesh: Some(VizMeshDto {
@@ -517,8 +572,16 @@ fn collect_meshes(
 
         const MAX_VERTICES: usize = 600_000;
         const MAX_INDICES: usize = 2_000_000;
-        let vertices: usize = nodes.iter().filter_map(|node| node.mesh.as_ref()).map(|mesh| mesh.positions.len() / 3).sum();
-        let indices: usize = nodes.iter().filter_map(|node| node.mesh.as_ref()).map(|mesh| mesh.indices.len()).sum();
+        let vertices: usize = nodes
+            .iter()
+            .filter_map(|node| node.mesh.as_ref())
+            .map(|mesh| mesh.positions.len() / 3)
+            .sum();
+        let indices: usize = nodes
+            .iter()
+            .filter_map(|node| node.mesh.as_ref())
+            .map(|mesh| mesh.indices.len())
+            .sum();
         if vertices > MAX_VERTICES || indices > MAX_INDICES {
             *truncated = true;
             break;
@@ -536,7 +599,9 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
     for index in 0..mesh_count.min(MAX_ITEMS) {
         if !probe_header(bytes, cur.pos, end) {
             let Some(next) = resync(bytes, cur.pos, end) else {
-                builder.warn(format!("mesh[{index}] cannot resync to the next mesh header"));
+                builder.warn(format!(
+                    "mesh[{index}] cannot resync to the next mesh header"
+                ));
                 break;
             };
             cur.pos = next;
@@ -547,7 +612,9 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
             builder.warn(format!("mesh[{index}] nameLen={name_len} is invalid"));
             break;
         }
-        let Some(name_raw) = cur.take(name_len as usize) else { break };
+        let Some(name_raw) = cur.take(name_len as usize) else {
+            break;
+        };
         let Some(a) = cur.i32() else { break };
         let Some(parent_joint) = cur.i32() else { break };
         let Some(skinned) = cur.i32() else { break };
@@ -565,12 +632,16 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
         let Some((after_subs, ranges)) = skip_subs(bytes, cur.pos, end, sub_count) else {
             match resync(bytes, cur.pos, end) {
                 Some(next) => {
-                    builder.warn(format!("mesh[{index}] sub-range or leaf out of range, resynced to {next:#x}"));
+                    builder.warn(format!(
+                        "mesh[{index}] sub-range or leaf out of range, resynced to {next:#x}"
+                    ));
                     cur.pos = next;
                     continue;
                 }
                 None => {
-                    builder.warn(format!("mesh[{index}] sub-range or leaf out of range, cannot resync"));
+                    builder.warn(format!(
+                        "mesh[{index}] sub-range or leaf out of range, cannot resync"
+                    ));
                     break;
                 }
             }
@@ -618,10 +689,18 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
                     let payload = match rule {
                         AttrRule::Fixed => n as usize * stride,
                         AttrRule::U16 => {
-                            if n == 0 { 0 } else { ((n as usize * 2 - 2) & !7) + 8 }
+                            if n == 0 {
+                                0
+                            } else {
+                                ((n as usize * 2 - 2) & !7) + 8
+                            }
                         }
                         AttrRule::U32I => {
-                            if n == 0 { 0 } else { ((n as usize - 1) & !3) + 4 }
+                            if n == 0 {
+                                0
+                            } else {
+                                ((n as usize - 1) & !3) + 4
+                            }
                         }
                     };
                     if cur.skip(payload).is_none() {
@@ -641,7 +720,15 @@ fn parse_mesh(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
 
         let key = format!("[{index}]");
         let name = text::utf8_or_sjis(name_raw);
-        let node = builder.group(meshes, Some(&key), if name.is_empty() { format!("mesh[{index}]") } else { name });
+        let node = builder.group(
+            meshes,
+            Some(&key),
+            if name.is_empty() {
+                format!("mesh[{index}]")
+            } else {
+                name
+            },
+        );
         builder.field(node, "A", a.to_string());
         builder.field(node, "parentJoint", parent_joint.to_string());
         builder.field(node, "skinned", skinned.to_string());
@@ -671,7 +758,12 @@ struct SubRange {
     material: i32,
 }
 
-fn skip_subs(bytes: &[u8], mut pos: usize, end: usize, sub_count: i32) -> Option<(usize, Vec<SubRange>)> {
+fn skip_subs(
+    bytes: &[u8],
+    mut pos: usize,
+    end: usize,
+    sub_count: i32,
+) -> Option<(usize, Vec<SubRange>)> {
     if sub_count < 0 {
         return None;
     }
@@ -703,7 +795,11 @@ fn skip_subs(bytes: &[u8], mut pos: usize, end: usize, sub_count: i32) -> Option
             let tri = rdr::u32_at(bytes, pos + leaf_size - 12)? & 0xffff;
             let start = rdr::u32_at(bytes, pos + leaf_size - 8)?;
             if tri > 0 {
-                ranges.push(SubRange { start, tri, material });
+                ranges.push(SubRange {
+                    start,
+                    tri,
+                    material,
+                });
             }
             pos += leaf_size;
         }
@@ -733,9 +829,11 @@ fn probe_header(bytes: &[u8], q: usize, end: usize) -> bool {
     if p + 20 + 44 + 52 > end {
         return false;
     }
-    let (Some(parent), Some(sub_count), Some(vtx_total)) =
-        (rdr::i32_at(bytes, p + 4), rdr::i32_at(bytes, p + 12), rdr::i32_at(bytes, p + 16))
-    else {
+    let (Some(parent), Some(sub_count), Some(vtx_total)) = (
+        rdr::i32_at(bytes, p + 4),
+        rdr::i32_at(bytes, p + 12),
+        rdr::i32_at(bytes, p + 16),
+    ) else {
         return false;
     };
     if !(1..=0x400).contains(&sub_count)

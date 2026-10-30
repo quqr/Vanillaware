@@ -51,7 +51,10 @@ pub fn build(bytes: &[u8], tag: &str) -> DocArena {
         "mbs.version",
         "version matches the tag expectation",
         version == profile.version,
-        Some(format!("read 0x{version:02x}, expected 0x{:02x}", profile.version)),
+        Some(format!(
+            "read 0x{version:02x}, expected 0x{:02x}",
+            profile.version
+        )),
     );
 
     let counts = match profile.read_counts(bytes) {
@@ -91,13 +94,7 @@ pub fn build(bytes: &[u8], tag: &str) -> DocArena {
             builder.warn(format!("{name} range {:#x}..{end:#x} exceeds the file", sp));
             builder.mark(group, DocMark::Warn);
         } else if bytes_len > 0 {
-            builder.bytes(
-                group,
-                Some("range"),
-                "range",
-                sp as u64,
-                bytes_len,
-            );
+            builder.bytes(group, Some("range"), "range", sp as u64, bytes_len);
         }
 
         let samples = count.min(3);
@@ -107,7 +104,13 @@ pub fn build(bytes: &[u8], tag: &str) -> DocArena {
                 break;
             }
             let key = format!("rec[{sample}]");
-            builder.bytes(group, Some(key.as_str()), key.clone(), offset, stride as u64);
+            builder.bytes(
+                group,
+                Some(key.as_str()),
+                key.clone(),
+                offset,
+                stride as u64,
+            );
         }
     }
 

@@ -53,14 +53,18 @@ pub fn build(bytes: &[u8]) -> DocArena {
         "ftx.directory",
         "headerSize covers the page directory",
         header_size as usize >= directory_end,
-        Some(format!("headerSize {header_size:#x} / directory ends at {directory_end:#x}")),
+        Some(format!(
+            "headerSize {header_size:#x} / directory ends at {directory_end:#x}"
+        )),
     );
 
     let pages = builder.array(root, Some("pages"), format!("Pages ({page_count})"));
     let shown = page_count.min(MAX_PAGES);
     if page_count > MAX_PAGES {
         builder.truncate();
-        builder.warn(format!("page directory shows the first {MAX_PAGES} of {page_count} pages"));
+        builder.warn(format!(
+            "page directory shows the first {MAX_PAGES} of {page_count} pages"
+        ));
     }
 
     for index in 0..shown {
@@ -72,7 +76,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
         let name = rdr::c_string(name_bytes);
         let key = index.to_string();
         let group = builder.group(pages, Some(key.as_str()), format!("Page {index}"));
-        builder.field(group, "name", if name.is_empty() { "—".into() } else { name });
+        builder.field(
+            group,
+            "name",
+            if name.is_empty() { "—".into() } else { name },
+        );
         builder.field(
             group,
             "u32@0x20",
@@ -99,7 +107,13 @@ pub fn build(bytes: &[u8]) -> DocArena {
             "timestamp",
             rdr::hex(&bytes[base + 0x28..base + 0x2e]),
         );
-        builder.bytes(group, Some("entry"), "directory entry", base as u64, PAGE_STRIDE as u64);
+        builder.bytes(
+            group,
+            Some("entry"),
+            "directory entry",
+            base as u64,
+            PAGE_STRIDE as u64,
+        );
     }
 
     builder.finish()

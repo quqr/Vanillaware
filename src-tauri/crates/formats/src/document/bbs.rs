@@ -81,7 +81,11 @@ pub fn layout(bytes: &[u8]) -> BbsLayoutDto {
             ftx: rdr::u16_at(bytes, at + 2).unwrap_or(0) as u32,
             kind: rdr::u16_at(bytes, at + 4).unwrap_or(0) as u32,
             group: rdr::u16_at(bytes, at + 6).unwrap_or(0) as u32,
-            pos: [raw_f32(bytes, at + 8), raw_f32(bytes, at + 12), raw_f32(bytes, at + 16)],
+            pos: [
+                raw_f32(bytes, at + 8),
+                raw_f32(bytes, at + 12),
+                raw_f32(bytes, at + 16),
+            ],
             rot: raw_f32(bytes, at + 0x1c),
             scale: [raw_f32(bytes, at + 0x20), raw_f32(bytes, at + 0x24)],
             color: rdr::u32_at(bytes, at + 0x2c).unwrap_or(0),
@@ -118,7 +122,11 @@ pub fn layout(bytes: &[u8]) -> BbsLayoutDto {
         routes.push(BbsRouteDto {
             slot: rdr::u16_at(bytes, at).unwrap_or(0),
             local: rdr::u16_at(bytes, at + 2).unwrap_or(0),
-            pos: [raw_f32(bytes, at + 4), raw_f32(bytes, at + 8), raw_f32(bytes, at + 12)],
+            pos: [
+                raw_f32(bytes, at + 4),
+                raw_f32(bytes, at + 8),
+                raw_f32(bytes, at + 12),
+            ],
             kind: rdr::u32_at(bytes, at + 0x10).unwrap_or(0),
             next: rdr::u32_at(bytes, at + 0x14).unwrap_or(0),
         });
@@ -150,7 +158,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let magic = rdr::ascii(&bytes[..4]);
     let header = builder.group(root, Some("header"), "Header");
     builder.field(header, "magic", magic.clone());
-    builder.field(header, "version", rdr::u32_at(bytes, 4).unwrap_or(0).to_string());
+    builder.field(
+        header,
+        "version",
+        rdr::u32_at(bytes, 4).unwrap_or(0).to_string(),
+    );
     builder.field(
         header,
         "headerSize",
@@ -178,7 +190,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
     let offsets = read_offsets(bytes);
     let offset_group = builder.group(root, Some("offsets"), "SegmentOffsets");
     for (index, offset) in offsets.iter().enumerate() {
-        builder.field(offset_group, &format!("seg{index}"), format!("0x{offset:x}"));
+        builder.field(
+            offset_group,
+            &format!("seg{index}"),
+            format!("0x{offset:x}"),
+        );
     }
 
     let monotonic = offsets.windows(2).all(|pair| pair[0] <= pair[1]);
@@ -189,9 +205,10 @@ pub fn build(bytes: &[u8]) -> DocArena {
         Some(format!("{offsets:?}")),
     );
 
-    let rec6_ok = offsets.get(7).zip(offsets.get(6)).is_none_or(|(end, start)| {
-        *end >= *start && *end - *start == counts[6] as u64 * 0x18
-    });
+    let rec6_ok = offsets
+        .get(7)
+        .zip(offsets.get(6))
+        .is_none_or(|(end, start)| *end >= *start && *end - *start == counts[6] as u64 * 0x18);
     builder.check(
         "bbs.rec6",
         "offs[7] − offs[6] == rec6_count × 0x18",
@@ -199,8 +216,24 @@ pub fn build(bytes: &[u8]) -> DocArena {
         Some(format!("offs6={:#x} offs7={:#x}", offsets[6], offsets[7])),
     );
 
-    build_names(&mut builder, root, bytes, offsets[0], counts[0], "mbsNames", "mbs");
-    build_names(&mut builder, root, bytes, offsets[1], counts[1], "ftxNames", "ftx");
+    build_names(
+        &mut builder,
+        root,
+        bytes,
+        offsets[0],
+        counts[0],
+        "mbsNames",
+        "mbs",
+    );
+    build_names(
+        &mut builder,
+        root,
+        bytes,
+        offsets[1],
+        counts[1],
+        "ftxNames",
+        "ftx",
+    );
     build_grades(&mut builder, root, bytes, offsets[2], counts[2]);
     build_objects(&mut builder, root, bytes, offsets[3], counts[3]);
     build_rec4(&mut builder, root, bytes, offsets[4], counts[4]);
@@ -214,10 +247,26 @@ pub fn build(bytes: &[u8]) -> DocArena {
     while end + 16 <= bytes.len() && count < MAX_RECORDS {
         let group = builder.group(tail, Some(&count.to_string()), format!("tail[{count}]"));
         builder.field(group, "value", hex32(bytes, end));
-        builder.field(group, "index", rdr::u16_at(bytes, end + 4).unwrap_or(0).to_string());
-        builder.field(group, "tag", rdr::u16_at(bytes, end + 6).unwrap_or(0).to_string());
-        builder.field(group, "one", rdr::u32_at(bytes, end + 8).unwrap_or(0).to_string());
-        builder.field(group, "zero", rdr::u32_at(bytes, end + 12).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "index",
+            rdr::u16_at(bytes, end + 4).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "tag",
+            rdr::u16_at(bytes, end + 6).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "one",
+            rdr::u32_at(bytes, end + 8).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "zero",
+            rdr::u32_at(bytes, end + 12).unwrap_or(0).to_string(),
+        );
         end += 16;
         count += 1;
     }
@@ -253,7 +302,10 @@ fn read_offsets(bytes: &[u8]) -> [u64; 9] {
 
 fn build_bounds(builder: &mut Builder, bytes: &[u8]) {
     let bounds = builder.group(0, Some("bounds"), "Bounds");
-    for (index, name) in ["bbox", "camera0", "camera1", "camera2", "camera3"].iter().enumerate() {
+    for (index, name) in ["bbox", "camera0", "camera1", "camera2", "camera3"]
+        .iter()
+        .enumerate()
+    {
         let at = 0x40 + index * 0x10;
         builder.field(bounds, name, f32s(bytes, at, 4));
     }
@@ -271,7 +323,11 @@ fn build_lights(builder: &mut Builder, bytes: &[u8]) {
         builder.field(group, "f0", f32_at(bytes, base + 4));
         builder.field(group, "f1", f32_at(bytes, base + 8));
         builder.field(group, "colorA", rdr::hex(&bytes[base + 0x0c..base + 0x1c]));
-        builder.field(group, "kind", rdr::u32_at(bytes, base + 0x1c).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "kind",
+            rdr::u32_at(bytes, base + 0x1c).unwrap_or(0).to_string(),
+        );
         builder.field(group, "f2", f32_at(bytes, base + 0x20));
         builder.field(group, "colorB", rdr::hex(&bytes[base + 0x24..base + 0x34]));
         builder.field(group, "f3", f32_at(bytes, base + 0x34));
@@ -309,7 +365,13 @@ fn build_names(
         };
         let name = slot_utf8(raw);
         let item_key = format!("[{index}]");
-        builder.text(array, &item_key, format!("{prefix}[{index}]"), name, Some(at as u64));
+        builder.text(
+            array,
+            &item_key,
+            format!("{prefix}[{index}]"),
+            name,
+            Some(at as u64),
+        );
     }
 }
 
@@ -317,7 +379,9 @@ fn build_grades(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, cou
     let array = builder.array(root, Some("grades"), "Grades");
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 16;
-        let Some(_) = bytes.get(at..at + 16) else { break };
+        let Some(_) = bytes.get(at..at + 16) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("grade[{index}]"));
         builder.field(group, "gain", f32s(bytes, at, 3));
         let mark = rdr::u32_at(bytes, at + 12).unwrap_or(0);
@@ -333,19 +397,41 @@ fn build_objects(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, co
     let array = builder.array(root, Some("objects"), "Objects");
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x48;
-        let Some(_) = bytes.get(at..at + 0x48) else { break };
+        let Some(_) = bytes.get(at..at + 0x48) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("object[{index}]"));
-        builder.field(group, "mbs", rdr::u16_at(bytes, at).unwrap_or(0).to_string());
-        builder.field(group, "ftx", rdr::u16_at(bytes, at + 2).unwrap_or(0).to_string());
-        builder.field(group, "kind", rdr::u16_at(bytes, at + 4).unwrap_or(0).to_string());
-        builder.field(group, "group", rdr::u16_at(bytes, at + 6).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "mbs",
+            rdr::u16_at(bytes, at).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "ftx",
+            rdr::u16_at(bytes, at + 2).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "kind",
+            rdr::u16_at(bytes, at + 4).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "group",
+            rdr::u16_at(bytes, at + 6).unwrap_or(0).to_string(),
+        );
         builder.field(group, "pos", f32s(bytes, at + 8, 3));
         builder.field(group, "rot", f32_at(bytes, at + 0x1c));
         builder.field(group, "scale", f32s(bytes, at + 0x20, 2));
         builder.field(group, "tint", hex32(bytes, at + 0x28));
         builder.field(group, "color", hex32(bytes, at + 0x2c));
         builder.field(group, "flags", hex32(bytes, at + 0x30));
-        builder.field(group, "priority", rdr::u32_at(bytes, at + 0x34).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "priority",
+            rdr::u32_at(bytes, at + 0x34).unwrap_or(0).to_string(),
+        );
         builder.field(group, "size", f32_at(bytes, at + 0x38));
         builder.field(group, "fade", f32_at(bytes, at + 0x3c));
         builder.field(group, "pivot", f32_at(bytes, at + 0x40));
@@ -360,13 +446,19 @@ fn build_rec4(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("rec4"), "rec4");
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x6c;
-        let Some(_) = bytes.get(at..at + 0x6c) else { break };
+        let Some(_) = bytes.get(at..at + 0x6c) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("rec4[{index}]"));
         builder.field(group, "id", hex32(bytes, at));
         builder.field(group, "quad", quad(bytes, at + 4));
         builder.field(group, "colorsA", rdr::hex(&bytes[at + 0x24..at + 0x34]));
         builder.field(group, "colorsB", rdr::hex(&bytes[at + 0x34..at + 0x44]));
-        builder.field(group, "frames", rdr::u32_at(bytes, at + 0x64).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "frames",
+            rdr::u32_at(bytes, at + 0x64).unwrap_or(0).to_string(),
+        );
         builder.field(group, "dist", f32_at(bytes, at + 0x68));
     }
     if count > MAX_RECORDS {
@@ -378,7 +470,9 @@ fn build_rec5(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("rec5"), "rec5");
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x44;
-        let Some(_) = bytes.get(at..at + 0x44) else { break };
+        let Some(_) = bytes.get(at..at + 0x44) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("rec5[{index}]"));
         builder.field(group, "id", hex32(bytes, at));
         builder.field(group, "params", f32s(bytes, at + 4, 6));
@@ -396,10 +490,20 @@ fn build_rec6(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("rec6"), "rec6");
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x18;
-        let Some(_) = bytes.get(at..at + 0x18) else { break };
+        let Some(_) = bytes.get(at..at + 0x18) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("rec6[{index}]"));
-        builder.field(group, "slot", rdr::u16_at(bytes, at).unwrap_or(0).to_string());
-        builder.field(group, "local", rdr::u16_at(bytes, at + 2).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "slot",
+            rdr::u16_at(bytes, at).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "local",
+            rdr::u16_at(bytes, at + 2).unwrap_or(0).to_string(),
+        );
         builder.field(group, "pos", f32s(bytes, at + 4, 3));
         builder.field(group, "type", hex32(bytes, at + 0x10));
         builder.field(group, "next", hex32(bytes, at + 0x14));
@@ -413,7 +517,9 @@ fn build_rec7(builder: &mut Builder, root: u32, bytes: &[u8], offset: u64, count
     let array = builder.array(root, Some("rec7"), "rec7");
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 0x80;
-        let Some(_) = bytes.get(at..at + 0x80) else { break };
+        let Some(_) = bytes.get(at..at + 0x80) else {
+            break;
+        };
         let group = builder.group(array, Some(&index.to_string()), format!("rec7[{index}]"));
         builder.field(group, "colors", rdr::hex(&bytes[at..at + 0x20]));
         builder.field(group, "id", hex32(bytes, at + 0x20));
@@ -430,7 +536,9 @@ fn names(bytes: &[u8], offset: u64, count: u32) -> Vec<String> {
     let mut out = Vec::new();
     for index in 0..count.min(MAX_RECORDS) {
         let at = offset as usize + index as usize * 32;
-        let Some(raw) = bytes.get(at..at + 32) else { break };
+        let Some(raw) = bytes.get(at..at + 32) else {
+            break;
+        };
         out.push(slot_utf8(raw));
     }
     out

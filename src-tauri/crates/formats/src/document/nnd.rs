@@ -63,7 +63,10 @@ pub fn build(bytes: &[u8]) -> DocArena {
         "nnd.payload",
         "the payload stays inside the file",
         payload_end <= bytes.len() as u64,
-        Some(format!("ends at {payload_end:#x} / file {:#x}", bytes.len())),
+        Some(format!(
+            "ends at {payload_end:#x} / file {:#x}",
+            bytes.len()
+        )),
     );
 
     let units = (word_count / 3) as usize;

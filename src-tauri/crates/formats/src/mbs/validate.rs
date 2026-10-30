@@ -452,7 +452,10 @@ pub fn self_check(quad: &Quad) -> Vec<String> {
             }
             if let Some(src) = &layer.srcquad {
                 if src.len() != 8 {
-                    issues.push(format!("{path}.srcquad has {} components, expected 8", src.len()));
+                    issues.push(format!(
+                        "{path}.srcquad has {} components, expected 8",
+                        src.len()
+                    ));
                 }
             }
             if layer.blend_id < 0 {

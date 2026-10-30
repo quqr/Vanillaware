@@ -31,7 +31,11 @@ pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     let mut truncated = false;
 
     if bytes.len() < 0x10 {
-        return FileGraphDto { nodes, edges, truncated };
+        return FileGraphDto {
+            nodes,
+            edges,
+            truncated,
+        };
     }
 
     let paired = path.with_extension("fms");
@@ -58,7 +62,11 @@ pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     let table_end = 0x10usize + count as usize * ENTRY;
     if table_end > bytes.len() {
         truncated = true;
-        return FileGraphDto { nodes, edges, truncated };
+        return FileGraphDto {
+            nodes,
+            edges,
+            truncated,
+        };
     }
 
     let base = path.parent().unwrap_or_else(|| Path::new("."));
@@ -79,7 +87,11 @@ pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
         let entry_type = rdr::u32_at(bytes, at + 0xb0).unwrap_or(0);
         nodes.push(GraphNodeDto {
             id: entry_id,
-            label: if name.is_empty() { format!("entry[{index}]") } else { name },
+            label: if name.is_empty() {
+                format!("entry[{index}]")
+            } else {
+                name
+            },
             kind: "entry".into(),
             detail: Some(format!(
                 "id={} group={} type=0x{entry_type:x}",
@@ -147,7 +159,11 @@ pub fn graph(bytes: &[u8], path: &Path) -> FileGraphDto {
     if count > MAX_ENTRIES {
         truncated = true;
     }
-    FileGraphDto { nodes, edges, truncated }
+    FileGraphDto {
+        nodes,
+        edges,
+        truncated,
+    }
 }
 
 fn asset_refs(code: &[u8], start: usize, end: usize) -> Vec<(String, usize)> {
@@ -245,13 +261,37 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
         let group = builder.group(entries, Some(&index.to_string()), format!("entry[{index}]"));
         builder.field(group, "name", name);
-        builder.field(group, "id", rdr::u32_at(bytes, at + 0x40).unwrap_or(0).to_string());
-        builder.field(group, "group", rdr::i16_at(bytes, at + 0x60).unwrap_or(0).to_string());
-        builder.field(group, "groupPad", rdr::i16_at(bytes, at + 0x62).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "id",
+            rdr::u32_at(bytes, at + 0x40).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "group",
+            rdr::i16_at(bytes, at + 0x60).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "groupPad",
+            rdr::i16_at(bytes, at + 0x62).unwrap_or(0).to_string(),
+        );
         builder.field(group, "offset", format!("0x{offset:x}"));
-        builder.field(group, "flagA4", rdr::u32_at(bytes, at + 0xa4).unwrap_or(0).to_string());
-        builder.field(group, "flags", format!("0x{:x}", rdr::u32_at(bytes, at + 0xac).unwrap_or(0)));
-        builder.field(group, "type", rdr::u32_at(bytes, at + 0xb0).unwrap_or(0).to_string());
+        builder.field(
+            group,
+            "flagA4",
+            rdr::u32_at(bytes, at + 0xa4).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "flags",
+            format!("0x{:x}", rdr::u32_at(bytes, at + 0xac).unwrap_or(0)),
+        );
+        builder.field(
+            group,
+            "type",
+            rdr::u32_at(bytes, at + 0xb0).unwrap_or(0).to_string(),
+        );
 
         if offset == 0 {
             continue;
@@ -291,7 +331,11 @@ pub fn build(bytes: &[u8]) -> DocArena {
         None,
     );
 
-    let min_offset = all_offsets.iter().filter(|value| **value > 0).min().copied();
+    let min_offset = all_offsets
+        .iter()
+        .filter(|value| **value > 0)
+        .min()
+        .copied();
     if let Some(min) = min_offset {
         builder.check(
             "rsc.payloadStart",

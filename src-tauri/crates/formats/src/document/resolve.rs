@@ -39,7 +39,11 @@ impl Resolver {
     }
 
     fn ensure(&mut self, key: &str) {
-        if self.index.as_ref().is_some_and(|index| index.contains_key(key)) {
+        if self
+            .index
+            .as_ref()
+            .is_some_and(|index| index.contains_key(key))
+        {
             return;
         }
 

@@ -64,11 +64,29 @@ pub fn build(bytes: &[u8]) -> DocArena {
 
     for index in 0..shown {
         let at = data_offset as usize + index as usize * RECORD;
-        let Some(_) = bytes.get(at..at + RECORD) else { break };
-        let group = builder.group(records, Some(&index.to_string()), format!("record[{index}]"));
-        builder.field(group, "flags", format!("0x{:x}", rdr::u32_at(bytes, at).unwrap_or(0)));
-        builder.field(group, "texIndex", rdr::u16_at(bytes, at + 4).unwrap_or(0).to_string());
-        builder.field(group, "unk06", rdr::u16_at(bytes, at + 6).unwrap_or(0).to_string());
+        let Some(_) = bytes.get(at..at + RECORD) else {
+            break;
+        };
+        let group = builder.group(
+            records,
+            Some(&index.to_string()),
+            format!("record[{index}]"),
+        );
+        builder.field(
+            group,
+            "flags",
+            format!("0x{:x}", rdr::u32_at(bytes, at).unwrap_or(0)),
+        );
+        builder.field(
+            group,
+            "texIndex",
+            rdr::u16_at(bytes, at + 4).unwrap_or(0).to_string(),
+        );
+        builder.field(
+            group,
+            "unk06",
+            rdr::u16_at(bytes, at + 6).unwrap_or(0).to_string(),
+        );
 
         for vertex in 0..4usize {
             let base = at + 8 + vertex * 0x18;

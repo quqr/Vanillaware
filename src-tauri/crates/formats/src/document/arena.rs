@@ -127,9 +127,7 @@ impl DocArena {
     pub fn count_field_value(&self, key: &str, value: &str) -> usize {
         self.nodes
             .iter()
-            .filter(|node| {
-                node.key.as_deref() == Some(key) && node.value.as_deref() == Some(value)
-            })
+            .filter(|node| node.key.as_deref() == Some(key) && node.value.as_deref() == Some(value))
             .count()
     }
 
@@ -193,7 +191,8 @@ impl DocArena {
         label: String,
         size: u64,
         build_ms: u32,
-    ) -> DocDto {        DocDto {
+    ) -> DocDto {
+        DocDto {
             handle,
             path,
             ext,
@@ -239,20 +238,39 @@ impl Builder {
     }
 
     pub fn group(&mut self, parent: u32, key: Option<&str>, name: impl Into<String>) -> u32 {
-        self.push(Some(parent), key, name, DocNodeKind::Struct, None, None, None)
+        self.push(
+            Some(parent),
+            key,
+            name,
+            DocNodeKind::Struct,
+            None,
+            None,
+            None,
+        )
     }
 
     pub fn array(&mut self, parent: u32, key: Option<&str>, name: impl Into<String>) -> u32 {
-        self.push(Some(parent), key, name, DocNodeKind::Array, None, None, None)
+        self.push(
+            Some(parent),
+            key,
+            name,
+            DocNodeKind::Array,
+            None,
+            None,
+            None,
+        )
     }
 
-    pub fn field(
-        &mut self,
-        parent: u32,
-        key: &str,
-        value: impl Into<String>,
-    ) -> u32 {
-        self.push(Some(parent), Some(key), key, DocNodeKind::Field, Some(value.into()), None, None)
+    pub fn field(&mut self, parent: u32, key: &str, value: impl Into<String>) -> u32 {
+        self.push(
+            Some(parent),
+            Some(key),
+            key,
+            DocNodeKind::Field,
+            Some(value.into()),
+            None,
+            None,
+        )
     }
 
     pub fn bytes(
@@ -263,7 +281,15 @@ impl Builder {
         offset: u64,
         len: u64,
     ) -> u32 {
-        self.push(Some(parent), key, name, DocNodeKind::Bytes, None, Some(offset), Some(len))
+        self.push(
+            Some(parent),
+            key,
+            name,
+            DocNodeKind::Bytes,
+            None,
+            Some(offset),
+            Some(len),
+        )
     }
 
     pub fn text(
@@ -274,11 +300,27 @@ impl Builder {
         value: impl Into<String>,
         offset: Option<u64>,
     ) -> u32 {
-        self.push(Some(parent), Some(key), name, DocNodeKind::Text, Some(value.into()), offset, None)
+        self.push(
+            Some(parent),
+            Some(key),
+            name,
+            DocNodeKind::Text,
+            Some(value.into()),
+            offset,
+            None,
+        )
     }
 
     pub fn opaque(&mut self, parent: u32, key: &str, name: impl Into<String>) -> u32 {
-        self.push(Some(parent), Some(key), name, DocNodeKind::Opaque, None, None, None)
+        self.push(
+            Some(parent),
+            Some(key),
+            name,
+            DocNodeKind::Opaque,
+            None,
+            None,
+            None,
+        )
     }
 
     pub fn mark(&mut self, id: u32, mark: DocMark) -> &mut Self {

@@ -60,13 +60,20 @@ pub fn build(bytes: &[u8]) -> DocArena {
         let magic = &bytes[pos..pos + 4];
         let size = rdr::u32_at(bytes, pos + 4).unwrap_or(0) as usize;
         if size < 8 || pos + size > bytes.len() {
-            builder.warn(format!("block {} has an invalid size={size}", rdr::ascii(magic)));
+            builder.warn(format!(
+                "block {} has an invalid size={size}",
+                rdr::ascii(magic)
+            ));
             break;
         }
 
         let name = rdr::ascii(magic);
         magic_seq.push(name.clone());
-        let group = builder.group(chunks, Some(&format!("@{pos:x}")), format!("{name} @{pos:#x}"));
+        let group = builder.group(
+            chunks,
+            Some(&format!("@{pos:x}")),
+            format!("{name} @{pos:#x}"),
+        );
         builder.field(group, "size", size.to_string());
         builder.bytes(group, Some("range"), "block range", pos as u64, size as u64);
 
@@ -127,7 +134,13 @@ fn parse_resl(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
             break;
         }
         let key = format!("[{index}]");
-        builder.text(names, &key, format!("name[{index}]"), text::utf8_or_sjis(raw), None);
+        builder.text(
+            names,
+            &key,
+            format!("name[{index}]"),
+            text::utf8_or_sjis(raw),
+            None,
+        );
     }
     if count > MAX_ITEMS {
         builder.truncate();
@@ -243,7 +256,15 @@ fn parse_scnl(builder: &mut Builder, parent: u32, bytes: &[u8], start: usize, en
 
         let key = format!("[{index}]");
         let name = text::utf8_or_sjis(raw);
-        let node = builder.group(entries, Some(&key), if name.is_empty() { format!("entry[{index}]") } else { name });
+        let node = builder.group(
+            entries,
+            Some(&key),
+            if name.is_empty() {
+                format!("entry[{index}]")
+            } else {
+                name
+            },
+        );
         builder.field(node, "gcount", gcount.to_string());
         builder.field(node, "u70", u70.to_string());
         builder.field(node, "u74", u74.to_string());
