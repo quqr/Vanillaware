@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use formats::atlas::Atlas;
-use formats::mbs::quad::{KeyframeLayer, Pad};
+use formats::mbs::quad::{Keyframe, KeyframeLayer, Pad};
 use image::{ImageFormat, RgbaImage};
 
 fn main() -> Result<(), String> {
@@ -42,15 +42,51 @@ fn main() -> Result<(), String> {
         })
         .collect::<Result<_, String>>()?;
 
+    let score = |cell: &Pad<Keyframe>| match cell {
+        Pad::Filled(frame) => frame
+            .layer
+            .iter()
+            .filter_map(|cell| match cell {
+                Pad::Filled(layer) => Some(layer),
+                Pad::Empty(_) => None,
+            })
+            .map(|layer| {
+                let mut low = (f32::MAX, f32::MAX);
+                let mut high = (f32::MIN, f32::MIN);
+                for point in layer.dstquad.chunks_exact(2) {
+                    low = (low.0.min(point[0]), low.1.min(point[1]));
+                    high = (high.0.max(point[0]), high.1.max(point[1]));
+                }
+                (high.0 - low.0).max(0.0) * (high.1 - low.1).max(0.0)
+            })
+            .sum::<f32>(),
+        Pad::Empty(_) => 0.0,
+    };
+
+    for (index, cell) in quad.keyframe.iter().enumerate() {
+        if let Pad::Filled(frame) = cell {
+            let area = score(cell);
+            println!(
+                "keyframe {index}: {} layers, covered {:.0} units^2",
+                frame.layer.len(),
+                area
+            );
+        }
+    }
+
     let index = keyframe.unwrap_or_else(|| {
+        let deepest = quad
+            .keyframe
+            .iter()
+            .filter_map(|cell| match cell {
+                Pad::Filled(frame) => Some(frame.layer.len()),
+                Pad::Empty(_) => None,
+            })
+            .max()
+            .unwrap_or(0);
         quad.keyframe
             .iter()
-            .enumerate()
-            .max_by_key(|(_, cell)| match cell {
-                Pad::Filled(keyframe) => keyframe.layer.len(),
-                Pad::Empty(_) => 0,
-            })
-            .map(|(index, _)| index)
+            .position(|cell| matches!(cell, Pad::Filled(frame) if frame.layer.len() == deepest))
             .unwrap_or(0)
     });
     let Some(Pad::Filled(frame)) = quad.keyframe.get(index) else {
@@ -61,6 +97,28 @@ fn main() -> Result<(), String> {
         frame.name,
         frame.layer.len()
     );
+
+    if std::env::var_os("QUAD_DUMP").is_some() {
+        for (frame_index, cell) in quad.keyframe.iter().enumerate() {
+            let Pad::Filled(frame) = cell else { continue };
+            for (slot, cell) in frame.layer.iter().enumerate() {
+                let Pad::Filled(layer) = cell else { continue };
+                let src = layer.srcquad.clone().unwrap_or_default();
+                let fog = layer
+                    .fogquad
+                    .as_ref()
+                    .map(|fog| match fog {
+                        formats::mbs::v55::FogQuad::One(text) => text.clone(),
+                        formats::mbs::v55::FogQuad::Four(list) => list[0].clone(),
+                    })
+                    .unwrap_or_else(|| "none".to_string());
+                println!(
+                    "DUMP {frame_index} {slot} {:?} dst={:?} src={:?} fog={fog}",
+                    layer.tex_id, layer.dstquad, src
+                );
+            }
+        }
+    }
 
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
