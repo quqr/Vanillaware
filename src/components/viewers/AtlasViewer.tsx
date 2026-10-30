@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useState } from "react";
 import { api, type FileEntry, type FrameList } from "../../lib/ipc";
 import { getFrameUrl } from "../../lib/thumbCache";
@@ -55,7 +56,7 @@ export function AtlasViewer({ entry }: { entry: FileEntry }) {
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="w-36 shrink-0 overflow-auto border-r border-base-300 bg-base-200">
         <div className="p-2 text-[10px] uppercase tracking-wider text-base-content/60">
-          帧（{frames?.count ?? "…"}）
+          {t("atlas.frames", { count: frames?.count ?? "…" })}
         </div>
         <ul className="menu menu-xs w-full p-0">
           {frames?.frames.map((item) => (
@@ -80,7 +81,7 @@ export function AtlasViewer({ entry }: { entry: FileEntry }) {
         {url ? (
           <img className="max-w-full object-contain" src={url} alt={entry.name} />
         ) : (
-          <span className="text-base-content/50">解码中…</span>
+          <span className="text-base-content/50">{t("atlas.decoding")}</span>
         )}
       </div>
     </div>

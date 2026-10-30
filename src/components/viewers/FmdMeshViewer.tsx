@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import type { MeshStandardMaterial } from "three";
 import { api, type FileEntry, type VizScene } from "../../lib/ipc";
@@ -169,7 +170,7 @@ export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
         <span className="badge badge-xs badge-primary">FMD</span>
         <span className="badge badge-xs">mesh {stats.meshes}</span>
         <span className="badge badge-xs">tri {Math.round(stats.triangles)}</span>
-        {data?.truncated && <span className="badge badge-xs badge-warning">已截断</span>}
+        {data?.truncated && <span className="badge badge-xs badge-warning">{t("mesh.truncated")}</span>}
         <label className="ml-auto flex cursor-pointer items-center gap-1">
           <input
             type="checkbox"
@@ -177,20 +178,20 @@ export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
             checked={wireframe}
             onChange={(event) => setWireframe(event.target.checked)}
           />
-          线框
+          {t("mesh.wireframe")}
         </label>
         <button className="btn btn-xs" onClick={() => resetRef.current?.()}>
-          重置视角
+          {t("mesh.resetCamera")}
         </button>
         <button className="btn btn-xs" onClick={() => setEpoch((value) => value + 1)}>
-          重载
+          {t("mesh.reload")}
         </button>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden bg-base-100" ref={mountRef}>
         {!data && !error && (
           <div className="absolute inset-0 flex items-center justify-center font-mono text-sm text-base-content/50">
-            读取网格…
+            {t("mesh.reading")}
           </div>
         )}
         {error && (
@@ -200,7 +201,7 @@ export function FmdMeshViewer({ entry }: { entry: FileEntry }) {
         )}
         {data && stats.meshes === 0 && (
           <div className="absolute inset-0 flex items-center justify-center p-4 text-sm text-base-content/50">
-            该文件没有非空网格
+            {t("mesh.noMeshes")}
           </div>
         )}
       </div>

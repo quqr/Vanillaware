@@ -66,7 +66,7 @@ export function ViewerPanel() {
   if (!selectedPath) {
     return (
       <aside className="flex flex-1 items-center justify-center p-4 text-sm text-base-content/50">
-        未选择文件
+        {t("viewer.noSelection")}
       </aside>
     );
   }
@@ -98,7 +98,7 @@ export function ViewerPanel() {
             className="select select-sm"
             value={tag}
             onChange={(e) => setTag(e.target.value as TagId)}
-            title="解析用的平台标签"
+            title={t("viewer.tagHint")}
           >
             {TAGS.map((id) => (
               <option key={id} value={id}>
@@ -111,7 +111,7 @@ export function ViewerPanel() {
 
       {meta && meta.related.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-base-300 p-1.5 text-[10px]">
-          <span className="text-base-content/50">关联</span>
+          <span className="text-base-content/50">{t("viewer.related")}</span>
           {meta.related.map((file) => (
             <button
               key={file.path}
@@ -130,13 +130,13 @@ export function ViewerPanel() {
 
       {metaPhase === "loading" && (
         <div className="flex flex-1 items-center justify-center p-4 font-mono text-xs text-base-content/50">
-          读取中…
+          {t("viewer.readingMeta")}
         </div>
       )}
 
       {metaPhase === "error" && (
         <div className="m-2 alert alert-error alert-soft text-xs">
-          无法读取该文件的元信息
+          {t("viewer.metaFailed")}
         </div>
       )}
 
@@ -159,7 +159,7 @@ export function ViewerPanel() {
             {(VIEWERS[activeViewer ?? ""] ?? VIEWERS.hex).render(entry, tag)}
             {activeViewer && !VIEWERS[activeViewer] && (
               <div className="p-2 font-mono text-xs text-base-content/60">
-                未知查看器「{activeViewer}」，已退化为十六进制
+                {t("viewer.unknownViewer", { id: activeViewer })}
               </div>
             )}
           </div>
@@ -168,7 +168,7 @@ export function ViewerPanel() {
 
       {metaPhase === "ready" && entry && openedPath !== entry.path && (
         <div className="flex flex-1 items-center justify-center p-4 text-xs text-base-content/50">
-          双击文件打开查看器
+          {t("viewer.doubleClickHint")}
         </div>
       )}
     </aside>

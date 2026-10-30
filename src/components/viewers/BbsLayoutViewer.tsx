@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useState } from "react";
 import { api, type BbsLayout, type FileEntry } from "../../lib/ipc";
 
@@ -31,7 +32,7 @@ export function BbsLayoutViewer({ entry }: { entry: FileEntry }) {
   if (!data) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        读取布局…
+        {t("layout.reading")}
       </div>
     );
   }

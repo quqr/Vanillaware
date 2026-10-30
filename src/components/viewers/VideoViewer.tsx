@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type FileEntry, type UsmVideo } from "../../lib/ipc";
 import { decodeGop, describeError, UnsupportedVideoError, videoDecodable } from "../../lib/videoDecode";
@@ -13,7 +14,7 @@ const PREFETCH_AHEAD = 12;
 
 function withDeadline<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(`${label}超时（${ms} ms 无响应）`)), ms);
+    const timer = window.setTimeout(() => reject(new Error(t("video.timeout", { label, ms }))), ms);
     promise.then(
       (value) => {
         window.clearTimeout(timer);
@@ -30,7 +31,7 @@ function withDeadline<T>(promise: Promise<T>, ms: number, label: string): Promis
 export function VideoViewer({ entry }: { entry: FileEntry }) {
   const [info, setInfo] = useState<UsmVideo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("建立索引…");
+  const [status, setStatus] = useState<string>(t("video.indexing"));
 
   const [frames, setFrames] = useState<Map<number, ImageBitmap>>(() => new Map());
   const [loaded, setLoaded] = useState<GopRange | null>(null);
@@ -59,7 +60,7 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
     let alive = true;
     setInfo(null);
     setError(null);
-    setStatus("建立索引…");
+    setStatus(t("video.indexing"));
     framesRef.current.forEach((bitmap) => bitmap.close());
     framesRef.current = new Map();
     setFrames(framesRef.current);
@@ -111,9 +112,9 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
       const batch: FrameBatchItem[] = [];
       let handedOver = false;
 
-      report("取码流…");
+      report(t("video.fetch"));
       try {
-        const bytes = await withDeadline(api.usmVideoGop(entry.path, gop), 15_000, "取码流");
+        const bytes = await withDeadline(api.usmVideoGop(entry.path, gop), 15_000, t("video.fetch"));
         if (!mine()) return;
         const targetWidth = Math.min(MAX_BITMAP_WIDTH, info.width) || info.width || 640;
         const targetHeight = Math.max(
@@ -136,7 +137,7 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
         setGopStats({ gop, chunks: result.chunks, decoded: result.decoded });
         const lost =
           result.decoded > batch.length
-            ? `解出 ${result.decoded} 帧但只转出 ${batch.length} 张位图`
+            ? t("video.bitmapMismatch", { decoded: result.decoded, bitmaps: batch.length })
             : "";
         const keepFrom = Math.max(0, startFrame - span);
         const merged = mergeFrameBatch(framesRef.current, batch, keepFrom);
@@ -148,7 +149,7 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
         setStatus(result.warning ?? lost);
         if (gop === 0) {
           const first = batch.find((item) => item.index === startFrame) ?? batch[0];
-          setHint(first && isNearBlack(first.bitmap) ? "第 1 帧是黑场（影片淡入），往后拖有画面" : "");
+          setHint(first && isNearBlack(first.bitmap) ? t("video.firstFrameBlack") : "");
         }
       } catch (e) {
         report(e instanceof UnsupportedVideoError ? e.message : describeError(e));
@@ -337,19 +338,19 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
             </span>
             <span className="badge badge-xs">{info.fps.toFixed(2)} fps</span>
             <span className="badge badge-xs">{formatTime(info.durationMs / 1000)}</span>
-            <span className="badge badge-xs badge-ghost">{info.frames} 帧</span>
-            <span className="badge badge-xs badge-ghost">{info.keyframes.length} 关键帧</span>
-            <span className="badge badge-xs badge-ghost">音频 {info.audio}</span>
+            <span className="badge badge-xs badge-ghost">{t("video.frames", { count: info.frames })}</span>
+            <span className="badge badge-xs badge-ghost">{t("video.keyframes", { count: info.keyframes.length })}</span>
+            <span className="badge badge-xs badge-ghost">{t("video.audio", { audio: info.audio })}</span>
             <span className="badge badge-xs badge-ghost">
               {(info.streamBytes / (1024 * 1024)).toFixed(1)} MB
             </span>
           </>
         ) : (
-          <span className="text-base-content/50">{status || "读取中…"}</span>
+          <span className="text-base-content/50">{status || t("common.loading")}</span>
         )}
         {status && info && <span className="badge badge-xs badge-warning">{status}</span>}
         {!videoDecodable() && (
-          <span className="badge badge-xs badge-warning">WebView 无 WebCodecs，无法出画面</span>
+          <span className="badge badge-xs badge-warning">{t("video.noWebCodecs")}</span>
         )}
       </div>
 
@@ -360,7 +361,7 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
             <span
               className={`max-w-full text-xs ${status ? "text-warning" : "text-base-content/50"}`}
             >
-              {status || (info ? "没有解码出画面" : "")}
+              {status || (info ? t("video.noPicture") : "")}
             </span>
             {status && info && (
               <button
@@ -370,7 +371,7 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
                   void loadGop(gopOf(current));
                 }}
               >
-                重试
+                {t("common.retry")}
               </button>
             )}
           </div>
@@ -395,18 +396,18 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
             className="btn btn-sm btn-primary"
             disabled={!info}
             onClick={() => setPlaying((value) => !value)}
-            title="空格"
+            title={t("video.space")}
           >
-            {playing ? "暂停" : "播放"}
+            {playing ? t("common.pause") : t("common.play")}
           </button>
           <button className="btn btn-sm" disabled={!info} onClick={() => seek(current - 1)}>
-            上一帧
+            {t("video.prevFrame")}
           </button>
           <button className="btn btn-sm" disabled={!info} onClick={() => seek(current + 1)}>
-            下一帧
+            {t("video.nextFrame")}
           </button>
           <button className="btn btn-sm" disabled={!info} onClick={() => seek(0)}>
-            回到开头
+            {t("video.toStart")}
           </button>
           <span className="font-mono text-[11px] text-base-content/60">
             {current + 1} / {info?.frames ?? 0} · {formatTime(current / Math.max(1, info?.fps ?? 30))}
@@ -415,9 +416,9 @@ export function VideoViewer({ entry }: { entry: FileEntry }) {
             <span className="ml-auto font-mono text-[10px] text-base-content/40">
               GOP {loaded.gop} · {loaded.start}..{loaded.end - 1}
               {gopStats && gopStats.gop === loaded.gop
-                ? ` · 送包 ${gopStats.chunks} · 解出 ${gopStats.decoded}`
+                ? t("video.gopStats", { chunks: gopStats.chunks, decoded: gopStats.decoded })
                 : ""}
-              {` · 缓存 ${frames.size} 帧`}
+              {t("video.cache", { count: frames.size })}
             </span>
           )}
           {hint && <span className="text-[10px] text-base-content/40">{hint}</span>}

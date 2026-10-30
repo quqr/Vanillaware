@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type Content, type ContentSection, type FileEntry } from "../../lib/ipc";
@@ -33,7 +34,7 @@ export function ContentViewer({ entry }: { entry: FileEntry }) {
   if (!content) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        解析内容…
+        {t("content.parsing")}
       </div>
     );
   }
@@ -49,11 +50,11 @@ export function ContentViewer({ entry }: { entry: FileEntry }) {
         {content.image && (
           <div className="border-b border-base-300 p-2">
             <div className="mb-1 text-[10px] text-base-content/50">
-              {content.imageNote ?? "位图（白 = 1）"}
+              {content.imageNote ?? t("content.bitmap")}
             </div>
             <img
               src={content.image}
-              alt="内容位图"
+              alt={t("content.bitmapAlt")}
               className="max-w-full bg-base-100 [image-rendering:pixelated]"
               style={{ imageRendering: "pixelated" }}
             />
@@ -141,7 +142,7 @@ function SeriesView({ series }: { series: NonNullable<Content["series"]> }) {
     <div className="border-b border-base-300 p-2">
       <div className="mb-1 flex items-center gap-1 text-[10px]">
         <span className="badge badge-xs">{series.label}</span>
-        <span className="text-base-content/50">{series.points.length} 点</span>
+        <span className="text-base-content/50">{t("content.points", { count: series.points.length })}</span>
         {series.note && <span className="text-base-content/40">{series.note}</span>}
       </div>
       <canvas ref={ref} className="block h-[120px] w-full" />
@@ -161,8 +162,8 @@ function SourceView({ lines }: { lines: string[] }) {
   return (
     <div className="border-b border-base-300">
       <div className="flex items-center gap-1 p-1.5 text-[10px]">
-        <span className="badge badge-xs">文本</span>
-        <span className="text-base-content/50">{lines.length} 行</span>
+        <span className="badge badge-xs">{t("content.tabText")}</span>
+        <span className="text-base-content/50">{t("content.lines", { count: lines.length })}</span>
       </div>
       <div ref={ref} className="h-96 overflow-auto bg-base-100">
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -218,7 +219,7 @@ function SectionView({
           </button>
         ))}
         <span className="ml-auto text-[10px] text-base-content/40">
-          共 {section.total} 行{section.rows.length < section.total ? "（已截断）" : ""}
+          {t("content.totalLines", { total: section.total })}{section.rows.length < section.total ? t("content.truncatedSuffix") : ""}
         </span>
       </div>
 

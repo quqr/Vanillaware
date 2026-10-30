@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type FileEntry, type FmsText } from "../../lib/ipc";
@@ -46,7 +47,7 @@ export function FmsTableViewer({ entry }: { entry: FileEntry }) {
   if (!data) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        读取文本表…
+        {t("fms.reading")}
       </div>
     );
   }
@@ -59,7 +60,7 @@ export function FmsTableViewer({ entry }: { entry: FileEntry }) {
         <span className="badge badge-xs">match {strings.length}</span>
         <input
           className="input input-xs ml-auto w-56"
-          placeholder="过滤文本…"
+          placeholder={t("fms.filter")}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />

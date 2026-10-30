@@ -236,7 +236,7 @@ async function runAttempt(
         if (failure || conversion) return;
         onFrame(videoFrame);
         decoded += 1;
-        if (decoded % 5 === 0) stage(`出帧 ${decoded}/${packets.length}（${strategy}）…`);
+        if (decoded % 5 === 0) stage(`decoded ${decoded}/${packets.length} (${strategy})…`);
       } catch (error) {
         conversion = conversion ?? error;
       } finally {
@@ -263,11 +263,11 @@ async function runAttempt(
     if (strategy === "avcC") {
       config.description = buildAvcC(hexToBytes(info.sps), hexToBytes(info.pps));
     }
-    stage(`配置 ${info.codec}（${strategy}）…`);
+    stage(`configuring ${info.codec} (${strategy})…`);
     try {
       decoder.configure(config);
     } catch (error) {
-      return fail(`配置失败：${describeError(error)}`, false);
+      return fail(`configure failed: ${describeError(error)}`, false);
     }
 
     for (const [index, packet] of packets.entries()) {
@@ -280,10 +280,10 @@ async function runAttempt(
         decoder.decode(chunk);
         chunks += 1;
       } catch (error) {
-        return fail(`第 ${index} 帧送包失败：${describeError(error)}`, false);
+        return fail(`feeding frame ${index} failed: ${describeError(error)}`, false);
       }
       if (index === 0 || (index + 1) % 10 === 0) {
-        stage(`送包 ${index + 1}/${packets.length}（${strategy}）…`);
+        stage(`fed ${index + 1}/${packets.length} (${strategy})…`);
       }
       if ((index + 1) % 16 === 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -291,19 +291,19 @@ async function runAttempt(
       if (conversion) break;
     }
 
-    stage(`等待解码器出帧（${strategy}）…`);
+    stage(`waiting for output (${strategy})…`);
     const flushed = await waitOrTimeout(decoder.flush(), FLUSH_MS);
-    const stateText = `state=${decoder.state}，队列=${decoder.decodeQueueSize ?? "?"}，已出帧=${decoded}`;
-    if (flushed.error) return fail(`flush 失败：${describeError(flushed.error)}`, true);
-    if (conversion) return fail(`转画面失败：${describeError(conversion)}`, false);
-    if (failure) return fail(`解码报错：${describeError(failure)}`, true);
+    const stateText = `state=${decoder.state}, queued=${decoder.decodeQueueSize ?? "?"}, emitted=${decoded}`;
+    if (flushed.error) return fail(`flush failed: ${describeError(flushed.error)}`, true);
+    if (conversion) return fail(`converting a frame failed: ${describeError(conversion)}`, false);
+    if (failure) return fail(`decoder error: ${describeError(failure)}`, true);
     if (flushed.timedOut) {
       if (!decoded) {
         return {
           ok: false,
           chunks,
           decoded: 0,
-          reason: `${FLUSH_MS} ms 内没有出任何画面（${stateText}）`,
+          reason: `no picture within ${FLUSH_MS} ms (${stateText})`,
           warning: null,
           retryable: true,
         };
@@ -313,7 +313,7 @@ async function runAttempt(
         chunks,
         decoded,
         reason: "",
-        warning: `flush 超时，只拿到 ${decoded}/${chunks} 帧（${stateText}）`,
+        warning: `flush timed out, only ${decoded}/${chunks} frames (${stateText})`,
         retryable: false,
       };
     }
@@ -322,7 +322,7 @@ async function runAttempt(
         ok: false,
         chunks,
         decoded: 0,
-        reason: `零输出（${chunks} 个 chunk）`,
+        reason: `no output (${chunks} chunks)`,
         warning: null,
         retryable: true,
       };
@@ -349,34 +349,34 @@ export async function decodeGop(
 
   const ctor = decoderCtor();
   if (!ctor) {
-    throw new UnsupportedVideoError("当前 WebView 不支持 WebCodecs 视频解码");
+    throw new UnsupportedVideoError("this WebView has no WebCodecs video decoding");
   }
   const sps = hexToBytes(info.sps);
   const pps = hexToBytes(info.pps);
   if (sps.length < 4 || pps.length < 1) {
     throw new UnsupportedVideoError(
-      `索引里没有可用的 SPS/PPS（sps=${sps.length} B / pps=${pps.length} B）`,
+      `the index carries no usable SPS/PPS (sps=${sps.length} B / pps=${pps.length} B)`,
     );
   }
   const packets = splitFrames(stream);
   if (!packets.length) {
-    throw new UnsupportedVideoError("GOP 里没有切出任何帧");
+    throw new UnsupportedVideoError("no frame could be split out of this GOP");
   }
   const ChunkCtor = (globalThis as Record<string, unknown>).EncodedVideoChunk as
     | (new (init: Record<string, unknown>) => unknown)
     | undefined;
   if (!ChunkCtor) {
-    throw new UnsupportedVideoError("当前 WebView 缺少 EncodedVideoChunk");
+    throw new UnsupportedVideoError("this WebView has no EncodedVideoChunk");
   }
 
   if (typeof ctor.isConfigSupported === "function") {
-    stage("探测解码能力…");
+    stage("probing decode support…");
     const probe = await waitOrTimeout(
       ctor.isConfigSupported({ codec: info.codec, description: buildAvcC(sps, pps) }),
       CONFIG_CHECK_MS,
     );
     if (!probe.timedOut && probe.value && probe.value.supported === false) {
-      throw new UnsupportedVideoError(`当前 WebView 不支持 ${info.codec} 解码`);
+      throw new UnsupportedVideoError(`this WebView cannot decode ${info.codec}`);
     }
   }
 
@@ -400,12 +400,12 @@ export async function decodeGop(
         strategy,
       };
     }
-    failures.push(`${strategy}：${attempt.reason}`);
+    failures.push(`${strategy}: ${attempt.reason}`);
     if (!attempt.retryable) break;
   }
 
   throw new UnsupportedVideoError(
-    `视频解码失败（${info.codec} / ${info.width}×${info.height}）：${failures.join("；")}` +
-      "。两条路径都没出画面，多半是这台机器的 WebView 没有可用的 H.264 解码器",
+    `video decoding failed (${info.codec} / ${info.width}×${info.height}): ${failures.join("; ")}` +
+      ". neither path produced a picture, so this machine likely has no H.264 decoder available",
   );
 }

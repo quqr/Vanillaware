@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import type { DocMark, DocNode, DocPage } from "../../lib/ipc";
 
 const MARK_BADGE: Record<DocMark, string> = {
@@ -30,7 +31,7 @@ export function DocTree({
   onMore: (node: DocNode) => void;
 }) {
   if (depth > 63) {
-    return <div className="py-0.5 text-base-content/40">… 深度上限</div>;
+    return <div className="py-0.5 text-base-content/40">{t("docTree.depthLimit")}</div>;
   }
 
   return (
@@ -51,7 +52,7 @@ export function DocTree({
                 className="w-3 shrink-0 text-left text-base-content/40 disabled:opacity-0"
                 onClick={() => onToggle(node)}
                 disabled={!container}
-                aria-label={open ? "折叠" : "展开"}
+                aria-label={open ? t("docTree.collapse") : t("docTree.expand")}
               >
                 {container ? (open ? "▾" : "▸") : " "}
               </button>
@@ -96,7 +97,7 @@ export function DocTree({
                     disabled={loading.has(node.id)}
                     onClick={() => onMore(node)}
                   >
-                    加载更多（{page.total - page.items.length}）
+                    {t("docTree.loadMore", { count: page.total - page.items.length })}
                   </button>
                 )}
               </>
@@ -104,7 +105,7 @@ export function DocTree({
 
             {open && !page && loading.has(node.id) && (
               <div className="py-0.5 text-base-content/40" style={{ paddingLeft: 4 + (depth + 1) * 12 }}>
-                读取中…
+                {t("common.loading")}
               </div>
             )}
           </div>

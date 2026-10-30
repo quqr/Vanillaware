@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type Asm, type FileEntry } from "../../lib/ipc";
@@ -95,7 +96,7 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
   if (!data) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        {busy ? "解析模块…" : "无内容"}
+        {busy ? t("asm.parsingModule") : t("common.empty")}
       </div>
     );
   }
@@ -110,7 +111,7 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
             <li key={fn.index}>
               <button
                 className={fn.index === data.selected ? "menu-active" : ""}
-                title={`${fn.ret} ${fn.name}(${fn.params}) · ${fn.bytecode} 指令`}
+                title={`${fn.ret} ${fn.name}(${fn.params}) · ${t("asm.instructions", { count: fn.bytecode })}`}
                 onClick={() => pick(fn.index)}
               >
                 <span className="truncate">{fn.name || `func[${fn.index}]`}</span>
@@ -132,16 +133,16 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
               className={`btn btn-xs join-item ${mode === "asm" ? "btn-active" : ""}`}
               onClick={() => setMode("asm")}
             >
-              指令
+              {t("asm.tabInstructions")}
             </button>
             <button
               className={`btn btn-xs join-item ${mode === "pseudo" ? "btn-active" : ""}`}
               onClick={showPseudo}
             >
-              伪代码
+              {t("asm.tabPseudo")}
             </button>
           </div>
-          {busy && <span className="text-base-content/50">读取中…</span>}
+          {busy && <span className="text-base-content/50">{t("common.loading")}</span>}
         </div>
 
         {mode === "asm" ? (
@@ -168,7 +169,7 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
           </div>
         ) : (
           <pre className="min-h-0 flex-1 overflow-auto p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap">
-            {pseudo ?? (busy ? "生成中…" : "无内容")}
+            {pseudo ?? (busy ? t("asm.generating") : t("common.empty"))}
           </pre>
         )}
       </div>

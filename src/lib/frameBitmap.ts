@@ -24,11 +24,11 @@ export function createFrameBitmapConverter(
   return (frame: VideoFrame): ImageBitmap => {
     if (!canvas || !context) {
       if (typeof OffscreenCanvas !== "function") {
-        throw new Error("当前 WebView 没有 OffscreenCanvas，无法把 VideoFrame 转成画面");
+        throw new Error("this WebView has no OffscreenCanvas, a VideoFrame cannot become a picture");
       }
       canvas = new OffscreenCanvas(targetWidth, targetHeight);
       const created = canvas.getContext("2d");
-      if (!created) throw new Error("无法取得 OffscreenCanvas 的 2D 上下文");
+      if (!created) throw new Error("cannot obtain the OffscreenCanvas 2D context");
       context = created;
     }
     context.clearRect(0, 0, targetWidth, targetHeight);

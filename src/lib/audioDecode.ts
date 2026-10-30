@@ -106,7 +106,7 @@ export async function decodeClip(clip: AudioClip, data: ArrayBuffer): Promise<De
   if (clip.codec === "lopus") {
     return decodeOpus(clip, data);
   }
-  throw new UnsupportedAudioError(`未知编码 ${clip.codec}`);
+  throw new UnsupportedAudioError(`unknown codec ${clip.codec}`);
 }
 
 function decodePcm(clip: AudioClip, data: ArrayBuffer): DecodedAudio {
@@ -133,18 +133,18 @@ function decodePcm(clip: AudioClip, data: ArrayBuffer): DecodedAudio {
 async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAudio> {
   const ctor = audioDecoderCtor();
   if (!ctor) {
-    throw new UnsupportedAudioError("当前 WebView 不支持 WebCodecs 音频解码");
+    throw new UnsupportedAudioError("this WebView has no WebCodecs audio decoding");
   }
   const channels = Math.max(1, clip.channels);
   const stride = clip.stride;
   if (!stride) {
-    throw new UnsupportedAudioError("lopus 缺少帧步长");
+    throw new UnsupportedAudioError("lopus is missing the frame stride");
   }
   const packets = new Uint8Array(data);
   const capped = Math.floor((MAX_CLIP_SECONDS * 1_000_000) / OPUS_PACKET_MICROS);
   const count = Math.min(Math.floor(packets.length / stride), capped);
   if (!count) {
-    throw new UnsupportedAudioError("lopus 没有可解码的包");
+    throw new UnsupportedAudioError("lopus has no decodable packet");
   }
 
   const total = count * OPUS_PACKET_SAMPLES;
@@ -188,7 +188,7 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
       | (new (init: Record<string, unknown>) => unknown)
       | undefined;
     if (!ChunkCtor) {
-      throw new UnsupportedAudioError("当前 WebView 缺少 EncodedAudioChunk");
+      throw new UnsupportedAudioError("this WebView has no EncodedAudioChunk");
     }
     for (let index = 0; index < count; index += 1) {
       const chunk = new ChunkCtor({
@@ -206,11 +206,11 @@ async function decodeOpus(clip: AudioClip, data: ArrayBuffer): Promise<DecodedAu
   }
 
   if (failure) {
-    throw new UnsupportedAudioError(`Opus 解码失败：${String(failure)}`);
+    throw new UnsupportedAudioError(`Opus decoding failed: ${String(failure)}`);
   }
   if (written === 0) {
     throw new UnsupportedAudioError(
-      `Opus 解码没有产出样本（${count} 包 / 解码器输出 ${outputs} 帧）`,
+      `Opus decoding produced no samples (${count} packets / ${outputs} frames from the decoder)`,
     );
   }
 

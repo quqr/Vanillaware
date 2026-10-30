@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Texture } from "pixi.js";
 import { api, type Scene, type SceneAnimation, type SceneAttach, type SceneLayer } from "../../lib/ipc";
@@ -154,7 +155,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
         playheadRef.current.dirty = true;
       })
       .catch((error: unknown) => {
-        setTextureError((previous) => previous ?? `纹理 ${texId} 加载失败：${String(error)}`);
+        setTextureError((previous) => previous ?? t("scene.textureLoad", { texId, error: String(error) }));
       })
       .finally(() => inflightTexRef.current.delete(texId));
 
@@ -440,7 +441,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   if (!path) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        选择一个 .mbs 文件
+        {t("scene.pickMbs")}
       </div>
     );
   }
@@ -448,7 +449,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   if (loading && !scene) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        解析中…
+        {t("scene.parsing")}
       </div>
     );
   }
@@ -459,7 +460,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
 
   if (!scene)
     return (
-      <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">无内容</div>
+      <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">{t("common.empty")}</div>
     );
 
   const total = hud.frames;
@@ -485,25 +486,25 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           className="select select-xs"
           value={skeletonIndex}
           onChange={(event) => selectSkeleton(Number(event.target.value))}
-          title={`骨架（${scene.skeletons.length}）`}
+          title={t("scene.skeletonGroup", { count: scene.skeletons.length })}
         >
           {scene.skeletons.map((item, index) => (
             <option key={index} value={index}>
-              {item.name || `骨架 ${index}`} · {item.bones.length} 骨
+              {item.name || t("scene.skeletonName", { index })} · {t("scene.bones", { count: item.bones.length })}
             </option>
           ))}
         </select>
 
         <button className="btn btn-xs" onClick={togglePlay} disabled={total === 0}>
-          {playing ? "暂停" : "播放"}
+          {playing ? t("common.pause") : t("common.play")}
         </button>
-        <button className="btn btn-xs" onClick={() => seek(hud.frame - 1)} title="上一帧">
+        <button className="btn btn-xs" onClick={() => seek(hud.frame - 1)} title={t("video.prevFrame")}>
           ◀
         </button>
         <button
           className="btn btn-xs"
           onClick={() => seek(Math.min(total - 1, hud.frame + 1))}
-          title="下一帧"
+          title={t("video.nextFrame")}
         >
           ▶
         </button>
@@ -512,7 +513,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           className="select select-xs"
           value={speed}
           onChange={(event) => setSpeed(Number(event.target.value))}
-          title="播放速度"
+          title={t("scene.speed")}
         >
           {[0.25, 0.5, 1, 2, 4].map((value) => (
             <option key={value} value={value}>
@@ -523,7 +524,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
 
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-base-content/60">
-          {hud.frame + 1}/{total} · t{hud.time} · {hud.bones} 骨 · loop {loopId}
+          {t("scene.hud", { frame: hud.frame + 1, total, time: hud.time, bones: hud.bones, loop: loopId })}
         </span>
       </div>
 
@@ -546,7 +547,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           )}
           {textureError && (
             <span className="badge badge-sm badge-error" title={textureError}>
-              纹理失败
+              {t("scene.textureFailed")}
             </span>
           )}
         </div>
@@ -574,7 +575,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
             <div
               className="absolute inset-y-0 w-px bg-warning"
               style={{ left: `${(loopId / total) * 100}%` }}
-              title="循环起点"
+              title={t("scene.loopStart")}
             />
           )}
           <div
@@ -586,20 +587,20 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
 
       <details className="collapse collapse-arrow shrink-0 border-t border-base-300 bg-base-200">
         <summary className="collapse-title font-mono text-xs text-base-content/60">
-          图层 {currentLayers.length} · 调试
+          {t("scene.layers", { count: currentLayers.length })}
         </summary>
         <div className="collapse-content">
           {currentLayers.length === 0 && (
-            <div className="font-mono text-xs text-base-content/50">本帧没有贴图图层</div>
+            <div className="font-mono text-xs text-base-content/50">{t("scene.noLayers")}</div>
           )}
           {currentLayers.map((layer, index) => (
             <LayerRow key={index} index={index} layer={layer} />
           ))}
 
           <div className="mt-2 border-t border-base-300 pt-1.5">
-            <ToggleRow label="命中框" checked={showHitbox} onChange={setShowHitbox} />
-            <ToggleRow label="四边形描边" checked={showOutline} onChange={setShowOutline} />
-            <ToggleRow label="应用雾色" checked={applyTint} onChange={setApplyTint} />
+            <ToggleRow label={t("scene.hitbox")} checked={showHitbox} onChange={setShowHitbox} />
+            <ToggleRow label={t("scene.outline")} checked={showOutline} onChange={setShowOutline} />
+            <ToggleRow label={t("scene.tint")} checked={applyTint} onChange={setApplyTint} />
           </div>
         </div>
       </details>

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Mesh, MeshStandardMaterial, Object3D, Texture } from "three";
 import { api, type FileEntry, type VizMesh, type VizReference, type VizScene } from "../../lib/ipc";
@@ -5,12 +6,12 @@ import { buildMesh, loadPageTextures } from "../../lib/meshScene";
 import { useLibraryStore } from "../../store/libraryStore";
 
 const ROLE_LABEL: Record<string, string> = {
-  model: "模型",
-  texture: "纹理",
-  animation: "动画",
-  audio: "音频",
-  script: "脚本",
-  text: "文本",
+  model: "kind.model",
+  texture: "kind.texture",
+  animation: "kind.animation",
+  audio: "kind.audio",
+  script: "kind.script",
+  text: "kind.text",
 };
 
 export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
@@ -242,7 +243,7 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
         <span className="badge badge-xs">mesh {stats.meshes}</span>
         <span className="badge badge-xs">tri {Math.round(stats.triangles)}</span>
         <span className="badge badge-xs">ref {stats.refs}</span>
-        {data?.truncated && <span className="badge badge-xs badge-warning">已截断</span>}
+        {data?.truncated && <span className="badge badge-xs badge-warning">{t("common.truncated")}</span>}
         <label className="ml-auto flex cursor-pointer items-center gap-1">
           <input
             type="checkbox"
@@ -250,24 +251,24 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
             checked={wireframe}
             onChange={(event) => setWireframe(event.target.checked)}
           />
-          线框
+          {t("scene.wireframe")}
         </label>
         <button className="btn btn-xs" onClick={() => resetRef.current?.()}>
-          重置视角
+          {t("scene.resetCamera")}
         </button>
         <button className="btn btn-xs" onClick={() => setEpoch((value) => value + 1)}>
-          重载
+          {t("scene.reload")}
         </button>
       </div>
 
       {references.length > 0 && (
         <div className="flex flex-none flex-wrap items-center gap-1 border-b border-base-300 bg-base-100 px-1.5 py-1 font-mono text-[10px]">
-          <span className="text-base-content/50">引用</span>
+          <span className="text-base-content/50">{t("scene.references")}</span>
           {references.map(({ reference, count }) => (
             <button
               key={`${reference.role}|${reference.path}`}
               className={`btn btn-xs ${reference.status === "resolved" ? "btn-outline" : "btn-disabled"}`}
-              title={reference.status === "resolved" ? reference.path : `缺失：${reference.path}`}
+              title={reference.status === "resolved" ? reference.path : t("common.missing", { path: reference.path })}
               disabled={reference.status !== "resolved"}
               onClick={() => select(reference.path)}
             >
@@ -282,7 +283,7 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
       <div className="relative min-h-0 flex-1 overflow-hidden bg-base-100" ref={mountRef}>
         {!data && !error && (
           <div className="absolute inset-0 flex items-center justify-center font-mono text-sm text-base-content/50">
-            组装场景…
+            {t("scene.assembling")}
           </div>
         )}
         {error && (
@@ -292,7 +293,7 @@ export function OsbSceneViewer({ entry }: { entry: FileEntry }) {
         )}
         {data && stats.meshes === 0 && (
           <div className="absolute inset-0 flex items-center justify-center p-4 text-sm text-base-content/50">
-            只解析到资源引用，没有可渲染网格（可在「结构」中查看引用）
+            {t("scene.noMeshes")}
           </div>
         )}
       </div>

@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useState } from "react";
 import { api, type FileEntry } from "../../lib/ipc";
 
@@ -38,7 +39,7 @@ export function HexViewer({ entry }: { entry: FileEntry }) {
   if (!bytes) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        读取中…
+        {t("common.loading")}
       </div>
     );
   }
@@ -56,7 +57,7 @@ export function HexViewer({ entry }: { entry: FileEntry }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex-none border-b border-base-300 p-1.5 font-mono text-[10px] text-base-content/50">
-        头部 {bytes.length} 字节（上限 {HEAD_BYTES}）· 文件共 {entry.size} 字节
+        {t("hex.head", { bytes: bytes.length, limit: HEAD_BYTES, size: entry.size })}
       </div>
       <pre className="min-h-0 flex-1 overflow-auto bg-base-100 p-2 font-mono text-[11px] leading-snug">
         {rows.join("\n")}

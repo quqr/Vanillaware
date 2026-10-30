@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useMemo, useState } from "react";
 import { api, type FileEntry, type GraphNode, type FileGraph } from "../../lib/ipc";
 import { useLibraryStore } from "../../store/libraryStore";
@@ -6,8 +7,8 @@ const WIDTH = 760;
 const ROW = 30;
 
 const EXTERNAL_LABEL: Record<string, string> = {
-  text: "文本表",
-  loads: "资源",
+  text: "graph.kind.text",
+  loads: "graph.kind.loads",
 };
 
 export function RefGraphViewer({ entry }: { entry: FileEntry }) {
@@ -54,7 +55,7 @@ export function RefGraphViewer({ entry }: { entry: FileEntry }) {
   if (!data) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        读取引用图…
+        {t("graph.reading")}
       </div>
     );
   }
@@ -92,19 +93,19 @@ export function RefGraphViewer({ entry }: { entry: FileEntry }) {
         <span className="badge badge-xs">script {scripts}</span>
         <span className="badge badge-xs">edge {data.edges.length}</span>
         {externals.length > 0 && <span className="badge badge-xs">ref {externals.length}</span>}
-        {data.truncated && <span className="badge badge-xs badge-warning">已截断</span>}
+        {data.truncated && <span className="badge badge-xs badge-warning">{t("common.truncated")}</span>}
       </div>
 
       {externals.length > 0 && (
         <div className="flex flex-none flex-wrap items-center gap-1 border-b border-base-300 bg-base-100 px-1.5 py-1 font-mono text-[10px]">
-          <span className="text-base-content/50">跨文件</span>
+          <span className="text-base-content/50">{t("graph.crossFile")}</span>
           {externals.map(({ node, label, count }) => {
             const resolved = node.status === "resolved";
             return (
               <button
                 key={node.id}
                 className={`btn btn-xs ${resolved ? "btn-outline" : "btn-disabled"}`}
-                title={resolved ? node.path ?? node.label : `缺失：${node.path ?? node.label}`}
+                title={resolved ? node.path ?? node.label : t("common.missing", { path: node.path ?? node.label })}
                 disabled={!resolved}
                 onClick={() => node.path && select(node.path)}
               >
@@ -176,7 +177,7 @@ export function RefGraphViewer({ entry }: { entry: FileEntry }) {
                   strokeWidth={1}
                 />
                 <text x={6} y={15} className="fill-base-content font-mono text-[10px]">
-                  {node.kind === "file" ? "文件 " : ""}
+                  {node.kind === "file" ? t("graph.file") : ""}
                   {truncate(node.label, node.kind === "file" ? 22 : 28)}
                 </text>
               </g>

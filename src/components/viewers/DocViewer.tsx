@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type DocNode, type DocOpen, type DocPage, type FileEntry } from "../../lib/ipc";
 import { DocTree } from "./DocTree";
@@ -100,7 +101,7 @@ export function DocViewer({ entry, tag }: { entry: FileEntry; tag: string }) {
   if (busy && !open) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        构建文档树…
+        {t("doc.building")}
       </div>
     );
   }
@@ -110,7 +111,7 @@ export function DocViewer({ entry, tag }: { entry: FileEntry; tag: string }) {
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-4">
         <div className="alert alert-error alert-soft text-sm break-all">{error}</div>
         <button className="btn btn-sm" onClick={() => setEpoch((value) => value + 1)}>
-          重新打开
+          {t("doc.reopen")}
         </button>
       </div>
     );
@@ -119,7 +120,7 @@ export function DocViewer({ entry, tag }: { entry: FileEntry; tag: string }) {
   if (!open) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        无内容
+        {t("common.empty")}
       </div>
     );
   }
@@ -140,13 +141,13 @@ export function DocViewer({ entry, tag }: { entry: FileEntry; tag: string }) {
           <span className="badge badge-xs">nodes {doc.totalNodes}</span>
           <span className="badge badge-xs">{doc.buildMs} ms</span>
           <span className={`badge badge-xs ${doc.complete ? "badge-success" : "badge-warning"}`}>
-            {doc.complete ? "闭合" : "截断"}
+            {doc.complete ? t("doc.closed") : t("doc.truncated")}
           </span>
           {doc.checks.length > 0 && (
             <span
               className={`badge badge-xs ${passed === doc.checks.length ? "badge-success" : "badge-error"}`}
               title={doc.checks
-                .map((check) => `${check.ok ? "✓" : "✗"} ${check.label}${check.detail ? `：${check.detail}` : ""}`)
+                .map((check) => `${check.ok ? "OK" : "FAIL"} ${check.label}${check.detail ? `: ${check.detail}` : ""}`)
                 .join("\n")}
             >
               check {passed}/{doc.checks.length}
@@ -172,7 +173,7 @@ export function DocViewer({ entry, tag }: { entry: FileEntry; tag: string }) {
             onMore={more}
           />
         ) : (
-          <div className="text-base-content/40">根节点无子项</div>
+          <div className="text-base-content/40">{t("doc.noChildren")}</div>
         )}
       </div>
     </div>

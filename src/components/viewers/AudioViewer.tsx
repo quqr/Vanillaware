@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type AudioBundle, type AudioClip, type FileEntry } from "../../lib/ipc";
@@ -77,7 +78,7 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
       if (!alive) return;
       setClip(info);
       if (!info.stride && info.codec === "lopus") {
-        throw new UnsupportedAudioError("lopus 缺少帧步长");
+        throw new UnsupportedAudioError(t("audio.missingStride"));
       }
       const data = await api.audioClipData(entry.path, selected);
       if (!alive) return;
@@ -249,7 +250,7 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
   if (!bundle) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
-        读取音频容器…
+        {t("audio.readingContainer")}
       </div>
     );
   }
@@ -262,13 +263,13 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
         <div className="flex flex-none flex-col gap-1 border-b border-base-300 p-1.5">
           <input
             className="input input-xs w-full"
-            placeholder="过滤 cue / id"
+            placeholder={t("audio.filter")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
           <div className="flex flex-wrap items-center gap-1 text-[10px]">
             <span className="badge badge-xs">{bundle.container.toUpperCase()}</span>
-            <span className="badge badge-xs">{bundle.tracks.length} 条</span>
+            <span className="badge badge-xs">{t("audio.trackCount", { count: bundle.tracks.length })}</span>
             {bundle.codecs.map((item) => (
               <span key={item.codec} className="badge badge-xs badge-ghost">
                 {item.codec} × {item.count}
@@ -316,15 +317,15 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
               <span className="badge badge-xs">{clip.sampleRate} Hz</span>
               <span className="badge badge-xs">{clip.channels} ch</span>
               <span className="badge badge-xs">{formatTime(clip.durationMs / 1000)}</span>
-              {clip.stride > 0 && <span className="badge badge-xs badge-ghost">包 {clip.stride} B</span>}
+              {clip.stride > 0 && <span className="badge badge-xs badge-ghost">{t("audio.packetSize", { size: clip.stride })}</span>}
               {clip.skip > 0 && <span className="badge badge-xs badge-ghost">skip {clip.skip}</span>}
             </>
           ) : (
-            <span className="text-base-content/50">未选择轨道</span>
+            <span className="text-base-content/50">{t("audio.noTrack")}</span>
           )}
           {busy && <span className="loading loading-spinner loading-xs" />}
           {!opusDecodable() && (
-            <span className="badge badge-xs badge-warning">WebView 无 WebCodecs，Opus 不可播</span>
+            <span className="badge badge-xs badge-warning">{t("audio.noWebCodecs")}</span>
           )}
         </div>
 
@@ -344,7 +345,7 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
             )}
             {!decoded && (
               <div className="absolute inset-0 flex items-center justify-center text-[11px] text-base-content/50">
-                {busy ? "解码中…" : (clipError ?? "无波形")}
+                {busy ? t("audio.decoding") : (clipError ?? t("audio.noWaveform"))}
               </div>
             )}
           </div>
@@ -354,9 +355,9 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
               className="btn btn-sm btn-primary"
               disabled={!decoded}
               onClick={togglePlay}
-              title="空格"
+              title={t("video.space")}
             >
-              {playing ? "暂停" : "播放"}
+              {playing ? t("common.pause") : t("common.play")}
             </button>
             <button
               className="btn btn-sm"
@@ -366,14 +367,14 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
                 setPosition(0);
               }}
             >
-              回到开头
+              {t("audio.toStart")}
             </button>
             <span className="font-mono text-[11px] text-base-content/60">
               {formatTime(position)} / {formatTime(decoded?.durationSec ?? 0)}
             </span>
             {decoded && decoded.skipped > 0 && (
               <span className="font-mono text-[10px] text-base-content/40">
-                已裁 {decoded.skipped} 前导样本
+                {t("audio.trimmed", { count: decoded.skipped })}
               </span>
             )}
           </div>
@@ -389,7 +390,7 @@ export function AudioViewer({ entry }: { entry: FileEntry }) {
           {bundle.external.length > 0 && (
             <details className="mt-1">
               <summary className="cursor-pointer text-base-content/50">
-                外部 AWB（{bundle.external.length}）
+                {t("audio.externalAwb", { count: bundle.external.length })}
               </summary>
               <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-base-content/50">
                 {bundle.external.map((path) => (

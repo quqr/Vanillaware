@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useState } from "react";
 import type { FileEntry } from "../../lib/ipc";
 import { ScenePlayer } from "./ScenePlayer";
@@ -16,14 +17,14 @@ export function AnimationViewer({ entry, tag }: { entry: FileEntry; tag: string 
           className={`tab ${mode === "play" ? "tab-active" : ""}`}
           onClick={() => setMode("play")}
         >
-          播放
+          {t("common.play")}
         </button>
         <button
           role="tab"
           className={`tab ${mode === "structure" ? "tab-active" : ""}`}
           onClick={() => setMode("structure")}
         >
-          结构
+          {t("viewer.doc")}
         </button>
       </div>
 
