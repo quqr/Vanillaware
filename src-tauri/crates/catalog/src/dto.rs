@@ -33,6 +33,8 @@ impl From<&Format> for FormatDto {
 pub struct DirEntryDto {
     pub path: String,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<Kind>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

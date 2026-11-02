@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use tauri::State;
 use tauri::ipc::Response;
 
@@ -13,7 +11,7 @@ pub async fn audio_bundle(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<AudioBundleDto, String> {
-    let target = PathBuf::from(&path);
+    let target = super::real_path(&state, &path)?;
     let service = state.audio.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -64,7 +62,7 @@ pub async fn audio_clip_info(
     path: String,
     index: u32,
 ) -> Result<AudioClipDto, String> {
-    let target = PathBuf::from(&path);
+    let target = super::real_path(&state, &path)?;
     let service = state.audio.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -82,7 +80,7 @@ pub async fn audio_clip_data(
     path: String,
     index: u32,
 ) -> Result<Response, String> {
-    let target = PathBuf::from(&path);
+    let target = super::real_path(&state, &path)?;
     let service = state.audio.clone();
 
     let bytes = tokio::task::spawn_blocking(move || {

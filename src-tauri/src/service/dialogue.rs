@@ -49,10 +49,12 @@ impl DialogueService {
 
         {
             let guard = self.pool.lock().map_err(|error| error.to_string())?;
-            if let Some(entry) = guard.as_ref() {
-                if entry.path == path && entry.size == size && entry.mtime_ms == mtime_ms {
-                    return Ok(Some(entry.pool.clone()));
-                }
+            if let Some(entry) = guard.as_ref()
+                && entry.path == path
+                && entry.size == size
+                && entry.mtime_ms == mtime_ms
+            {
+                return Ok(Some(entry.pool.clone()));
             }
         }
 

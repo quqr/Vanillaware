@@ -8,6 +8,9 @@ pub mod mbs;
 pub mod primitives;
 pub mod raster;
 pub mod rsc;
+pub mod source;
+
+pub use source::{DiskSource, Source};
 
 #[derive(Debug)]
 pub enum Error {

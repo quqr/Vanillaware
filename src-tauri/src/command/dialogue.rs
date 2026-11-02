@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use tauri::State;
 
 use crate::model::dialogue::{
@@ -12,7 +10,7 @@ pub async fn dialogue_open(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<DialogueDto, String> {
-    let target = PathBuf::from(&path);
+    let target = super::real_path(&state, &path)?;
     let service = state.dialogue.clone();
 
     tokio::task::spawn_blocking(move || {

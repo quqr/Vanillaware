@@ -12,11 +12,17 @@ use crate::state::AppState;
 #[tauri::command]
 pub async fn list_frames(state: State<'_, AppState>, path: String) -> Result<FrameListDto, String> {
     let cache = state.cache.clone();
-    let source = PathBuf::from(&path);
+    let mount = state.mount.clone();
+    let key = path.clone();
 
     let infos = tokio::task::spawn_blocking(move || -> Result<Vec<TextureInfo>, String> {
-        let infos = formats::ftx::probe_file(&source).map_err(err_string)?;
-        cache.ensure_meta(&source, &infos).map_err(err_string)?;
+        let stat = mount.stat(&key).map_err(err_string)?;
+        let stamp = media::cache::Stamp::new(stat.size, stat.mtime_ms);
+        let bytes = mount.read(&key).map_err(err_string)?;
+        let infos = formats::ftx::probe_bytes(&bytes).map_err(err_string)?;
+        cache
+            .ensure_meta(&PathBuf::from(&key), stamp, &infos)
+            .map_err(err_string)?;
         Ok(infos)
     })
     .await
@@ -58,8 +64,8 @@ pub async fn get_atlas_png(
     let _guard = lock.lock().await;
 
     let cache = state.cache.clone();
+    let mount = state.mount.clone();
     let decode_sem = state.decode_sem.clone();
-    let source = PathBuf::from(&path);
 
     let permit = decode_sem
         .clone()
@@ -67,18 +73,23 @@ pub async fn get_atlas_png(
         .await
         .map_err(|e| format!("semaphore closed: {e}"))?;
 
-    let bytes = tokio::task::spawn_blocking(move || {
+    let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let _permit = permit;
-        let container = formats::atlas::sibling_container(&source)?
-            .ok_or_else(|| formats::Error::BadData("no texture container with the same name".to_string()))?;
+        let container = mount
+            .sibling_container(&path)
+            .ok_or_else(|| "no texture container with the same name".to_string())?;
+        let stat = mount.stat(&container).map_err(err_string)?;
+        let stamp = media::cache::Stamp::new(stat.size, stat.mtime_ms);
+        let raw = mount.read(&container).map_err(err_string)?;
         let index = tex_id as usize;
-        cache.ensure_png_full(&container, index, || {
-            formats::ftx::decode_file_frame(&container, index)
-        })
+        cache
+            .ensure_png_full(&PathBuf::from(&container), stamp, index, || {
+                formats::ftx::decode_bytes_frame(&raw, index)
+            })
+            .map_err(err_string)
     })
     .await
-    .map_err(|e| format!("join error: {e}"))?
-    .map_err(err_string)?;
+    .map_err(|e| format!("join error: {e}"))??;
 
     Ok(Response::new(bytes))
 }

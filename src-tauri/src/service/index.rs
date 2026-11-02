@@ -58,7 +58,7 @@ impl IndexService {
         }
     }
 
-    pub fn start(&self, root: &Path) {
+    pub fn start(&self, root: &Path, mount: Arc<vfs::Mount>) {
         let generation = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
 
         let cancel = Arc::new(AtomicBool::new(false));
@@ -74,11 +74,17 @@ impl IndexService {
 
         std::thread::spawn(move || {
             let progress_slot = slot.clone();
-            let result = catalog::build_index(&root_path, &cancel, move |count| {
+            let progress = move |count: u32| {
                 if let Ok(mut guard) = progress_slot.lock() {
                     guard.status.count = count;
                 }
-            });
+            };
+
+            let result = if vfs::is_archive_path(&root_path.to_string_lossy()) {
+                vfs::index_archive(&mount, &root_path.to_string_lossy())
+            } else {
+                vfs::build_index(&mount, &root_path, &cancel, progress)
+            };
 
             if generation_handle.load(Ordering::Relaxed) != generation {
                 return;

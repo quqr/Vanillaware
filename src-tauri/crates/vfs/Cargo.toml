@@ -1,0 +1,19 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+edition = "2021"
+description = "Mounts CPK archives as virtual subdirectories so one path string addresses both disk and archive contents."
+publish = false
+
+[dependencies]
+archive = { path = "../archive" }
+catalog = { path = "../catalog" }
+formats = { path = "../formats" }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[example]]
+name = "mount_probe"
+path = "tests/tools/mount_probe.rs"

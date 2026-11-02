@@ -76,6 +76,10 @@ pub struct FrameDto {
     pub attach: Option<AttachDto>,
     pub color: Option<String>,
     pub matrix: Vec<f64>,
+    pub matrix_mix: i64,
+    pub quad_mix: i64,
+    pub in_rate: i64,
+    pub transform: Vec<f64>,
 }
 
 #[derive(Debug, Serialize)]

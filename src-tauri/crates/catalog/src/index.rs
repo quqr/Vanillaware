@@ -75,11 +75,7 @@ pub fn build(
             continue;
         };
 
-        entries.push(IndexEntry::new(
-            fslist::normalize(path),
-            name,
-            format,
-        ));
+        entries.push(IndexEntry::new(fslist::normalize(path), name, format));
 
         since_report += 1;
         if since_report >= PROGRESS_INTERVAL {

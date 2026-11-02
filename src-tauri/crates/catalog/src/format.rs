@@ -13,7 +13,7 @@ pub enum Kind {
     Grid,
     Audio,
     Video,
-    Binary,
+    Archive,
 }
 
 impl Kind {
@@ -29,7 +29,7 @@ impl Kind {
             Kind::Grid => "grid",
             Kind::Audio => "audio",
             Kind::Video => "video",
-            Kind::Binary => "binary",
+            Kind::Archive => "archive",
         }
     }
 
@@ -49,7 +49,7 @@ impl Kind {
             Kind::Grid => "Grid",
             Kind::Audio => "Audio",
             Kind::Video => "Video",
-            Kind::Binary => "Binary",
+            Kind::Archive => "Archive",
         }
     }
 }
@@ -63,13 +63,15 @@ pub struct Format {
     pub has_thumb: bool,
 }
 
-const DOC_HEX: &[&str] = &["doc", "hex"];
 const GRAPH_DOC_HEX: &[&str] = &["graph", "doc", "hex"];
 const ANIMATION_DOC_HEX: &[&str] = &["animation", "doc", "hex"];
 const ATLAS_DOC_HEX: &[&str] = &["atlas", "doc", "hex"];
 const AUDIO_DOC_HEX: &[&str] = &["audio", "doc", "hex"];
 const VIDEO_DOC_HEX: &[&str] = &["video", "doc", "hex"];
 const CONTENT_DOC_HEX: &[&str] = &["content", "doc", "hex"];
+
+const FIELD_DOC_HEX: &[&str] = &["field", "doc", "hex"];
+const ARCHIVE_DOC_HEX: &[&str] = &["overview", "doc", "hex"];
 
 pub const FORMATS: &[Format] = &[
     Format {
@@ -209,14 +211,14 @@ pub const FORMATS: &[Format] = &[
         ext: "ufb",
         kind: Kind::Scene,
         label: "UFB",
-        viewers: CONTENT_DOC_HEX,
+        viewers: FIELD_DOC_HEX,
         has_thumb: false,
     },
     Format {
         ext: "ucb",
         kind: Kind::Grid,
         label: "UCB",
-        viewers: CONTENT_DOC_HEX,
+        viewers: FIELD_DOC_HEX,
         has_thumb: false,
     },
     Format {
@@ -263,9 +265,9 @@ pub const FORMATS: &[Format] = &[
     },
     Format {
         ext: "cpk",
-        kind: Kind::Binary,
+        kind: Kind::Archive,
         label: "CPK",
-        viewers: DOC_HEX,
+        viewers: ARCHIVE_DOC_HEX,
         has_thumb: false,
     },
     Format {

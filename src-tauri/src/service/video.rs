@@ -15,12 +15,11 @@ impl VideoService {
 
     pub fn open(&self, path: &Path) -> Result<Arc<UsmIndex>, String> {
         let key = path.to_string_lossy().to_lowercase();
-        if let Ok(guard) = self.last.lock() {
-            if let Some((cached, index)) = guard.as_ref() {
-                if *cached == key {
-                    return Ok(index.clone());
-                }
-            }
+        if let Ok(guard) = self.last.lock()
+            && let Some((cached, index)) = guard.as_ref()
+            && *cached == key
+        {
+            return Ok(index.clone());
         }
         let index = Arc::new(open(path).map_err(|error| error.to_string())?);
         if let Ok(mut guard) = self.last.lock() {

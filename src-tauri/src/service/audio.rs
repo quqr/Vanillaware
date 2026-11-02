@@ -17,13 +17,13 @@ impl AudioService {
 
     pub fn open(&self, path: &Path) -> Result<Arc<AudioBundle>, AudioError> {
         let key = path.to_string_lossy().to_lowercase();
-        if let Ok(mut entries) = self.entries.lock() {
-            if let Some(position) = entries.iter().position(|(cached, _)| *cached == key) {
-                let hit = entries.remove(position);
-                let bundle = hit.1.clone();
-                entries.push(hit);
-                return Ok(bundle);
-            }
+        if let Ok(mut entries) = self.entries.lock()
+            && let Some(position) = entries.iter().position(|(cached, _)| *cached == key)
+        {
+            let hit = entries.remove(position);
+            let bundle = hit.1.clone();
+            entries.push(hit);
+            return Ok(bundle);
         }
 
         let bundle = Arc::new(if is_awb(path) {

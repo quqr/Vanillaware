@@ -34,18 +34,17 @@ impl ParseCache {
         }
     }
 
-    pub fn load(&self, path: &Path, tag: &str) -> Result<Arc<LoadedMbs>, String> {
-        let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    pub fn load(
+        &self,
+        path: &Path,
+        stamp: media::cache::Stamp,
+        tag: &str,
+    ) -> Result<Arc<LoadedMbs>, String> {
         let key = ParseKey {
             path: catalog::normalize(path).to_lowercase(),
             tag: tag.to_string(),
-            size: metadata.len(),
-            mtime_ms: metadata
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0),
+            size: stamp.size,
+            mtime_ms: stamp.mtime_ms,
         };
 
         {

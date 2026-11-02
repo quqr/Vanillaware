@@ -2,8 +2,8 @@ use catalog::format;
 use catalog::index::*;
 
 fn entry(name: &str) -> IndexEntry {
-    let entry_format = format::lookup(name.rsplit('.').next().unwrap_or_default())
-        .unwrap_or(&format::FORMATS[0]);
+    let entry_format =
+        format::lookup(name.rsplit('.').next().unwrap_or_default()).unwrap_or(&format::FORMATS[0]);
     IndexEntry::new(format!("C:\\x\\{name}"), name.to_string(), entry_format)
 }
 

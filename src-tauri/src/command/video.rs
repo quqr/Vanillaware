@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use tauri::State;
 use tauri::ipc::Response;
 
@@ -11,7 +9,7 @@ pub async fn usm_video_info(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<UsmVideoDto, String> {
-    let target = PathBuf::from(&path);
+    let target = super::real_path(&state, &path)?;
     let service = state.video.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -54,7 +52,7 @@ pub async fn usm_video_gop(
     path: String,
     gop: u32,
 ) -> Result<Response, String> {
-    let target = PathBuf::from(&path);
+    let target = super::real_path(&state, &path)?;
     let service = state.video.clone();
 
     let bytes = tokio::task::spawn_blocking(move || {

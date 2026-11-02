@@ -18,7 +18,11 @@ pub fn run() {
             std::fs::create_dir_all(&cache_root)?;
             eprintln!("[vanillaware] thumbnail cache: {}", cache_root.display());
 
-            app.manage(AppState::new(cache_root));
+            let archive_root = config::archive_root(app.handle())?;
+            std::fs::create_dir_all(&archive_root)?;
+            eprintln!("[vanillaware] archive cache: {}", archive_root.display());
+
+            app.manage(AppState::new(cache_root, archive_root));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -56,6 +60,13 @@ pub fn run() {
             command::animation::export_quad,
             command::cache::get_cache_info,
             command::cache::clear_thumb_cache,
+            command::archive::archive_summary,
+            command::archive::archive_export,
+            command::archive::archive_materialize,
+            command::archive::archive_cache_info,
+            command::archive::archive_cache_clear,
+            command::field::field_maps,
+            command::field::field_render,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

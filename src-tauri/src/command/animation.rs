@@ -13,10 +13,11 @@ pub async fn preview_scene(
     path: String,
     tag: String,
 ) -> Result<SceneDto, String> {
-    let source = PathBuf::from(&path);
+    let source = super::real_path(&state, &path)?;
+    let stamp = super::stamp(&state, &path)?;
     let cache = state.parse_cache();
     tokio::task::spawn_blocking(move || {
-        let loaded = cache.load(&source, &tag)?;
+        let loaded = cache.load(&source, stamp, &tag)?;
         Ok(loaded.scene(&source, &tag))
     })
     .await
@@ -29,10 +30,11 @@ pub async fn convert_mbs(
     path: String,
     tag: String,
 ) -> Result<ConvertDto, String> {
-    let source = PathBuf::from(&path);
+    let source = super::real_path(&state, &path)?;
+    let stamp = super::stamp(&state, &path)?;
     let cache = state.parse_cache();
     tokio::task::spawn_blocking(move || {
-        let loaded = cache.load(&source, &tag)?;
+        let loaded = cache.load(&source, stamp, &tag)?;
         let self_check = formats::mbs::self_check(&loaded.quad);
         let quad = serde_json::to_value(&loaded.quad).map_err(err_string)?;
 
@@ -54,11 +56,12 @@ pub async fn export_quad(
     tag: String,
     out_path: String,
 ) -> Result<u64, String> {
-    let source = PathBuf::from(&path);
+    let source = super::real_path(&state, &path)?;
+    let stamp = super::stamp(&state, &path)?;
     let target = PathBuf::from(&out_path);
     let cache = state.parse_cache();
     tokio::task::spawn_blocking(move || {
-        let loaded = cache.load(&source, &tag)?;
+        let loaded = cache.load(&source, stamp, &tag)?;
         let json = serde_json::to_vec_pretty(&loaded.quad).map_err(err_string)?;
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(err_string)?;

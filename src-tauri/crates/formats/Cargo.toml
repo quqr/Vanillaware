@@ -12,6 +12,7 @@ texture2ddecoder = "0.1"
 encoding_rs = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+walkdir = "2"
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }

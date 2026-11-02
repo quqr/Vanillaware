@@ -9,11 +9,13 @@ use media::ThumbCache;
 
 use crate::config;
 use crate::service::{
-    AudioService, DialogueService, DocCache, IndexService, ParseCache, VideoService,
+    AsmCache, AudioService, DialogueService, DocCache, FieldCache, IndexService, ParseCache,
+    VideoService,
 };
 
 pub struct AppState {
     pub cache: Arc<ThumbCache>,
+    pub mount: Arc<vfs::Mount>,
     pub decode_sem: Arc<Semaphore>,
     pub inflight: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     pub doc_sem: Arc<Semaphore>,
@@ -23,12 +25,15 @@ pub struct AppState {
     index: IndexService,
     parse: ParseCache,
     doc: DocCache,
+    asm: AsmCache,
+    field: FieldCache,
 }
 
 impl AppState {
-    pub fn new(cache_root: PathBuf) -> Self {
+    pub fn new(cache_root: PathBuf, archive_root: PathBuf) -> Self {
         Self {
             cache: Arc::new(ThumbCache::new(cache_root)),
+            mount: Arc::new(vfs::Mount::new(Some(archive_root))),
             decode_sem: Arc::new(Semaphore::new(config::DECODE_PERMITS)),
             doc_sem: Arc::new(Semaphore::new(config::DOC_PERMITS)),
             inflight: Arc::new(Mutex::new(HashMap::new())),
@@ -38,6 +43,8 @@ impl AppState {
             index: IndexService::new(),
             parse: ParseCache::new(),
             doc: DocCache::new(),
+            asm: AsmCache::new(),
+            field: FieldCache::new(),
         }
     }
 
@@ -49,6 +56,14 @@ impl AppState {
         self.doc.clone()
     }
 
+    pub fn asm_cache(&self) -> AsmCache {
+        self.asm.clone()
+    }
+
+    pub fn field_cache(&self) -> FieldCache {
+        self.field.clone()
+    }
+
     pub fn index_status(&self) -> IndexStatusDto {
         self.index.status()
     }
@@ -58,7 +73,7 @@ impl AppState {
     }
 
     pub fn start_index(&self, root: &Path) {
-        self.index.start(root);
+        self.index.start(root, self.mount.clone());
     }
 
     pub fn inflight_lock(&self, key: &str) -> Arc<tokio::sync::Mutex<()>> {

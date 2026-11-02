@@ -1,0 +1,13 @@
+[package]
+name = "archive"
+version = "0.1.0"
+edition = "2021"
+description = "CRI CPK reader: 16-byte table container, @UTF table, TOC and CRILAYLA. Deliberately does not depend on formats."
+publish = false
+
+[dependencies]
+encoding_rs = "0.8"
+
+[[example]]
+name = "cpk_probe"
+path = "tests/tools/cpk_probe.rs"

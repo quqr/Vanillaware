@@ -94,5 +94,8 @@ fn derived_output_directory_indexes_to_nothing() {
     let entries = build_index(&dir, &cancel, |_| {}).unwrap();
     eprintln!("index {} took {:?}", dir.display(), t.elapsed());
     eprintln!("index entries under {}: {}", dir.display(), entries.len());
-    assert!(entries.is_empty(), "a directory of .quad.json files must catalogue nothing");
+    assert!(
+        entries.is_empty(),
+        "a directory of .quad.json files must catalogue nothing"
+    );
 }

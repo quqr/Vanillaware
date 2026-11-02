@@ -22,6 +22,11 @@ tokio = { version = "1", features = ["sync"] }
 catalog = { path = "crates/catalog" }
 media = { path = "crates/media" }
 formats = { path = "crates/formats" }
+vfs = { path = "crates/vfs" }
+archive = { path = "crates/archive" }
+
+[dev-dependencies]
+tempfile = "3"
 
 [workspace]
 resolver = "2"

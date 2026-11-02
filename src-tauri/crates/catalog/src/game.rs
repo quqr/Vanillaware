@@ -86,13 +86,19 @@ fn scan_markers(dir: &Path, uo: &mut u32, ts: &mut u32, evidence: &mut Vec<Strin
     for marker in UO_DIRS {
         if dir.join(marker).is_dir() {
             *uo += 50;
-            push_evidence(evidence, format!("{marker}/ exists under {}", dir.display()));
+            push_evidence(
+                evidence,
+                format!("{marker}/ exists under {}", dir.display()),
+            );
         }
     }
     for marker in TS_DIRS {
         if dir.join(marker).is_dir() {
             *ts += 50;
-            push_evidence(evidence, format!("{marker}/ exists under {}", dir.display()));
+            push_evidence(
+                evidence,
+                format!("{marker}/ exists under {}", dir.display()),
+            );
         }
     }
 }
@@ -101,11 +107,17 @@ fn scan_basename(dir: &Path, uo: &mut u32, ts: &mut u32, evidence: &mut Vec<Stri
     let Some(name) = dir.file_name().and_then(|name| name.to_str()) else {
         return;
     };
-    if UO_DIRS.iter().any(|marker| name.eq_ignore_ascii_case(marker)) {
+    if UO_DIRS
+        .iter()
+        .any(|marker| name.eq_ignore_ascii_case(marker))
+    {
         *uo += 20;
         push_evidence(evidence, format!("directory is named {name}"));
     }
-    if TS_DIRS.iter().any(|marker| name.eq_ignore_ascii_case(marker)) {
+    if TS_DIRS
+        .iter()
+        .any(|marker| name.eq_ignore_ascii_case(marker))
+    {
         *ts += 20;
         push_evidence(evidence, format!("directory is named {name}"));
     }
@@ -119,7 +131,11 @@ fn scan_extensions(dir: &Path, uo: &mut u32, ts: &mut u32, evidence: &mut Vec<St
     let mut uo_hit = false;
     let mut ts_hit = false;
     for entry in read.flatten().take(256) {
-        if !entry.file_type().map(|file| file.is_file()).unwrap_or(false) {
+        if !entry
+            .file_type()
+            .map(|file| file.is_file())
+            .unwrap_or(false)
+        {
             continue;
         }
         let ext = entry
@@ -144,7 +160,10 @@ fn scan_extensions(dir: &Path, uo: &mut u32, ts: &mut u32, evidence: &mut Vec<St
         push_evidence(evidence, format!("asb/bbs found under {}", dir.display()));
     }
     if ts_hit {
-        push_evidence(evidence, format!("osb/ctb/rsc/fmd/fsb found under {}", dir.display()));
+        push_evidence(
+            evidence,
+            format!("osb/ctb/rsc/fmd/fsb found under {}", dir.display()),
+        );
     }
 }
 

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use tauri::State;
 use tauri::ipc::Response;
 
@@ -9,18 +7,18 @@ use super::{decode_frame_png, err_string};
 use crate::state::AppState;
 
 #[tauri::command]
-pub async fn list_dir(path: String) -> Result<DirListingDto, String> {
-    let dir = PathBuf::from(&path);
-    tokio::task::spawn_blocking(move || catalog::list_dir(&dir))
+pub async fn list_dir(state: State<'_, AppState>, path: String) -> Result<DirListingDto, String> {
+    let mount = state.mount.clone();
+    tokio::task::spawn_blocking(move || mount.list(&path))
         .await
         .map_err(|e| format!("join error: {e}"))?
         .map_err(err_string)
 }
 
 #[tauri::command]
-pub async fn file_meta(path: String) -> Result<FileMetaDto, String> {
-    let target = PathBuf::from(&path);
-    tokio::task::spawn_blocking(move || catalog::file_meta(&target))
+pub async fn file_meta(state: State<'_, AppState>, path: String) -> Result<FileMetaDto, String> {
+    let mount = state.mount.clone();
+    tokio::task::spawn_blocking(move || mount.file_meta(&path))
         .await
         .map_err(|e| format!("join error: {e}"))?
         .map_err(err_string)
@@ -33,16 +31,15 @@ pub fn list_formats() -> Vec<FormatDto> {
 
 #[tauri::command]
 pub async fn detect_profile(root: String) -> Result<GameProfileDto, String> {
-    tokio::task::spawn_blocking(move || {
-        catalog::detect_game(std::path::Path::new(&root))
-    })
-    .await
-    .map_err(|e| format!("join error: {e}"))
+    tokio::task::spawn_blocking(move || catalog::detect_game(std::path::Path::new(&root)))
+        .await
+        .map_err(|e| format!("join error: {e}"))
 }
 
 #[tauri::command]
 pub async fn file_thumb(state: State<'_, AppState>, path: String) -> Result<Response, String> {
-    let format = catalog::format::lookup(&catalog::fslist::extension(std::path::Path::new(&path)))
+    let ext = catalog::fslist::extension(std::path::Path::new(&path));
+    let format = catalog::format::lookup(&ext)
         .ok_or_else(|| "extension is not in the format registry".to_string())?;
 
     if !format.has_thumb {
@@ -53,10 +50,14 @@ pub async fn file_thumb(state: State<'_, AppState>, path: String) -> Result<Resp
 }
 
 #[tauri::command]
-pub async fn read_file_head(path: String, max_bytes: u32) -> Result<Response, String> {
-    let target = PathBuf::from(&path);
+pub async fn read_file_head(
+    state: State<'_, AppState>,
+    path: String,
+    max_bytes: u32,
+) -> Result<Response, String> {
+    let mount = state.mount.clone();
     let max = max_bytes.clamp(1, 64 * 1024) as usize;
-    let bytes = tokio::task::spawn_blocking(move || catalog::read_head(&target, max))
+    let bytes = tokio::task::spawn_blocking(move || mount.read_head(&path, max))
         .await
         .map_err(|e| format!("join error: {e}"))?
         .map_err(err_string)?;

@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, UNIX_EPOCH};
+use std::time::Instant;
 
 use formats::document::{DocArena, DocDto, DocPageDto};
 
@@ -69,19 +69,21 @@ impl DocCache {
         }
     }
 
-    pub fn open(&self, path: &Path, tag: Option<&str>) -> Result<(u64, Arc<CachedDoc>), String> {
-        let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
-        let ext = catalog::fslist::extension(path);
+    pub fn open(
+        &self,
+        path: &str,
+        bytes: &[u8],
+        size: u64,
+        mtime_ms: u64,
+        tag: Option<&str>,
+    ) -> Result<(u64, Arc<CachedDoc>), String> {
+        let target = Path::new(path);
+        let ext = catalog::fslist::extension(target);
         let key = DocKey {
-            path: catalog::normalize(path).to_lowercase(),
+            path: catalog::normalize(target).to_lowercase(),
             tag: tag.unwrap_or("").to_string(),
-            size: metadata.len(),
-            mtime_ms: metadata
-                .modified()
-                .ok()
-                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-                .map(|duration| duration.as_millis() as u64)
-                .unwrap_or(0),
+            size,
+            mtime_ms,
         };
 
         {
@@ -92,7 +94,7 @@ impl DocCache {
         }
 
         let started = Instant::now();
-        let arena = formats::document::parse_file(path, tag).map_err(|e| e.to_string())?;
+        let arena = formats::document::parse_bytes(bytes, &ext, tag).map_err(|e| e.to_string())?;
         let build_ms = started.elapsed().as_millis() as u32;
         let label = catalog::format::lookup(&ext)
             .map(|format| format.label)
@@ -100,10 +102,10 @@ impl DocCache {
 
         let doc = Arc::new(CachedDoc {
             arena,
-            path: catalog::normalize(path),
+            path: catalog::normalize(target),
             ext,
             label: label.to_string(),
-            size: metadata.len(),
+            size,
             build_ms,
         });
 

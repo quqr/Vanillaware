@@ -161,6 +161,10 @@ fn frame_dto(entry: &TimelineEntry) -> FrameDto {
         attach: entry.attach.as_ref().map(attach_dto),
         color: entry.color.clone(),
         matrix: entry.matrix.clone(),
+        matrix_mix: entry.matrix_mix_id,
+        quad_mix: entry.dstquad_mix_id,
+        in_rate: entry.in_rate,
+        transform: entry.transform.clone(),
     }
 }
 

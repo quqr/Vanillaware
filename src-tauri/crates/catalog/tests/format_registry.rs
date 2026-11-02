@@ -26,7 +26,12 @@ fn every_format_has_viewers_and_icon() {
 fn extensions_are_unique_and_lowercase() {
     let mut seen = std::collections::HashSet::new();
     for f in FORMATS {
-        assert_eq!(f.ext, f.ext.to_ascii_lowercase(), "{} must be lowercase", f.ext);
+        assert_eq!(
+            f.ext,
+            f.ext.to_ascii_lowercase(),
+            "{} must be lowercase",
+            f.ext
+        );
         assert!(!f.ext.starts_with('.'), "{} must not carry a dot", f.ext);
         assert!(seen.insert(f.ext), "{} is registered twice", f.ext);
     }
@@ -45,7 +50,7 @@ fn every_kind_has_at_least_one_format() {
         Kind::Grid,
         Kind::Audio,
         Kind::Video,
-        Kind::Binary,
+        Kind::Archive,
     ] {
         assert!(
             FORMATS.iter().any(|f| f.kind == kind),

@@ -69,6 +69,7 @@ pub fn list_dir(dir: &Path) -> Result<DirListingDto, FsError> {
             dirs.push(DirEntryDto {
                 path: normalize(&path),
                 name: entry.file_name().to_string_lossy().into_owned(),
+                kind: None,
             });
             continue;
         }
