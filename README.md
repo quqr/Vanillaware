@@ -146,8 +146,6 @@ pnpm tauri dev
 pnpm build
 ```
 
-Design decisions live in `docs/adr/`, domain vocabulary in `CONTEXT.md`.
-
 ## References
 
 - [Web2D_Games](https://github.com/rufaswan/Web2D_Games) — Vanillaware ripping tools
