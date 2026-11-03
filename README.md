@@ -159,16 +159,8 @@ cargo test -p formats --test field_corpus -- --ignored # battlefield corpus clos
 cargo test --test archive_mount                        # archive-to-viewer end to end
 cargo run -p archive --example cpk_probe -- <x.cpk>    # archive diagnostics; FAIL exits non-zero
 
-# Frontend
-pnpm check:lang                                        # no Chinese allowed in code
-pnpm check:audio                                       # audio decode pipeline (HCA / lopus)
-pnpm check:video                                       # USM decode pipeline
-pnpm check:mbs                                         # MBS playback semantics (interpolation / frame order)
 npx tsc --noEmit
 ```
-
-Corpus paths can be overridden through `CPK_CORPUS`, `CORPUS_13`, `CRIFS_ASSETS`
-and friends; the defaults live as constants in the corresponding `tests/*.rs`.
 
 ## Layout
 

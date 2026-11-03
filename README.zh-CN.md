@@ -146,16 +146,8 @@ cargo test -p formats --test field_corpus -- --ignored # 战场地图语料闭�
 cargo test --test archive_mount                        # 归档到查看器链路的端到端
 cargo run -p archive --example cpk_probe -- <x.cpk>    # 归档诊断，有 FAIL 非零退出
 
-# 前端
-pnpm check:lang                                        # 代码里不得出现中文
-pnpm check:audio                                       # 音频解码链路（HCA / lopus）
-pnpm check:video                                       # USM 影片解码链路
-pnpm check:mbs                                         # MBS 播放语义（插值 / 帧序）
 npx tsc --noEmit
 ```
-
-语料路径可用 `CPK_CORPUS`、`CORPUS_13`、`CRIFS_ASSETS` 等环境变量覆盖，
-默认值写在对应 `tests/*.rs` 的常量里。
 
 ## 结构
 
