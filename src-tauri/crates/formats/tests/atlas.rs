@@ -41,7 +41,10 @@ fn falls_back_to_numeric_suffix_variants() {
     );
 
     std::fs::write(dir.join("Fighter_M10.ftx"), b"").expect("write a second variant");
-    assert!(sibling_container(&mbs).is_err(), "several candidates must fail instead of guessing");
+    assert!(
+        sibling_container(&mbs).is_err(),
+        "several candidates must fail instead of guessing"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }

@@ -138,6 +138,7 @@ fn build(root: &MbsV77, profile: &Profile) -> Result<V55> {
                 sfx: i64::from(*rec.sfx()),
                 bits: hex(*rec.flags()),
                 in_s5s3: i64::from(*rec.in_s5s3()),
+                in_rate: i64::from(*rec.in_rate()),
                 in_s7: i64::from(*rec.in_s7()),
                 in_s6: i64::from(*rec.in_s6()),
                 in_s0s1s2: i64::from(*rec.in_s0s1s2()),

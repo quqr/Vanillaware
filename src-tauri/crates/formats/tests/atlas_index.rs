@@ -55,7 +55,9 @@ fn atlas_frame_count_matches_png_numbering() {
             continue;
         };
         let Some(&png_count) = expected.get(&png_stem) else {
-            lines.push(format!("{png_stem}: the container exists but has no matching png"));
+            lines.push(format!(
+                "{png_stem}: the container exists but has no matching png"
+            ));
             continue;
         };
 

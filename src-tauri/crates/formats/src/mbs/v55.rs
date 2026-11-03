@@ -62,6 +62,7 @@ pub struct S8Rec {
     pub sfx: i64,
     pub bits: String,
     pub in_s5s3: i64,
+    pub in_rate: i64,
     pub in_s7: i64,
     pub in_s6: i64,
     pub in_s0s1s2: i64,

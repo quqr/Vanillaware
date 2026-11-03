@@ -2,7 +2,10 @@ use formats::content::project;
 use formats::field;
 use formats::raster::{paint_quad, Page, Raster};
 
-fn mpd_bytes(panels: &[(u16, u16, [(f32, f32); 4], [(f32, f32); 4])]) -> Vec<u8> {
+type Quad = [(f32, f32); 4];
+type Panel = (u16, u16, Quad, Quad);
+
+fn mpd_bytes(panels: &[Panel]) -> Vec<u8> {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"MPD\0");
     bytes.extend_from_slice(&((panels.len() as u32) * 0xa0).to_le_bytes());
@@ -147,7 +150,7 @@ fn view_without_assets_paints_the_area_mask() {
         .map(|section| section.title.as_str())
         .collect();
     assert!(titles.contains(&"Resource pairs"));
-    assert!(titles.contains(&"Scene records (by layer count)"));
+    assert!(titles.contains(&"Layer sets (one battlefield stage each)"));
 }
 
 struct MaskSpec {
@@ -218,7 +221,7 @@ fn rasterise_maps_world_units_onto_the_ucb_grid() {
     let layout = field::parse(&bytes).expect("layout");
     let grid = field::rasterise(&layout, &bytes);
     assert_eq!(grid.painted, 2);
-    assert_eq!(grid.dormant, 1);
+    assert_eq!(grid.underlay, 1);
     assert_eq!(grid.outside, 0);
     assert_eq!(grid.at(0, 0), 0);
     assert_eq!(grid.at(1, 0), 0);
@@ -265,4 +268,143 @@ fn rasterise_counts_cells_that_fall_outside_the_grid() {
     assert_eq!(grid.painted, 2);
     assert_eq!(grid.at(0, 0), 0);
     assert_eq!(grid.at(1, 0), 0);
+}
+
+#[test]
+fn tint_reads_the_layer_colour_as_rgba_in_file_order() {
+    // the file stores R,G,B,A, so `0x8cffffff` is white at alpha 140 -- not a cyan tint
+    assert_eq!(field::tint(0x8cff_ffff), [255, 255, 255, 140]);
+    assert_eq!(field::tint(0xeaff_fff4), [244, 255, 255, 234]);
+    assert_eq!(field::tint(0x00ff_ffff), [255, 255, 255, 0]);
+}
+
+#[test]
+fn stages_group_under_their_battlefield() {
+    let left = ufb_pair("FieldBG/AC00_00P.MPD", "FieldBG\\AC00_00P.ftx");
+    let right = ufb_pair("FieldBG/AC00_02P.MPD", "FieldBG\\AC00_02P.ftx");
+    let other = ufb_pair("FieldBG/AC10_00P.MPD", "FieldBG\\AC10_00P.ftx");
+    let mut bytes = vec![0u8; 0x88];
+    bytes[0..4].copy_from_slice(b"UCFB");
+    bytes[0x60..0x64].copy_from_slice(&3u32.to_le_bytes());
+    bytes.extend_from_slice(&left);
+    bytes.extend_from_slice(&right);
+    bytes.extend_from_slice(&other);
+
+    let layout = field::parse(&bytes).expect("layout");
+    let mut names: Vec<String> = layout.pairs.iter().filter_map(field::stage).collect();
+    names.sort();
+    assert_eq!(names, vec!["AC00_00P", "AC00_02P", "AC10_00P"]);
+
+    let maps = field::maps(&layout);
+    let stage: Vec<&str> = maps.iter().map(|entry| entry.name.as_str()).collect();
+    assert!(stage.contains(&"AC00_00P"));
+    assert!(stage.contains(&"AC00_02P"));
+    assert!(stage.contains(&"AC10_00P"));
+    let ac00: Vec<&str> = maps
+        .iter()
+        .filter(|entry| entry.group == "AC00")
+        .map(|entry| entry.name.as_str())
+        .collect();
+    assert_eq!(ac00.len(), 2);
+
+    let first = &layout.pairs[0];
+    assert!(field::matches("AC00", first));
+    assert!(field::matches("ac00_00p", first));
+    assert!(!field::matches("AC00_02P", first));
+    assert!(!field::matches("AC10", first));
+}
+
+fn ufb_pair(model: &str, texture: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    for value in [model, texture] {
+        out.extend_from_slice(value.as_bytes());
+        out.push(0);
+    }
+    out
+}
+
+fn close(got: (f32, f32), want: (f32, f32), what: &str) {
+    assert!(
+        (got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01,
+        "{what}: got {got:?}, want {want:?}"
+    );
+}
+
+#[test]
+fn a_panel_quad_is_the_page_rectangle_halved_scaled_and_rotated() {
+    let panel = field::Panel {
+        page: 0,
+        corners: [
+            (-200.0, -100.0),
+            (200.0, -100.0),
+            (200.0, 100.0),
+            (-200.0, 100.0),
+        ],
+        uv: [(0.0, 0.0), (0.5, 0.0), (0.5, 0.5), (0.0, 0.5)],
+    };
+
+    let plain = field::Layer {
+        scale_x: 4096,
+        scale_y: 4096,
+        ..Default::default()
+    };
+    let quad = field::quad_corners(&plain, &panel);
+    close(quad[0], (-100.0, -50.0), "page units are twice texels");
+    close(quad[2], (100.0, 50.0), "opposite corner");
+
+    let wide = field::Layer {
+        scale_x: 8192,
+        ..plain
+    };
+    let quad = field::quad_corners(&wide, &panel);
+    close(quad[0], (-200.0, -50.0), "scale x only stretches x");
+    close(quad[2], (200.0, 50.0), "scale x keeps y");
+
+    let tall = field::Layer {
+        scale_y: 2048,
+        ..plain
+    };
+    let quad = field::quad_corners(&tall, &panel);
+    close(quad[0], (-100.0, -25.0), "scale y only stretches y");
+
+    let quarter_turn = field::Layer {
+        roll: 16384,
+        ..plain
+    };
+    let quad = field::quad_corners(&quarter_turn, &panel);
+    close(quad[0], (-50.0, 100.0), "a quarter turn swaps the axes");
+    close(quad[2], (50.0, -100.0), "a quarter turn swaps both corners");
+
+    let half_turn = field::Layer {
+        roll: -32768,
+        ..plain
+    };
+    let quad = field::quad_corners(&half_turn, &panel);
+    close(quad[0], (100.0, 50.0), "half a turn flips both axes");
+    close(quad[2], (-100.0, -50.0), "half a turn flips both corners");
+
+    let face_on = field::Layer {
+        pitch: 16384,
+        ..plain
+    };
+    let quad = field::quad_corners(&face_on, &panel);
+    assert!(
+        quad.iter().all(|corner| corner.1.abs() < 1e-3),
+        "a quarter pitch turns the quad edge on"
+    );
+
+    let tilted = field::Layer {
+        pitch: 8192,
+        ..plain
+    };
+    let quad = field::quad_corners(&tilted, &panel);
+    close(
+        quad[2],
+        (100.0, 35.35534),
+        "a 45 degree pitch keeps cos(45) of the height",
+    );
+    assert!(
+        (quad[0].0 + 100.0).abs() < 1e-3,
+        "pitch leaves the horizontal extent alone"
+    );
 }

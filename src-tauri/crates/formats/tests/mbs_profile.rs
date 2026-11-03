@@ -44,5 +44,8 @@ fn read_counts_respects_width() {
     assert_eq!(counts[0], 7);
     assert_eq!(counts[5], 3);
 
-    assert!(v77.read_counts(&data[..0x40]).is_err(), "a truncated file must fail");
+    assert!(
+        v77.read_counts(&data[..0x40]).is_err(),
+        "a truncated file must fail"
+    );
 }

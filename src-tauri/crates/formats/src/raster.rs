@@ -94,10 +94,10 @@ impl Raster {
             self.rgba[at..at + 4].copy_from_slice(&color);
             return;
         }
-        for channel in 0..3 {
+        for (channel, value) in color.iter().take(3).enumerate() {
             let under = self.rgba[at + channel] as f32;
             self.rgba[at + channel] =
-                (color[channel] as f32 * alpha + under * (1.0 - alpha)).round() as u8;
+                (*value as f32 * alpha + under * (1.0 - alpha)).round() as u8;
         }
         let under_alpha = self.rgba[at + 3] as f32 / 255.0;
         let out = alpha + under_alpha * (1.0 - alpha);
@@ -147,8 +147,8 @@ impl Raster {
                 for sy in sy0..sy1 {
                     for sx in sx0..sx1 {
                         let at = ((sy * self.width + sx) * 4) as usize;
-                        for channel in 0..4 {
-                            sum[channel] += self.rgba[at + channel] as u64;
+                        for (channel, slot) in sum.iter_mut().enumerate() {
+                            *slot += self.rgba[at + channel] as u64;
                         }
                         count += 1;
                     }
@@ -157,8 +157,8 @@ impl Raster {
                     continue;
                 }
                 let at = ((y * width + x) * 4) as usize;
-                for channel in 0..4 {
-                    out.rgba[at + channel] = (sum[channel] / count) as u8;
+                for (channel, slot) in sum.iter().enumerate() {
+                    out.rgba[at + channel] = (*slot / count) as u8;
                 }
             }
         }

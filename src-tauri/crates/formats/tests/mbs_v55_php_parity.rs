@@ -31,7 +31,11 @@ fn v55_matches_php_oracle() {
         .filter(|path| path.extension().is_some_and(|ext| ext == "mbs"))
         .collect();
     samples.sort();
-    assert!(!samples.is_empty(), "no .mbs sample under {}", dir.display());
+    assert!(
+        !samples.is_empty(),
+        "no .mbs sample under {}",
+        dir.display()
+    );
 
     let mut checked = 0usize;
     let mut mismatched = 0usize;
@@ -46,7 +50,8 @@ fn v55_matches_php_oracle() {
         let ours = mbs::parse_file(mbs_file, &tag).expect("parse mbs");
         let ours = serde_json::to_value(&ours).expect("serialise V55");
         let raw = std::fs::read(&oracle).expect("read the PHP reference");
-        let theirs: serde_json::Value = serde_json::from_slice(&raw).expect("parse the PHP reference JSON");
+        let theirs: serde_json::Value =
+            serde_json::from_slice(&raw).expect("parse the PHP reference JSON");
 
         let mut diffs = Vec::new();
         verify::diff_values(&theirs, &ours, "", &mut diffs);
@@ -54,7 +59,11 @@ fn v55_matches_php_oracle() {
 
         if !diffs.is_empty() {
             mismatched += 1;
-            lines.push(format!("{}: {} differences", mbs_file.display(), diffs.len()));
+            lines.push(format!(
+                "{}: {} differences",
+                mbs_file.display(),
+                diffs.len()
+            ));
             for diff in diffs.iter().take(10) {
                 lines.push(format!("    {diff}"));
             }

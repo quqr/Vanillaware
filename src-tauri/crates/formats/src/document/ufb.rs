@@ -68,8 +68,8 @@ pub fn build(bytes: &[u8]) -> DocArena {
         summary,
         "maskOrder",
         format!(
-            "paint 0x6641 cells in ascending +0x34, skip {:#06x}; the last painter wins and reproduces Field.ucb",
-            field::MASK_DORMANT
+            "paint 0x6641 cells in ascending +0x34; {:#06x} masks go first and end up fully covered, which reproduces Field.ucb",
+            field::MASK_UNDERLAY
         ),
     );
     builder.field(
@@ -195,19 +195,16 @@ pub fn build(bytes: &[u8]) -> DocArena {
         builder.field(node, "offset", format!("0x{:x}", record.at));
         builder.field(
             node,
-            "u16",
-            record
-                .raw
-                .iter()
-                .map(|value| value.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
+            "rect",
+            format!(
+                "x {:.0}..{:.0}, z {:.0}..{:.0}",
+                record.rect[0].min(record.rect[2]),
+                record.rect[0].max(record.rect[2]),
+                record.rect[1].min(record.rect[3]),
+                record.rect[1].max(record.rect[3]),
+            ),
         );
-        builder.field(
-            node,
-            "point",
-            format!("({:.2}, {:.2})", record.point[0], record.point[1]),
-        );
+        builder.field(node, "tags", format!("{:#010x} {:#010x}", record.tag_a, record.tag_b));
     }
 
     let list = builder.array(

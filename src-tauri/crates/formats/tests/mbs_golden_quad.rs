@@ -84,7 +84,8 @@ fn quad_matches_csharp_golden() {
         let v55 = mbs::parse_file(mbs_path, &tag).expect("parse mbs");
         let quad = mbs::convert(&v55).expect("convert V55 to Quad");
         let raw = std::fs::read(&pair.golden).expect("read golden");
-        let golden: serde_json::Value = serde_json::from_slice(&raw).expect("parse the golden JSON");
+        let golden: serde_json::Value =
+            serde_json::from_slice(&raw).expect("parse the golden JSON");
 
         let report = validate::compare_golden(&quad, &golden).expect("compare");
         checked += 1;

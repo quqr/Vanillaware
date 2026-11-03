@@ -43,7 +43,8 @@ fn quad_matches_php_oracle() {
         let ours = mbs::convert(&v55).expect("convert V55 to Quad");
         let ours = serde_json::to_value(&ours).expect("serialise Quad");
         let raw = std::fs::read(&oracle).expect("read the PHP reference");
-        let theirs: serde_json::Value = serde_json::from_slice(&raw).expect("parse the PHP reference JSON");
+        let theirs: serde_json::Value =
+            serde_json::from_slice(&raw).expect("parse the PHP reference JSON");
 
         let mut diffs = Vec::new();
         verify::diff_values(&theirs, &ours, "", &mut diffs);
@@ -51,7 +52,11 @@ fn quad_matches_php_oracle() {
 
         if !diffs.is_empty() {
             mismatched += 1;
-            lines.push(format!("{}: {} differences", mbs_file.display(), diffs.len()));
+            lines.push(format!(
+                "{}: {} differences",
+                mbs_file.display(),
+                diffs.len()
+            ));
             for diff in diffs.iter().take(10) {
                 lines.push(format!("    {diff}"));
             }

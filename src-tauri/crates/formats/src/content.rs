@@ -125,6 +125,10 @@ pub(crate) fn area_hue(id: u32) -> f32 {
     (id as f32 * 137.508).rem_euclid(360.0)
 }
 
+pub(crate) fn class_hue(id: u32) -> f32 {
+    (id as f32 * 137.508 + 90.0).rem_euclid(360.0)
+}
+
 fn put(rgba: &mut [u8], at: usize, color: [u8; 3]) {
     rgba[at] = color[0];
     rgba[at + 1] = color[1];
@@ -824,7 +828,26 @@ fn ufb(bytes: &[u8]) -> Projection {
     super::field::view(bytes, None, 1500)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum UcbMode {
+    Area,
+    Class,
+}
+
+impl UcbMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            UcbMode::Area => "area",
+            UcbMode::Class => "class",
+        }
+    }
+}
+
 fn ucb(bytes: &[u8]) -> Projection {
+    ucb_at(bytes, UcbMode::Area)
+}
+
+pub fn ucb_at(bytes: &[u8], mode: UcbMode) -> Projection {
     const RECORD: usize = 0x20;
     const MAX_SIDE: usize = 1200;
     const MAX_AREAS: usize = 16;
@@ -883,16 +906,28 @@ fn ucb(bytes: &[u8]) -> Projection {
         }
 
         let area = word & 0xffff;
+        let class = word >> 22;
         let px = (x / step).min(out_width - 1);
         let py = (y / step).min(out_height - 1);
-        let mut color = hsv(area_hue(area), 0.62, 0.92);
+        let (key, hue, saturation) = match mode {
+            UcbMode::Area => (area, area_hue(area), 0.62),
+            UcbMode::Class => (class, class_hue(class), 0.55),
+        };
+        let mut color = hsv(hue, saturation, 0.92);
 
-        let left = x > 0 && rdr::u32_at(bytes, at - RECORD + 8).unwrap_or(0) & 0xffff != area;
-        let above =
-            y > 0 && rdr::u32_at(bytes, at - grid_width * RECORD + 8).unwrap_or(0) & 0xffff != area;
+        let left = x > 0
+            && (rdr::u32_at(bytes, at - RECORD + 8).unwrap_or(0)
+                >> if mode == UcbMode::Area { 0 } else { 22 })
+                & 0xffff
+                != key;
+        let above = y > 0
+            && (rdr::u32_at(bytes, at - grid_width * RECORD + 8).unwrap_or(0)
+                >> if mode == UcbMode::Area { 0 } else { 22 })
+                & 0xffff
+                != key;
         let edge = left || above;
         if edge {
-            color = hsv(area_hue(area), 0.35, 0.30);
+            color = hsv(hue, 0.30, 0.28);
         }
         put(&mut rgba, (py * out_width + px) * 4, color);
 
@@ -911,8 +946,10 @@ fn ucb(bytes: &[u8]) -> Projection {
     }
 
     out.note = Some(format!(
-        "{cells} cells laid out as {grid_width}×{grid_height} (x right, y down) · {} areas · {outside} cells with no region. Cell x runs along world x from -42480 at 32 units per cell, cell y along world z from -18416; the id is the mask index in Field.ufb, and re-painting those masks in +0x34 order reproduces this whole grid. The file stores no pixels: the map screen art ships as GUI/Worldmap.mbs + GUI/Worldmap.ftx, and each area's field background as FieldBG/AC*.mpd + AC*.ftx.",
-        areas.len()
+        "{cells} cells laid out as {grid_width}×{grid_height} (x right, y down) · {} areas · {} classes · {outside} cells with no region · shading by {} . Cell x runs along world x from -42480 at 32 units per cell, cell y along world z from -18416; the id is the mask index in Field.ufb, and re-painting those masks in +0x34 order reproduces this whole grid. The file stores no pixels: the map screen art ships as GUI/Worldmap.mbs + GUI/Worldmap.ftx, and each area's field background as FieldBG/AC*.mpd + AC*.ftx.",
+        areas.len(),
+        classes.len(),
+        mode.label(),
     ));
 
     let grid = vec![
@@ -921,7 +958,15 @@ fn ucb(bytes: &[u8]) -> Projection {
         vec!["height (y)".to_string(), grid_height.to_string()],
         vec!["cell size".to_string(), "0x20 bytes".to_string()],
         vec!["areas".to_string(), areas.len().to_string()],
+        vec!["terrain classes".to_string(), classes.len().to_string()],
         vec!["all-zero cells".to_string(), outside.to_string()],
+        vec![
+            "shaded by".to_string(),
+            match mode {
+                UcbMode::Area => "area id (low 16 bits of +0x08)".to_string(),
+                UcbMode::Class => "terrain class (bits 22..31 of +0x08)".to_string(),
+            },
+        ],
         vec![
             "draw step".to_string(),
             format!("1 px = {step}×{step} cells"),
@@ -965,7 +1010,7 @@ fn ucb(bytes: &[u8]) -> Projection {
     ));
 
     let mut ranked: Vec<(u32, &Area)> = areas.iter().map(|(id, area)| (*id, area)).collect();
-    ranked.sort_by(|left, right| right.1.cells.cmp(&left.1.cells));
+    ranked.sort_by_key(|entry| std::cmp::Reverse(entry.1.cells));
     let rows: Vec<Vec<String>> = ranked
         .iter()
         .take(MAX_AREAS)
@@ -986,7 +1031,7 @@ fn ucb(bytes: &[u8]) -> Projection {
     ));
 
     let mut classes_ranked: Vec<(u32, u64)> = classes.into_iter().collect();
-    classes_ranked.sort_by(|left, right| right.1.cmp(&left.1));
+    classes_ranked.sort_by_key(|entry| std::cmp::Reverse(entry.1));
     let total: u64 = classes_ranked.iter().map(|(_, count)| count).sum();
     let class_rows: Vec<Vec<String>> = classes_ranked
         .iter()
@@ -1006,13 +1051,21 @@ fn ucb(bytes: &[u8]) -> Projection {
         classes_ranked.len() as u64,
     ));
 
+    let legend = match mode {
+        UcbMode::Area => format!(
+            "Canvas {out_width}×{out_height} px = the {grid_width}×{grid_height} world grid (x right, y down, 1 px = {step}×{step} cells). Hue = the area each cell belongs to, i.e. the low 16 bits of `+0x08`; that number is the mask index inside Field.ufb, so one colour = one field area. Painting every Field.ufb mask cell at 32 world units per cell, in ascending +0x34 order, reproduces this grid cell for cell. Dark seams = where the area changes between neighbouring cells. The {outside} cells with no region are left near-black."
+        ),
+        UcbMode::Class => format!(
+            "Canvas {out_width}×{out_height} px = the {grid_width}×{grid_height} world grid (x right, y down, 1 px = {step}×{step} cells). Hue = the terrain class, i.e. bits 22..31 of `+0x08`; {} classes appear in this file and what each one means is still unknown, so the colours only tell classes apart. Dark seams = where the class changes between neighbouring cells. The {outside} cells with no region are left near-black.",
+            classes_ranked.len()
+        ),
+    };
+
     out.color = Some(ColorMap {
         width: out_width as u32,
         height: out_height as u32,
         rgba,
-        legend: format!(
-            "Canvas {out_width}×{out_height} px = the {grid_width}×{grid_height} world grid (x right, y down, 1 px = {step}×{step} cells). Hue = the area each cell belongs to, i.e. the low 16 bits of `+0x08`; that number is the mask index inside Field.ufb, so one colour = one field area. Painting every Field.ufb mask cell at 32 world units per cell, in ascending +0x34 order, reproduces this grid cell for cell. Dark seams = where the area changes between neighbouring cells. Terrain class is not drawn (see the table); the {outside} cells with no region are left near-black.",
-        ),
+        legend,
     });
 
     out

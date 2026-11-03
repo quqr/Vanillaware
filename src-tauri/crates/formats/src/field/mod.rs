@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::content::{ColorMap, Projection, Section};
@@ -21,7 +21,10 @@ pub const GRID_COLUMNS: usize = 2199;
 pub const GRID_ROWS: usize = 1311;
 pub const WORLD_X0: f32 = -42480.0;
 pub const WORLD_Z0: f32 = -18416.0;
-pub const MASK_DORMANT: u16 = 0x4700;
+pub const MASK_UNDERLAY: u16 = 0x4700;
+
+pub const ANGLE_UNIT: f32 = std::f32::consts::PI / 32768.0;
+pub const SCALE_UNIT: f32 = 1.0 / 4096.0;
 
 const MAX_AREAS: usize = 24;
 
@@ -50,7 +53,7 @@ pub struct Vertex {
     pub color: u32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct Layer {
     pub min: [f32; 3],
     pub max: [f32; 3],
@@ -58,11 +61,16 @@ pub struct Layer {
     pub fog: u32,
     pub center_x: f32,
     pub center_z: f32,
-    pub distance: f32,
+    pub center_y: f32,
+    pub pitch: i16,
+    pub roll: i16,
     pub scale_x: u16,
     pub scale_y: u16,
     pub flags: u16,
     pub ext: u8,
+    pub band: u8,
+    pub slot: u8,
+    pub angle: u16,
     pub pair: i32,
     pub panel: u16,
     pub sample: u16,
@@ -108,8 +116,9 @@ pub struct Mask {
 #[derive(Clone, Copy)]
 pub struct FRecord {
     pub at: usize,
-    pub raw: [u16; 4],
-    pub point: [f32; 4],
+    pub rect: [f32; 4],
+    pub tag_a: u32,
+    pub tag_b: u32,
 }
 
 #[derive(Clone, Default)]
@@ -208,12 +217,17 @@ pub fn parse(bytes: &[u8]) -> Option<Layout> {
                 color: rdr::u32_at(bytes, at + 0x18).unwrap_or(0),
                 fog: rdr::u32_at(bytes, at + 0x1c).unwrap_or(0),
                 center_x: rdr::f32_at(bytes, at + 0x20).unwrap_or(0.0),
-                distance: rdr::f32_at(bytes, at + 0x24).unwrap_or(0.0),
+                center_y: rdr::f32_at(bytes, at + 0x24).unwrap_or(0.0),
                 center_z: rdr::f32_at(bytes, at + 0x28).unwrap_or(0.0),
+                pitch: rdr::i16_at(bytes, at + 0x2c).unwrap_or(0),
+                roll: rdr::i16_at(bytes, at + 0x2e).unwrap_or(0),
                 scale_x: rdr::u16_at(bytes, at + 0x30).unwrap_or(0),
                 scale_y: rdr::u16_at(bytes, at + 0x32).unwrap_or(0),
                 flags: rdr::u16_at(bytes, at + 0x34).unwrap_or(0),
                 ext: rdr::u8_at(bytes, at + 0x36).unwrap_or(0),
+                band: rdr::u8_at(bytes, at + 0x37).unwrap_or(0),
+                slot: rdr::u8_at(bytes, at + 0x38).unwrap_or(0),
+                angle: rdr::u16_at(bytes, at + 0x3c).unwrap_or(0),
                 panel: rdr::u16_at(bytes, at + 0x3a).unwrap_or(0) & 0x7ff,
                 sample: rdr::u16_at(bytes, at + 0x3e).unwrap_or(0) & 0x7ff,
                 pair,
@@ -322,18 +336,14 @@ pub fn parse(bytes: &[u8]) -> Option<Layout> {
         }
         f_records.push(FRecord {
             at: cursor,
-            raw: [
-                rdr::u16_at(bytes, cursor).unwrap_or(0),
-                rdr::u16_at(bytes, cursor + 2).unwrap_or(0),
-                rdr::u16_at(bytes, cursor + 4).unwrap_or(0),
-                rdr::u16_at(bytes, cursor + 6).unwrap_or(0),
-            ],
-            point: [
+            rect: [
+                rdr::f32_at(bytes, cursor).unwrap_or(0.0),
+                rdr::f32_at(bytes, cursor + 4).unwrap_or(0.0),
                 rdr::f32_at(bytes, cursor + 8).unwrap_or(0.0),
                 rdr::f32_at(bytes, cursor + 0x0c).unwrap_or(0.0),
-                rdr::f32_at(bytes, cursor + 0x10).unwrap_or(0.0),
-                rdr::f32_at(bytes, cursor + 0x14).unwrap_or(0.0),
             ],
+            tag_a: rdr::u32_at(bytes, cursor + 0x10).unwrap_or(0),
+            tag_b: rdr::u32_at(bytes, cursor + 0x14).unwrap_or(0),
         });
         cursor += 0x18;
     }
@@ -466,66 +476,271 @@ pub fn panels(bytes: &[u8]) -> Vec<Panel> {
 
 pub struct Scene {
     pub raster: Raster,
-    pub record: usize,
+    pub map: String,
     pub layers: usize,
     pub drawn: usize,
-    pub skipped: usize,
+    pub models: usize,
+    pub missing: usize,
     pub scale: f32,
     pub window: [f32; 4],
 }
 
-pub fn compose(
+pub fn stage(pair: &Pair) -> Option<String> {
+    let name = pair.model.rsplit(['/', '\\']).next()?;
+    let stem = name.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(name);
+    if stem.is_empty() {
+        return None;
+    }
+    Some(stem.to_ascii_uppercase())
+}
+
+pub fn family(pair: &Pair) -> Option<String> {
+    let stem = stage(pair)?;
+    let (head, _) = stem.split_once('_')?;
+    if head.is_empty() {
+        return None;
+    }
+    Some(head.to_string())
+}
+
+pub fn matches(scope: &str, pair: &Pair) -> bool {
+    let scope = scope.to_ascii_uppercase();
+    if scope.contains('_') {
+        return stage(pair).as_deref() == Some(scope.as_str());
+    }
+    family(pair).as_deref() == Some(scope.as_str())
+}
+
+pub struct FieldMap {
+    pub name: String,
+    pub group: String,
+    pub files: Vec<String>,
+    pub pairs: Vec<usize>,
+    pub layers: usize,
+    pub tiles: usize,
+    pub window: [f32; 4],
+}
+
+pub fn maps(layout: &Layout) -> Vec<FieldMap> {
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut out: Vec<FieldMap> = Vec::new();
+
+    for (slot, pair) in layout.pairs.iter().enumerate() {
+        let (Some(name), Some(group)) = (stage(pair), family(pair)) else {
+            continue;
+        };
+        let at = match index.get(&name) {
+            Some(at) => *at,
+            None => {
+                index.insert(name.clone(), out.len());
+                out.push(FieldMap {
+                    name,
+                    group,
+                    files: Vec::new(),
+                    pairs: Vec::new(),
+                    layers: 0,
+                    tiles: 0,
+                    window: [f32::MAX, f32::MAX, f32::MIN, f32::MIN],
+                });
+                out.len() - 1
+            }
+        };
+        out[at].pairs.push(slot);
+        out[at].files.push(
+            pair.model
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(&pair.model)
+                .to_string(),
+        );
+    }
+
+    let mut tiles: Vec<HashSet<usize>> = vec![HashSet::new(); out.len()];
+    for record in &layout.records {
+        let mut touched: HashSet<usize> = HashSet::new();
+        for layer in &record.layers {
+            if layer.pair < 0 {
+                continue;
+            }
+            let Some(name) = layout.pairs.get(layer.pair as usize).and_then(stage) else {
+                continue;
+            };
+            let Some(at) = index.get(&name) else {
+                continue;
+            };
+            touched.insert(*at);
+            let entry = &mut out[*at];
+            entry.layers += 1;
+            entry.window[0] = entry.window[0].min(layer.min[0]);
+            entry.window[1] = entry.window[1].min(layer.min[1]);
+            entry.window[2] = entry.window[2].max(layer.max[0]);
+            entry.window[3] = entry.window[3].max(layer.max[1]);
+        }
+        for at in touched {
+            tiles[at].insert(record.index);
+        }
+    }
+    for (at, set) in tiles.iter().enumerate() {
+        out[at].tiles = set.len();
+    }
+
+    out.sort_by_key(|entry| std::cmp::Reverse(entry.layers));
+    out
+}
+
+pub fn default_scope(layout: &Layout, width: f32) -> Option<(String, String, f32)> {
+    let catalog = maps(layout);
+    let mut groups: HashMap<String, (u64, String)> = HashMap::new();
+    for entry in &catalog {
+        let slot = groups
+            .entry(entry.group.clone())
+            .or_insert((0, entry.name.clone()));
+        slot.0 += entry.layers as u64;
+        if entry.layers > 0 && slot.1.is_empty() {
+            slot.1 = entry.name.clone();
+        }
+    }
+    let group = groups
+        .iter()
+        .max_by_key(|(_, (layers, _))| *layers)
+        .map(|(name, _)| name.clone())?;
+    let x0 = default_window(layout, &group, width);
+    let best = catalog
+        .iter()
+        .filter(|entry| entry.group == group)
+        .max_by_key(|entry| entry.layers)?;
+    Some((group, best.name.clone(), x0))
+}
+
+pub fn default_window(layout: &Layout, map: &str, span: f32) -> f32 {
+    let mut centers: Vec<f32> = Vec::new();
+    for record in &layout.records {
+        for layer in &record.layers {
+            if layer.pair < 0 {
+                continue;
+            }
+            let Some(pair) = layout.pairs.get(layer.pair as usize) else {
+                continue;
+            };
+            if !matches(map, pair) {
+                continue;
+            }
+            centers.push((layer.min[0] + layer.max[0]) * 0.5);
+        }
+    }
+    if centers.is_empty() {
+        return 0.0;
+    }
+    centers.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+
+    let span = span.max(1.0);
+    let (mut best_start, mut best_count) = (centers[0], 0usize);
+    let mut tail = 0usize;
+    for head in 0..centers.len() {
+        while centers[head] - centers[tail] > span {
+            tail += 1;
+        }
+        let count = head - tail + 1;
+        if count > best_count {
+            best_count = count;
+            best_start = centers[tail];
+        }
+    }
+    best_start - span * 0.1
+}
+
+pub type PairLoader<'a> = dyn Fn(&Pair) -> Option<(Vec<u8>, Vec<u8>)> + 'a;
+
+pub fn compose_window(
     layout: &Layout,
-    record: usize,
-    load: &dyn Fn(&Pair) -> Option<(Vec<u8>, Vec<u8>)>,
+    map: &str,
+    x0: f32,
+    width: f32,
+    load: &PairLoader<'_>,
     max_side: u32,
 ) -> Option<Scene> {
-    let rec = layout.records.get(record)?;
-    if rec.layers.is_empty() {
+    let width = width.max(1.0);
+    let x1 = x0 + width;
+
+    let slots: HashSet<usize> = layout
+        .pairs
+        .iter()
+        .enumerate()
+        .filter(|(_, pair)| matches(map, pair))
+        .map(|(slot, _)| slot)
+        .collect();
+    if slots.is_empty() {
         return None;
     }
 
-    let mut min_x = f32::MAX;
-    let mut min_y = f32::MAX;
-    let mut max_x = f32::MIN;
-    let mut max_y = f32::MIN;
-    for layer in &rec.layers {
-        min_x = min_x.min(layer.min[0]);
-        min_y = min_y.min(layer.min[1]);
-        max_x = max_x.max(layer.max[0]);
-        max_y = max_y.max(layer.max[1]);
+    let mut layers: Vec<&Layer> = Vec::new();
+    let mut seen: HashSet<[u32; 9]> = HashSet::new();
+    for record in &layout.records {
+        for layer in &record.layers {
+            if layer.pair < 0 || !slots.contains(&(layer.pair as usize)) {
+                continue;
+            }
+            if layer.max[0] < x0 || layer.min[0] > x1 {
+                continue;
+            }
+            let key = [
+                layer.pair as u32,
+                layer.panel as u32,
+                layer.sample as u32,
+                layer.flags as u32,
+                layer.ext as u32,
+                layer.min[0].to_bits(),
+                layer.min[1].to_bits(),
+                layer.max[0].to_bits(),
+                layer.max[1].to_bits(),
+            ];
+            if !seen.insert(key) {
+                continue;
+            }
+            layers.push(layer);
+        }
     }
-    let span_x = (max_x - min_x).max(1.0);
-    let span_y = (max_y - min_y).max(1.0);
-    let scale = (max_side as f32 / span_x.max(span_y)).clamp(0.02, 2.0);
+    if layers.is_empty() {
+        return None;
+    }
 
-    let width = (span_x * scale).ceil().max(1.0) as u32;
-    let height = (span_y * scale).ceil().max(1.0) as u32;
-    let mut raster = Raster::new(width, height);
+    let mut min_y = f32::MAX;
+    let mut max_y = f32::MIN;
+    for layer in &layers {
+        let half = (layer.max[1] - layer.min[1]).abs() * 0.5;
+        min_y = min_y.min(layer.center_y - half);
+        max_y = max_y.max(layer.center_y + half);
+    }
+    let span_y = (max_y - min_y).max(1.0);
+    let mut scale = max_side as f32 / width;
+    if span_y * scale > max_side as f32 * 2.0 {
+        scale = max_side as f32 * 2.0 / span_y;
+    }
+
+    let out_width = (width * scale).ceil().max(1.0) as u32;
+    let out_height = (span_y * scale).ceil().max(1.0) as u32;
+    let mut raster = Raster::new(out_width, out_height);
 
     let mut panel_cache: HashMap<usize, Vec<Panel>> = HashMap::new();
     let mut page_cache: HashMap<usize, Vec<(u32, u32, Vec<u8>)>> = HashMap::new();
     let mut drawn = 0usize;
-    let mut skipped = 0usize;
+    let mut models = 0usize;
+    let mut missing = 0usize;
 
-    let mut order: Vec<&Layer> = rec.layers.iter().collect();
+    let mut order: Vec<&Layer> = layers;
     order.sort_by(|left, right| {
-        left.min[2]
-            .partial_cmp(&right.min[2])
+        right.min[2]
+            .partial_cmp(&left.min[2])
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     for layer in order {
-        if layer.pair < 0 {
-            skipped += 1;
-            continue;
-        }
         let Some(pair) = layout.pairs.get(layer.pair as usize) else {
-            skipped += 1;
+            missing += 1;
             continue;
         };
         if !pair.is_panel() || layer.flags & 4 == 0 {
-            skipped += 1;
+            models += 1;
             continue;
         }
         let key = layer.pair as usize;
@@ -535,7 +750,7 @@ pub fn compose(
                 .unwrap_or_default()
         });
         let Some(panel) = list.get(layer.panel as usize) else {
-            skipped += 1;
+            missing += 1;
             continue;
         };
 
@@ -545,59 +760,73 @@ pub fn compose(
                 .unwrap_or_default()
         });
         let Some((page_w, page_h, rgba)) = pages.get(panel.page as usize) else {
-            skipped += 1;
+            missing += 1;
             continue;
         };
         let Some(page) = Page::new(*page_w, *page_h, rgba) else {
-            skipped += 1;
+            missing += 1;
             continue;
         };
 
-        let mut low = (f32::MAX, f32::MAX);
-        let mut high = (f32::MIN, f32::MIN);
-        for corner in &panel.corners {
-            low = (low.0.min(corner.0), low.1.min(corner.1));
-            high = (high.0.max(corner.0), high.1.max(corner.1));
-        }
-        let panel_center = ((low.0 + high.0) * 0.5, (low.1 + high.1) * 0.5);
-        let target = (
-            (layer.min[0] + layer.max[0]) * 0.5,
-            (layer.min[1] + layer.max[1]) * 0.5,
-        );
-        let panel_w = (high.0 - low.0).max(1e-3);
-        let panel_h = (high.1 - low.1).max(1e-3);
-        let fit_w = (layer.max[0] - layer.min[0]) / panel_w;
-        let fit_h = (layer.max[1] - layer.min[1]) / panel_h;
-        let fit = fit_w.min(fit_h).clamp(0.02, 4.0);
-        let tint = color_bytes(layer.color);
+        let target = (layer.center_x, layer.center_y);
+        let tint = tint(layer.color);
+        let quad = quad_corners(layer, panel);
 
         let mut dst = [(0.0f32, 0.0f32); 4];
         for corner in 0..4 {
-            let world_x = target.0 + (panel.corners[corner].0 - panel_center.0) * fit;
-            let world_y = target.1 + (panel.corners[corner].1 - panel_center.1) * fit;
-            dst[corner] = ((world_x - min_x) * scale, (max_y - world_y) * scale);
+            let world_x = target.0 + quad[corner].0;
+            let world_y = target.1 + quad[corner].1;
+            dst[corner] = ((world_x - x0) * scale, (max_y - world_y) * scale);
         }
         paint_quad(&mut raster, dst, panel.uv, &page, tint);
         drawn += 1;
     }
 
+    let total = drawn + models + missing;
     Some(Scene {
         raster,
-        record,
-        layers: rec.layers.len(),
+        map: map.to_string(),
+        layers: total,
         drawn,
-        skipped,
+        models,
+        missing,
         scale,
-        window: [min_x, min_y, max_x, max_y],
+        window: [x0, min_y, x1, max_y],
     })
 }
 
-fn color_bytes(color: u32) -> [u8; 4] {
+pub fn quad_corners(layer: &Layer, panel: &Panel) -> [(f32, f32); 4] {
+    let mut low = (f32::MAX, f32::MAX);
+    let mut high = (f32::MIN, f32::MIN);
+    for corner in &panel.corners {
+        low = (low.0.min(corner.0), low.1.min(corner.1));
+        high = (high.0.max(corner.0), high.1.max(corner.1));
+    }
+    let centre = ((low.0 + high.0) * 0.5, (low.1 + high.1) * 0.5);
+
+    let scale_x = layer.scale_x as f32 * SCALE_UNIT;
+    let scale_y = layer.scale_y as f32 * SCALE_UNIT;
+    let (sin_roll, cos_roll) = (layer.roll as f32 * ANGLE_UNIT).sin_cos();
+    let cos_pitch = (layer.pitch as f32 * ANGLE_UNIT).cos();
+
+    let mut out = [(0.0f32, 0.0f32); 4];
+    for (slot, corner) in panel.corners.iter().enumerate() {
+        let local_x = (corner.0 - centre.0) * 0.5 * scale_x;
+        let local_y = (corner.1 - centre.1) * 0.5 * scale_y;
+        out[slot] = (
+            cos_roll * local_x + sin_roll * local_y,
+            cos_pitch * (cos_roll * local_y - sin_roll * local_x),
+        );
+    }
+    out
+}
+
+pub fn tint(color: u32) -> [u8; 4] {
     [
-        (color >> 24) as u8,
-        (color >> 16) as u8,
-        (color >> 8) as u8,
         color as u8,
+        (color >> 8) as u8,
+        (color >> 16) as u8,
+        (color >> 24) as u8,
     ]
 }
 
@@ -757,7 +986,7 @@ pub fn checks(layout: &Layout, size: usize) -> Vec<Check> {
 pub struct Grid {
     pub ids: Vec<u16>,
     pub painted: u64,
-    pub dormant: u32,
+    pub underlay: u32,
     pub outside: u64,
 }
 
@@ -784,12 +1013,12 @@ pub fn rasterise(layout: &Layout, bytes: &[u8]) -> Grid {
     });
 
     let mut painted = 0u64;
-    let mut dormant = 0u32;
+    let mut underlay = 0u32;
     let mut outside = 0u64;
     for index in order {
         let mask = &layout.masks[index];
-        if mask.flag == MASK_DORMANT {
-            dormant += 1;
+        if mask.flag == MASK_UNDERLAY {
+            underlay += 1;
             continue;
         }
         let width = (mask.rect[2] - mask.rect[0] + 1).max(1) as usize;
@@ -817,7 +1046,7 @@ pub fn rasterise(layout: &Layout, bytes: &[u8]) -> Grid {
     Grid {
         ids,
         painted,
-        dormant,
+        underlay,
         outside,
     }
 }
@@ -828,7 +1057,7 @@ pub struct Match {
     pub open: u64,
     pub painted: u64,
     pub clipped: u64,
-    pub dormant: u32,
+    pub underlay: u32,
     pub first: Option<(usize, usize, u16, u16)>,
 }
 
@@ -870,17 +1099,43 @@ pub fn cross_check(layout: &Layout, bytes: &[u8], ucb: &[u8]) -> Option<Match> {
         open,
         painted: grid.painted,
         clipped: grid.outside,
-        dormant: grid.dormant,
+        underlay: grid.underlay,
         first,
     })
 }
 
+pub const WINDOW_DEFAULT: f32 = 3000.0;
+
 pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
-    let mut out = Projection::new("UFB · field background");
+    view_at(bytes, dir, None, None, WINDOW_DEFAULT, max_side)
+}
+
+pub fn view_at(
+    bytes: &[u8],
+    dir: Option<&Path>,
+    map: Option<&str>,
+    x0: Option<f32>,
+    width: f32,
+    max_side: u32,
+) -> Projection {
     let Some(layout) = parse(bytes) else {
+        let mut out = Projection::new("UFB · field background");
         out.note = Some("file is shorter than 0x88 bytes".to_string());
         return out;
     };
+    view_layout(&layout, bytes, dir, map, x0, width, max_side)
+}
+
+pub fn view_layout(
+    layout: &Layout,
+    bytes: &[u8],
+    dir: Option<&Path>,
+    map: Option<&str>,
+    x0: Option<f32>,
+    width: f32,
+    max_side: u32,
+) -> Projection {
+    let mut out = Projection::new("UFB · field background");
     let counts = layout.counts;
     let derived = layout.derived;
     let total_names = layout.samples.len() + layout.group_names.len() + layout.names.len();
@@ -927,18 +1182,32 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
             derived.group_entries.to_string(),
         ],
     ];
-    if let Some(scene) = dir.and_then(|dir| pick_scene(&layout, dir, max_side)) {
+
+    let catalog = maps(layout);
+    let width = width.clamp(400.0, 12000.0);
+    let scope = map
+        .map(|name| name.to_string())
+        .or_else(|| default_scope(layout, width).map(|(_, stage, _)| stage));
+
+    let rendered = scope.and_then(|scope| {
+        let dir = dir?;
+        let x0 = x0.unwrap_or_else(|| default_window(layout, &scope, width));
+        let load = |pair: &Pair| read_pair(dir, pair);
+        compose_window(layout, &scope, x0, width, &load, max_side)
+    });
+
+    if let Some(scene) = rendered {
         out.color = Some(ColorMap {
             width: scene.raster.width,
             height: scene.raster.height,
             rgba: scene.raster.rgba.clone(),
             legend: format!(
-                "Scene record #{} of {}: {} layers, {} textured panels drawn, {} skipped (3D model layers are not painted), 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. Each panel is a textured quad from the paired .mpd; its atlas page comes from the paired .ftx; the quad is scaled into the layer box from the record and painted back to front by depth.",
-                scene.record,
-                counts.records,
+                "Layer set {}: {} layers inside the window, {} textured panels drawn, {} model layers not composited, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. Every layer is a quad taken from one of the paired .mpd files, textured from the paired .ftx and scaled into its layer box; they are painted far to near by z. One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) are separate parallax planes: stacking them without the parallax factors the game uses produces occlusion that the file does not describe, so only one set is drawn at a time.",
+                scene.map,
                 scene.layers,
                 scene.drawn,
-                scene.skipped,
+                scene.models,
+                scene.missing,
                 1.0 / scene.scale,
                 scene.window[0].round(),
                 scene.window[2].round(),
@@ -946,11 +1215,18 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
                 scene.window[3].round(),
             ),
         });
+        header_rows.push(vec!["layer set".to_string(), scene.map.clone()]);
         header_rows.push(vec![
-            "scene record".to_string(),
-            format!("#{} ({} layers)", scene.record, scene.layers),
+            "world window".to_string(),
+            format!(
+                "x {}..{} · {} layers · {} drawn",
+                scene.window[0].round(),
+                scene.window[2].round(),
+                scene.layers,
+                scene.drawn
+            ),
         ]);
-    } else if let Some((width, height, rgba, legend)) = area_image(&layout, bytes) {
+    } else if let Some((width, height, rgba, legend)) = area_image(layout, bytes) {
         out.color = Some(ColorMap {
             width,
             height,
@@ -960,7 +1236,7 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
     }
     if let Some(dir) = dir {
         if let Ok(ucb) = std::fs::read(dir.join("Field.ucb")) {
-            if let Some(m) = cross_check(&layout, bytes, &ucb) {
+            if let Some(m) = cross_check(layout, bytes, &ucb) {
                 header_rows.push(vec![
                     "ucb match".to_string(),
                     format!("{:.3}% of {} cells", m.share() * 100.0, m.cells),
@@ -971,7 +1247,7 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
                     vec!["mask cells painted".to_string(), m.painted.to_string()],
                     vec!["mask cells clipped".to_string(), m.clipped.to_string()],
                     vec!["cells with no region".to_string(), m.open.to_string()],
-                    vec!["dormant masks skipped".to_string(), m.dormant.to_string()],
+                    vec!["underlay masks painted first".to_string(), m.underlay.to_string()],
                     vec![
                         "first mismatch".to_string(),
                         match m.first {
@@ -984,7 +1260,7 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
                     vec![
                         "rule".to_string(),
                         format!(
-                            "paint every mask cell (0x6641) at grid({}, {}) + cell x {MASK_CELL} in order of its +0x34 field, skipping masks flagged {MASK_DORMANT:#06x}; the last painter wins",
+                            "paint every mask cell (0x6641) at grid({}, {}) + cell x {MASK_CELL} in order of its +0x34 field; masks flagged {MASK_UNDERLAY:#06x} go first and end up fully covered",
                             WORLD_X0, WORLD_Z0
                         ),
                     ],
@@ -1006,40 +1282,41 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
         15,
     ));
 
-    let mut ranked: Vec<&Record> = layout
-        .records
+    let map_rows: Vec<Vec<String>> = catalog
         .iter()
-        .filter(|record| !record.layers.is_empty())
-        .collect();
-    ranked.sort_by(|left, right| right.layers.len().cmp(&left.layers.len()));
-    let record_rows: Vec<Vec<String>> = ranked
-        .iter()
-        .take(12)
-        .map(|record| {
-            let mut min_x = f32::MAX;
-            let mut max_x = f32::MIN;
-            let mut min_y = f32::MAX;
-            let mut max_y = f32::MIN;
-            for layer in &record.layers {
-                min_x = min_x.min(layer.min[0]);
-                max_x = max_x.max(layer.max[0]);
-                min_y = min_y.min(layer.min[1]);
-                max_y = max_y.max(layer.max[1]);
-            }
+        .take(28)
+        .map(|entry| {
             vec![
-                record.index.to_string(),
-                format!("{}, {}", record.column, record.row),
-                record.layers.len().to_string(),
-                format!("{}×{}", (max_x - min_x).round(), (max_y - min_y).round()),
-                format!("({:.0}, {:.0})..({:.0}, {:.0})", min_x, min_y, max_x, max_y),
+                entry.name.clone(),
+                entry.group.clone(),
+                entry.files.len().to_string(),
+                entry.layers.to_string(),
+                entry.tiles.to_string(),
+                format!(
+                    "{:.0}×{:.0}",
+                    entry.window[2] - entry.window[0],
+                    entry.window[3] - entry.window[1]
+                ),
+                format!(
+                    "({:.0}, {:.0})..({:.0}, {:.0})",
+                    entry.window[0], entry.window[1], entry.window[2], entry.window[3]
+                ),
             ]
         })
         .collect();
     out.sections.push(Section::new(
-        "Scene records (by layer count)",
-        &["record", "tile col,row", "layers", "size", "bounds"],
-        record_rows,
-        ranked.len() as u64,
+        "Layer sets (one battlefield stage each)",
+        &[
+            "stage",
+            "battlefield",
+            "files",
+            "layers",
+            "tiles",
+            "size",
+            "world box",
+        ],
+        map_rows,
+        catalog.len() as u64,
     ));
 
     let layer_rows = vec![
@@ -1048,17 +1325,21 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
         row3("+0x18", "u32", "tint RGBA"),
         row3("+0x1c", "u32", "fog RGB, 0xffffff = none"),
         row3("+0x20", "f32", "box center x"),
-        row3("+0x24", "f32", "view distance"),
+        row3(
+            "+0x24",
+            "f32",
+            "quad centre y (same triple as +0x20 / +0x28)",
+        ),
         row3("+0x28", "f32", "box center z"),
         row3("+0x2c", "u32", "rotation words, zero in 92% of layers"),
         row3("+0x30", "2 × u16", "scale x / y, 1.0 = 0x1000"),
         row3("+0x34", "u16", "flags, bit 2 = has extension block"),
         row3("+0x36", "u8", "extension block index"),
-        row3("+0x37", "u8", "0 or 1"),
-        row3("+0x38", "u8", "16..37 counter"),
+        row3("+0x37", "u8", "draw band 0/1, folded into the runtime sort key"),
+        row3("+0x38", "u8", "slot number from 16, 0xff on model layers"),
         row3("+0x39", "s8", "resource pair index"),
         row3("+0x3a", "u16", "panel index, & 0x7ff"),
-        row3("+0x3c", "u16", "zero in 123267 of 123280 layers"),
+        row3("+0x3c", "u16", "angle in degrees, non-zero on 11 layers only"),
         row3("+0x3e", "u16", "sample index, & 0x7ff, 2047 = none"),
     ];
     out.sections.push(Section::new(
@@ -1134,19 +1415,20 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
         .map(|record| {
             vec![
                 format!("{:#x}", record.at),
-                record
-                    .raw
-                    .iter()
-                    .map(|value| value.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                format!("({:.1}, {:.1})", record.point[0], record.point[1]),
+                format!(
+                    "x {:.0}..{:.0}, z {:.0}..{:.0}",
+                    record.rect[0].min(record.rect[2]),
+                    record.rect[0].max(record.rect[2]),
+                    record.rect[1].min(record.rect[3]),
+                    record.rect[1].max(record.rect[3]),
+                ),
+                format!("{:#010x} {:#010x}", record.tag_a, record.tag_b),
             ]
         })
         .collect();
     out.sections.push(Section::new(
-        "F records (world points)",
-        &["offset", "4 × u16", "x, y"],
+        "F records (world rectangles)",
+        &["offset", "min..max", "tags"],
         f_rows,
         layout.f_records.len() as u64,
     ));
@@ -1182,30 +1464,6 @@ pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
     ));
 
     out
-}
-
-fn pick_scene(layout: &Layout, dir: &Path, max_side: u32) -> Option<Scene> {
-    let mut order: Vec<usize> = layout
-        .records
-        .iter()
-        .filter(|record| !record.layers.is_empty())
-        .map(|record| record.index)
-        .collect();
-    order.sort_by_key(|index| std::cmp::Reverse(layout.records[*index].layers.len()));
-    let load = |pair: &Pair| read_pair(dir, pair);
-    let mut best: Option<Scene> = None;
-    for index in order.into_iter().take(6) {
-        let Some(scene) = compose(layout, index, &load, max_side) else {
-            continue;
-        };
-        if best
-            .as_ref()
-            .is_none_or(|current| scene.drawn > current.drawn)
-        {
-            best = Some(scene);
-        }
-    }
-    best.filter(|scene| scene.drawn > 0)
 }
 
 fn area_image(layout: &Layout, bytes: &[u8]) -> Option<(u32, u32, Vec<u8>, String)> {

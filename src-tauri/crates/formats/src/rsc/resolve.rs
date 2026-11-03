@@ -63,6 +63,10 @@ impl TextPool {
         self.strings.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.strings.is_empty()
+    }
+
     pub fn get(&self, id: u32) -> Option<&str> {
         self.strings.get(id as usize).map(String::as_str)
     }
