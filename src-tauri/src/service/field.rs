@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use formats::field::{FieldMap, Layout};
 use media::ContentDto;
 
-use crate::model::FieldMapDto;
+use crate::model::{FieldMapDto, FieldPropDto};
 
 const RENDER_CAPACITY: usize = 6;
 
@@ -108,6 +108,15 @@ pub fn to_dto(entry: &FieldMap) -> FieldMapDto {
         group: entry.group.clone(),
         files: entry.files.clone(),
         layers: entry.layers as u32,
+        models: entry.models as u32,
+        props: entry
+            .props
+            .iter()
+            .map(|prop| FieldPropDto {
+                name: prop.name.clone(),
+                count: prop.count,
+            })
+            .collect(),
         tiles: entry.tiles as u32,
         window: entry.window,
     }

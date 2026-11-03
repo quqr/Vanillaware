@@ -163,6 +163,27 @@ export function FieldViewer({ entry }: { entry: FileEntry }) {
         {busy && <span className="text-base-content/50">{t("field.rendering")}</span>}
       </div>
 
+      {!isUcb && selected && selected.models > 0 && (
+        <div
+          className="flex-none border-b border-base-300 bg-base-200/60 px-2 py-1 text-[10px] leading-relaxed text-base-content/60"
+          title={t("field.propsHint")}
+        >
+          <span className="text-base-content/70">
+            {selected.models} {t("field.models")}
+          </span>{" "}
+          {selected.props.length > 0 ? (
+            <>
+              <span className="text-base-content/70">· {t("field.props")}</span>{" "}
+              <span className="font-mono">
+                {selected.props.map((prop) => `${prop.name}×${prop.count}`).join("  ")}
+              </span>
+            </>
+          ) : (
+            <span className="opacity-70">{t("field.propsNone")}</span>
+          )}
+        </div>
+      )}
+
       <div className="relative min-h-0 flex-1 overflow-hidden bg-base-300/40 p-2">
         {error && <div className="p-2 text-xs text-error">{error}</div>}
         {!error && !content && (

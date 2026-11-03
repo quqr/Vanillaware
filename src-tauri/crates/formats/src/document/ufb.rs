@@ -198,13 +198,19 @@ pub fn build(bytes: &[u8]) -> DocArena {
             "rect",
             format!(
                 "x {:.0}..{:.0}, z {:.0}..{:.0}",
-                record.rect[0].min(record.rect[2]),
-                record.rect[0].max(record.rect[2]),
-                record.rect[1].min(record.rect[3]),
-                record.rect[1].max(record.rect[3]),
+                record.rect[0], record.rect[2], record.rect[1], record.rect[3]
             ),
         );
-        builder.field(node, "tags", format!("{:#010x} {:#010x}", record.tag_a, record.tag_b));
+        builder.field(
+            node,
+            "tags",
+            record
+                .tags
+                .iter()
+                .map(|tag| tag.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
     }
 
     let list = builder.array(

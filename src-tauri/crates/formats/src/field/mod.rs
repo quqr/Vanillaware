@@ -22,11 +22,13 @@ pub const GRID_ROWS: usize = 1311;
 pub const WORLD_X0: f32 = -42480.0;
 pub const WORLD_Z0: f32 = -18416.0;
 pub const MASK_UNDERLAY: u16 = 0x4700;
+pub const SAMPLE_NONE: u16 = 0x7ff;
 
 pub const ANGLE_UNIT: f32 = std::f32::consts::PI / 32768.0;
 pub const SCALE_UNIT: f32 = 1.0 / 4096.0;
 
 const MAX_AREAS: usize = 24;
+const PROP_ROWS: usize = 12;
 
 #[derive(Clone, Copy, Default)]
 pub struct Counts {
@@ -117,8 +119,7 @@ pub struct Mask {
 pub struct FRecord {
     pub at: usize,
     pub rect: [f32; 4],
-    pub tag_a: u32,
-    pub tag_b: u32,
+    pub tags: [u16; 4],
 }
 
 #[derive(Clone, Default)]
@@ -155,6 +156,24 @@ pub struct Layout {
     pub names: Vec<String>,
     pub derived: Derived,
     pub end: usize,
+}
+
+impl Layout {
+    pub fn area_name(&self, mask: &Mask) -> Option<&str> {
+        if mask.group < 0 {
+            return None;
+        }
+        self.group_names
+            .get(mask.group as usize)
+            .map(String::as_str)
+    }
+
+    pub fn prop_name(&self, layer: &Layer) -> Option<&str> {
+        if layer.sample == SAMPLE_NONE {
+            return None;
+        }
+        self.samples.get(layer.sample as usize).map(String::as_str)
+    }
 }
 
 pub fn record_size(bytes: &[u8], at: usize) -> Option<(usize, usize, usize, usize)> {
@@ -342,8 +361,12 @@ pub fn parse(bytes: &[u8]) -> Option<Layout> {
                 rdr::f32_at(bytes, cursor + 8).unwrap_or(0.0),
                 rdr::f32_at(bytes, cursor + 0x0c).unwrap_or(0.0),
             ],
-            tag_a: rdr::u32_at(bytes, cursor + 0x10).unwrap_or(0),
-            tag_b: rdr::u32_at(bytes, cursor + 0x14).unwrap_or(0),
+            tags: [
+                rdr::u16_at(bytes, cursor + 0x10).unwrap_or(0),
+                rdr::u16_at(bytes, cursor + 0x12).unwrap_or(0),
+                rdr::u16_at(bytes, cursor + 0x14).unwrap_or(0),
+                rdr::u16_at(bytes, cursor + 0x16).unwrap_or(0),
+            ],
         });
         cursor += 0x18;
     }
@@ -517,8 +540,15 @@ pub struct FieldMap {
     pub files: Vec<String>,
     pub pairs: Vec<usize>,
     pub layers: usize,
+    pub models: usize,
+    pub props: Vec<PropUse>,
     pub tiles: usize,
     pub window: [f32; 4],
+}
+
+pub struct PropUse {
+    pub name: String,
+    pub count: u32,
 }
 
 pub fn maps(layout: &Layout) -> Vec<FieldMap> {
@@ -539,6 +569,8 @@ pub fn maps(layout: &Layout) -> Vec<FieldMap> {
                     files: Vec::new(),
                     pairs: Vec::new(),
                     layers: 0,
+                    models: 0,
+                    props: Vec::new(),
                     tiles: 0,
                     window: [f32::MAX, f32::MAX, f32::MIN, f32::MIN],
                 });
@@ -556,6 +588,7 @@ pub fn maps(layout: &Layout) -> Vec<FieldMap> {
     }
 
     let mut tiles: Vec<HashSet<usize>> = vec![HashSet::new(); out.len()];
+    let mut prop_counts: Vec<HashMap<String, u32>> = vec![HashMap::new(); out.len()];
     for record in &layout.records {
         let mut touched: HashSet<usize> = HashSet::new();
         for layer in &record.layers {
@@ -571,6 +604,14 @@ pub fn maps(layout: &Layout) -> Vec<FieldMap> {
             touched.insert(*at);
             let entry = &mut out[*at];
             entry.layers += 1;
+            if layer.flags & 4 == 0 {
+                entry.models += 1;
+                if layer.sample != SAMPLE_NONE {
+                    if let Some(prop) = layout.samples.get(layer.sample as usize) {
+                        *prop_counts[*at].entry(prop.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
             entry.window[0] = entry.window[0].min(layer.min[0]);
             entry.window[1] = entry.window[1].min(layer.min[1]);
             entry.window[2] = entry.window[2].max(layer.max[0]);
@@ -582,6 +623,20 @@ pub fn maps(layout: &Layout) -> Vec<FieldMap> {
     }
     for (at, set) in tiles.iter().enumerate() {
         out[at].tiles = set.len();
+    }
+    for (at, bucket) in prop_counts.into_iter().enumerate() {
+        let mut list: Vec<PropUse> = bucket
+            .into_iter()
+            .map(|(name, count)| PropUse { name, count })
+            .collect();
+        list.sort_by(|left, right| {
+            right
+                .count
+                .cmp(&left.count)
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        list.truncate(PROP_ROWS);
+        out[at].props = list;
     }
 
     out.sort_by_key(|entry| std::cmp::Reverse(entry.layers));
@@ -911,6 +966,29 @@ pub fn checks(layout: &Layout, size: usize) -> Vec<Check> {
         ),
     });
     out.push(Check {
+        id: "ufb.f_records",
+        what: "every F record is a non-degenerate world rectangle followed by four u16 tags",
+        ok: layout.f_records.len() == counts.f_records as usize
+            && layout
+                .f_records
+                .iter()
+                .all(|record| record.rect[0] < record.rect[2] && record.rect[1] < record.rect[3]),
+        detail: format!(
+            "{} rectangles, tags {}",
+            layout.f_records.len(),
+            layout
+                .f_records
+                .first()
+                .map(|record| record
+                    .tags
+                    .iter()
+                    .map(|tag| tag.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "))
+                .unwrap_or_default()
+        ),
+    });
+    out.push(Check {
         id: "ufb.groups",
         what: "group block count equals the sum of the per-record group counts",
         ok: derived.group_blocks == counts.group_blocks as u64,
@@ -1009,7 +1087,11 @@ pub fn rasterise(layout: &Layout, bytes: &[u8]) -> Grid {
     let mut order: Vec<usize> = (0..layout.masks.len()).collect();
     order.sort_by_key(|index| {
         let mask = &layout.masks[*index];
-        (mask.sample, std::cmp::Reverse(*index))
+        (
+            u8::from(mask.flag != MASK_UNDERLAY),
+            mask.sample,
+            std::cmp::Reverse(*index),
+        )
     });
 
     let mut painted = 0u64;
@@ -1019,7 +1101,6 @@ pub fn rasterise(layout: &Layout, bytes: &[u8]) -> Grid {
         let mask = &layout.masks[index];
         if mask.flag == MASK_UNDERLAY {
             underlay += 1;
-            continue;
         }
         let width = (mask.rect[2] - mask.rect[0] + 1).max(1) as usize;
         let height = (mask.rect[3] - mask.rect[1] + 1).max(1) as usize;
@@ -1202,7 +1283,7 @@ pub fn view_layout(
             height: scene.raster.height,
             rgba: scene.raster.rgba.clone(),
             legend: format!(
-                "Layer set {}: {} layers inside the window, {} textured panels drawn, {} model layers not composited, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. Every layer is a quad taken from one of the paired .mpd files, textured from the paired .ftx and scaled into its layer box; they are painted far to near by z. One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) are separate parallax planes: stacking them without the parallax factors the game uses produces occlusion that the file does not describe, so only one set is drawn at a time.",
+                "Layer set {}: {} layers inside the window, {} textured panels drawn, {} model layers not composited, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. Every layer is a quad taken from one of the paired .mpd files, textured from the paired .ftx, then scaled, turned and tilted into place; they are painted far to near by z. One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) can be stacked, but the .01P kind is soft cloud: it covers the ground by design, so the viewer shows one set unless the scope names a whole battlefield (AC00).",
                 scene.map,
                 scene.layers,
                 scene.drawn,
@@ -1335,11 +1416,19 @@ pub fn view_layout(
         row3("+0x30", "2 × u16", "scale x / y, 1.0 = 0x1000"),
         row3("+0x34", "u16", "flags, bit 2 = has extension block"),
         row3("+0x36", "u8", "extension block index"),
-        row3("+0x37", "u8", "draw band 0/1, folded into the runtime sort key"),
+        row3(
+            "+0x37",
+            "u8",
+            "draw band 0/1, folded into the runtime sort key",
+        ),
         row3("+0x38", "u8", "slot number from 16, 0xff on model layers"),
         row3("+0x39", "s8", "resource pair index"),
         row3("+0x3a", "u16", "panel index, & 0x7ff"),
-        row3("+0x3c", "u16", "angle in degrees, non-zero on 11 layers only"),
+        row3(
+            "+0x3c",
+            "u16",
+            "angle in degrees, non-zero on 11 layers only",
+        ),
         row3("+0x3e", "u16", "sample index, & 0x7ff, 2047 = none"),
     ];
     out.sections.push(Section::new(
@@ -1385,10 +1474,9 @@ pub fn view_layout(
                     100.0 * mask.marked as f64 / mask.cells.max(1) as f64
                 ),
                 mask.sample.to_string(),
-                if mask.group < 0 {
-                    "—".to_string()
-                } else {
-                    mask.group.to_string()
+                match layout.area_name(mask) {
+                    Some(name) => format!("{} · {name}", mask.group),
+                    None => "—".to_string(),
                 },
                 format!("{:#06x}", mask.flag),
             ]
@@ -1402,7 +1490,7 @@ pub fn view_layout(
             "cell rect",
             "marked",
             "sample",
-            "group",
+            "area",
             "kind",
         ],
         area_rows,
@@ -1417,18 +1505,20 @@ pub fn view_layout(
                 format!("{:#x}", record.at),
                 format!(
                     "x {:.0}..{:.0}, z {:.0}..{:.0}",
-                    record.rect[0].min(record.rect[2]),
-                    record.rect[0].max(record.rect[2]),
-                    record.rect[1].min(record.rect[3]),
-                    record.rect[1].max(record.rect[3]),
+                    record.rect[0], record.rect[2], record.rect[1], record.rect[3],
                 ),
-                format!("{:#010x} {:#010x}", record.tag_a, record.tag_b),
+                record
+                    .tags
+                    .iter()
+                    .map(|tag| tag.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
             ]
         })
         .collect();
     out.sections.push(Section::new(
         "F records (world rectangles)",
-        &["offset", "min..max", "tags"],
+        &["offset", "rect", "tags"],
         f_rows,
         layout.f_records.len() as u64,
     ));
@@ -1505,12 +1595,16 @@ fn area_image(layout: &Layout, bytes: &[u8]) -> Option<(u32, u32, Vec<u8>, Strin
             raster.blend(px, py, [color[0], color[1], color[2], 255]);
         }
     }
+    let area = layout
+        .area_name(&mask)
+        .map(|name| name.to_string())
+        .unwrap_or_else(|| "unnamed".to_string());
     Some((
         out_width,
         out_height,
         raster.rgba,
         format!(
-            "Area mask #{index} of {}: cell rect ({}, {})..({}, {}), world box ({:.0}, {:.0})..({:.0}, {:.0}). Bright cells carry 0x6641 (inside the area), dark cells 0x6640. The paired .ftx and .mpd files hold the pixels; open the folder next to Field.ufb to render the textured scene.",
+            "Area mask #{index} of {} — {area}: cell rect ({}, {})..({}, {}), world box ({:.0}, {:.0})..({:.0}, {:.0}). Bright cells carry 0x6641 (inside the area), dark cells 0x6640. The paired .ftx and .mpd files hold the pixels; open the folder next to Field.ufb to render the textured scene.",
             layout.masks.len(),
             mask.rect[0],
             mask.rect[1],

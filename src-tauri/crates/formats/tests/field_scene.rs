@@ -220,7 +220,10 @@ fn rasterise_maps_world_units_onto_the_ucb_grid() {
     ]);
     let layout = field::parse(&bytes).expect("layout");
     let grid = field::rasterise(&layout, &bytes);
-    assert_eq!(grid.painted, 2);
+    assert_eq!(
+        grid.painted, 4,
+        "the underlay paints first and is then overwritten"
+    );
     assert_eq!(grid.underlay, 1);
     assert_eq!(grid.outside, 0);
     assert_eq!(grid.at(0, 0), 0);
@@ -407,4 +410,55 @@ fn a_panel_quad_is_the_page_rectangle_halved_scaled_and_rotated() {
         (quad[0].0 + 100.0).abs() < 1e-3,
         "pitch leaves the horizontal extent alone"
     );
+}
+
+fn ufb_named(group: i16, samples: &[&str], group_names: &[&str]) -> Vec<u8> {
+    let mut bytes = vec![0u8; 0x88];
+    bytes[0..4].copy_from_slice(b"UCFB");
+    bytes[0x54..0x58].copy_from_slice(&1u32.to_le_bytes());
+    bytes[0x64..0x68].copy_from_slice(&(samples.len() as u32).to_le_bytes());
+    bytes[0x68..0x6c].copy_from_slice(&(group_names.len() as u32).to_le_bytes());
+
+    let mut block = vec![0u8; 0x3c];
+    block[0..4].copy_from_slice(&field::WORLD_X0.to_le_bytes());
+    block[8..12].copy_from_slice(&field::WORLD_Z0.to_le_bytes());
+    block[0x0c..0x10].copy_from_slice(&(field::WORLD_X0 + 32.0).to_le_bytes());
+    block[0x14..0x18].copy_from_slice(&(field::WORLD_Z0 + 32.0).to_le_bytes());
+    block[0x2c..0x30].copy_from_slice(&1i32.to_le_bytes());
+    block[0x30..0x34].copy_from_slice(&1i32.to_le_bytes());
+    block[0x36..0x38].copy_from_slice(&group.to_le_bytes());
+    bytes.extend_from_slice(&block);
+    for _ in 0..4 {
+        bytes.extend_from_slice(&0x6641_0000u32.to_le_bytes());
+    }
+    for name in samples.iter().chain(group_names.iter()) {
+        bytes.extend_from_slice(name.as_bytes());
+        bytes.push(0);
+    }
+    bytes
+}
+
+#[test]
+fn masks_name_their_area_and_layers_name_their_prop() {
+    let bytes = ufb_named(1, &["Gate_C08"], &["AbyssMist", "Elf_Barrier"]);
+    let layout = field::parse(&bytes).expect("layout");
+    assert_eq!(layout.area_name(&layout.masks[0]), Some("Elf_Barrier"));
+    assert_eq!(
+        layout.prop_name(&field::Layer {
+            sample: 0,
+            ..Default::default()
+        }),
+        Some("Gate_C08")
+    );
+    assert_eq!(
+        layout.prop_name(&field::Layer {
+            sample: field::SAMPLE_NONE,
+            ..Default::default()
+        }),
+        None
+    );
+
+    let unnamed = ufb_named(-1, &[], &[]);
+    let layout = field::parse(&unnamed).expect("layout");
+    assert_eq!(layout.area_name(&layout.masks[0]), None);
 }

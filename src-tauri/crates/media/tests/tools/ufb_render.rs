@@ -36,16 +36,26 @@ fn main() {
     println!("{} layer sets", catalog.len());
     for entry in catalog.iter().take(10) {
         println!(
-            "  {:<12} {:5} {:6} layers {:5} tiles  {:.0}x{:.0}  x {:.0}..{:.0}",
+            "  {:<12} {:5} {:6} layers {:6} models {:5} tiles  {:.0}x{:.0}  x {:.0}..{:.0}",
             entry.name,
             entry.group,
             entry.layers,
+            entry.models,
             entry.tiles,
             entry.window[2] - entry.window[0],
             entry.window[3] - entry.window[1],
             entry.window[0],
             entry.window[2]
         );
+        if entry.models > 0 {
+            let props: Vec<String> = entry
+                .props
+                .iter()
+                .take(6)
+                .map(|prop| format!("{}x{}", prop.name, prop.count))
+                .collect();
+            println!("       props: {}", props.join("  "));
+        }
     }
 
     let scope = match wanted {

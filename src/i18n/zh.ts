@@ -268,6 +268,11 @@ export const zh: Record<MsgKey, string> = {
   "field.area": "区域",
   "field.class": "地形类别",
   "field.layers": "层",
+  "field.models": "模型层",
+  "field.props": "道具",
+  "field.propsNone": "这些层没有道具名",
+  "field.propsHint":
+    "图层可以指向 337 条样本池里的一个道具名（Town_C18_1、Gate_C08…）。UFB 只存名字和摆放位置，几何在被配对的 .MBS 里，所以这里只列出、不绘制。",
   "field.rendering": "渲染中…",
   "field.noImage": "该文件没有产出图像",
   "image.fit": "适应窗口",

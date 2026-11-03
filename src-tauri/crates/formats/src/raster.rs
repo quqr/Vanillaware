@@ -96,8 +96,7 @@ impl Raster {
         }
         for (channel, value) in color.iter().take(3).enumerate() {
             let under = self.rgba[at + channel] as f32;
-            self.rgba[at + channel] =
-                (*value as f32 * alpha + under * (1.0 - alpha)).round() as u8;
+            self.rgba[at + channel] = (*value as f32 * alpha + under * (1.0 - alpha)).round() as u8;
         }
         let under_alpha = self.rgba[at + 3] as f32 / 255.0;
         let out = alpha + under_alpha * (1.0 - alpha);
