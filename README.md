@@ -1,73 +1,187 @@
-# Vanillaware 资源浏览器
+# Vanillaware Asset Browser
 
-一个只读的本地资源浏览器，用于查看 Vanillaware 两款游戏的原生二进制资源：
-纹理、动画、场景、模型、脚本、文本、列表、网格、音频、影片，以及可挂载的 CPK 归档。
+[中文说明](README.zh-CN.md)
 
-它不是通用解包器：只显示登记在格式注册表里的原生游戏资源，其余文件只计入「未收录」数量。
+A read-only local asset browser for the native binary resources of two Vanillaware
+games: textures, animations, scenes, models, battlefield maps, scripts, text,
+tables, meshes, audio, movies, and mountable CPK archives.
 
-## 支持范围
+It is not a general unpacker: it only shows native game resources registered in
+the format registry. Everything else is counted under "uncatalogued" and hidden.
 
-| 项目 | 状态 |
+## Support scope
+
+| Item | Status |
 | --- | --- |
-| **UNICORN OVERLORD**（Switch） | 已验证 |
-| **13 Sentinels: Aegis Rim**（Switch，内部代号 ROBO） | 已验证 |
-| PS4 / PS5 等其它平台档案 | 可以打开，但**未验证**；选中非 `swi_*` 的 `tag` 时界面会挂「未经验证」徽标 |
+| **UNICORN OVERLORD** (Switch) | Verified |
+| **13 Sentinels: Aegis Rim** (Switch, internal codename ROBO) | Verified |
+| PS4 / PS5 and other platform profiles | Opens, but **unverified**; the UI shows an "unverified" badge whenever the selected `tag` is not `swi_*` |
 
-## 功能
+## Features
 
-- **列视图浏览**：Finder 风格的分栏视图，右侧固定预览栏；单击看元信息，双击装载查看器。
-- **CPK 归档**：`打开归档` 选中一个 `.cpk` 后即可像目录一样进入，按需解包单条资源；
-  自洽格式零写盘，需要同目录邻居的格式（`.mbs`+`.ftx`、`.acb`+`.awb`、`.usm` 等）按目录投影到缓存盘。
-  归档概览面板给出条目数、目录数、压缩占比、表偏移与加密情况。
-- **查看器**：图集、骨骼动画播放、文档树、内容视图（表 / 位图 / 折线 / 文本）、
-  反汇编与伪代码、对话、音频（HCA 后端解码 + lopus 交前端 WebCodecs）、
-  USM 影片（按 GOP 取流）、3D 网格、场景图、引用关系图、十六进制。
-- **全局搜索**：后台建立的目录索引，覆盖磁盘目录与已挂载归档内部条目。
-- **格式过滤**：按扩展名筛选当前列。
+- **Column browser**: Finder-style columns with a fixed preview pane on the right;
+  single click shows metadata, double click loads the viewer.
+- **CPK archives**: after `Open archive`, a `.cpk` can be entered like a directory
+  and single entries are unpacked on demand. Self-contained formats never touch the
+  disk; formats that need same-directory siblings (`.mbs`+`.ftx`, `.acb`+`.awb`,
+  `.usm`, …) are spooled into a cache directory. An archive overview panel reports
+  entry count, directory count, compression ratio, table offsets and encryption.
+- **Viewers**: atlas, skeletal animation playback, document tree, content views
+  (tables / bitmaps / polylines / text), disassembly and pseudo-code, dialogue,
+  audio (HCA decoded in the backend + lopus handed to the frontend WebCodecs),
+  USM movies (streamed per GOP), 3D meshes, scene graphs, battlefield maps,
+  reference graphs, hex.
+- **Battlefield maps (UFB/UCB)**: layered rendering at engine precision — panel
+  layers textured from the paired `.mpd`/`.ftx`, prop layers posed from the
+  skeleton of the paired `.mbs` (sampled at the engine clock). Every render
+  reports layer, panel and prop counts plus an unresolved count, and the legend
+  spells out the world window and drawing rules.
+- **Skeletal animation (MBS)**: playback matches the engine — one tick is 1/60 s,
+  keyframe interpolation has three modes (hold / linear / Catmull-Rom), fog color
+  is mixed along the timeline, and layers draw in file order without sorting.
+- **Global search**: a background directory index covering disk directories and
+  entries inside mounted archives.
+- **Format filter**: filter the current column by extension.
+- **UI language**: English by default, one-click switch to Chinese in the toolbar;
+  the preference is stored in `localStorage["locale"]`.
 
-## 开发
+## Supported formats
 
-前端 Tauri v2 + React 19 + Tailwind 4 + daisyUI 5，后端 Rust。
+Only native game binary resources are catalogued; derived artifacts (`.png`,
+`.json`, `.txt`, …) are filtered out of listings. The table below mirrors the
+backend format registry, grouped by kind. Formats whose business purpose is not
+recovered yet say so honestly — their byte structure is already closed.
+
+### Texture
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.ftx` `.ftp` | FTEX | Compressed pixel frames (BC7 / BC4 on Switch). Paired `.mbs` files resolve their textures here. Some single-solid-color pages are vertex-tinted by the game — that is real data, not a decode failure. | Atlas, Structure, Hex |
+
+### Animation
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.mbs` `.mbp` | MBS | Skeleton-quad animation data organized into sections (`s0..sb`); section meaning follows the platform `tag`. Drives the animation player and the prop layers of battlefield maps. | Animation, Structure, Hex |
+
+### Scene
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.osb` | OSB | 13 Sentinels stage bundle: a resource path pool plus a node tree. `.oeb` and `.orb` share the same layout. | Scene, Structure, Hex |
+| `.bbs` | BBS | Battle stage: two fixed-slot name tables pointing at sibling `.mbs`/`.ftx`; carries plates, fog quads and camera routes. | Layout, References, Structure, Hex |
+| `.oeb` | OEB | OSB-family placement container. | Content, Structure, Hex |
+| `.bst` | BST | A tagged value stream: one type byte plus a fixed payload per value, closing with `0x34` — a different writer from the OSB node tree. | Content, Structure, Hex |
+| `.ufb` | UFB | Field placement: layers stored on a 138 × 105 tile grid describing what stands in that patch of world; also carries area masks and name pools. | Field, Structure, Hex |
+
+### Grid
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.otm` | OTM | Fixed header plus a resource-name table. Purpose not yet identified. | References, Structure, Hex |
+| `.mpd` | MPD | Placement-set panels: page quads with atlas UVs that texture the battlefield map. | Content, Structure, Hex |
+| `.ctb` | CTB | Grid-shaped records. Purpose not yet identified. | Content, Structure, Hex |
+| `.nnd` | NND | Word table plus 110 place-name slots. The meaning of the three words is not closed yet. | Content, Structure, Hex |
+| `.ucb` | UCB | The world grid: 2199 × 1311 cells, each naming the area and terrain class it belongs to. Carries no pixels — the rasterized result of the UFB area masks. | Field, Structure, Hex |
+
+### List
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.fsb` | FSB | Tabular records. Purpose not yet identified. | Content, Structure, Hex |
+| `.orb` | ORB | OSB-family round container. | Content, Structure, Hex |
+| `.drg` | DRG | Debug-console command database: 96 databases × 6559 command records, each a 64-byte name plus a 144-byte Japanese description. | Content, Structure, Hex |
+| `.vs2` | VS2 | Tabular records. Purpose not yet identified. | Content, Structure, Hex |
+
+### Script
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.asb` | ASB | Script bytecode. Projected into mnemonics with cross-table notes (call targets, globals, jump labels) and readable pseudo-code. | Disassembly, Structure, Hex |
+| `.rsc` | RSC | Scene scripts: entries point into the FMS text pool; commands form dialogue flows. | Dialogue, References, Structure, Hex |
+
+### Text
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.fms` | FMS | Text pool: a string count plus length-prefixed strings. Dialogue text lives in `Fms/ScriptText.fms`; `.rsc` entries index into it. | Text, Structure, Hex |
+| `.inc` | INC | Text-shaped records. Purpose not yet identified. | Content, Structure, Hex |
+| `.scb` | SCB | Token-stream text: a counted name table followed by `ROOT { @TYPE (…) { … } }` blocks. | Content, Structure, Hex |
+
+### Model
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.fmd` | FMD | 3D mesh: draw segments with vertex ranges and triangle counts, shown as shaded/wireframe slices. | Mesh, Structure, Hex |
+
+### Audio
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.acb` | ACB | CRI ADX2 cue sheet naming the tracks; payload may live in a sibling AWB. | Audio, Structure, Hex |
+| `.awb` | AFS2 | CRI ADX2 wave bank. Entries are HCA or CRI Opus (lopus) and must be sniffed per entry — some banks mix both. | Audio, Structure, Hex |
+| `.acf` | ACF | CRI ADX2 global configuration table. | Content, Structure, Hex |
+
+### Video
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.usm` | USM | CRI Sofdec2 movie container. Frames are fetched per GOP, never whole-file. | Video, Structure, Hex |
+
+### Archive
+
+| Extension | Format | Purpose | Viewers |
+| --- | --- | --- | --- |
+| `.cpk` | CPK | CRI archive: `@UTF` header table plus TOC, XOR-encrypted, CRILAYLA-compressed entries. Mounted as a virtual directory, not shown as a resource. | Overview, Structure, Hex |
+
+## Development
+
+Frontend Tauri v2 + React 19 + Tailwind 4 + daisyUI 5, backend Rust.
 
 ```bash
 pnpm install
-pnpm tauri dev          # 开发
-pnpm build              # 前端类型检查 + 构建
+pnpm tauri dev          # develop
+pnpm build              # frontend type-check + build
 ```
 
-## 验收
+## Acceptance
 
 ```bash
 # Rust
-cargo test -p archive                                  # CPK 读取器
-cargo test -p archive --test corpus -- --ignored       # 四个真实 CPK 的字节级闭合
-cargo test -p vfs                                      # 挂载层
-cargo test -p vfs --test corpus -- --ignored           # 真实归档的列举与索引
-cargo test -p catalog -p formats -p media              # 格式与媒体回归
-cargo test --test archive_mount                        # 归档到查看器链路的端到端
-cargo run -p archive --example cpk_probe -- <x.cpk>    # 归档诊断，有 FAIL 非零退出
+cargo test -p archive                                  # CPK reader
+cargo test -p archive --test corpus -- --ignored       # byte-exact closure on four real CPKs
+cargo test -p vfs                                      # mount layer
+cargo test -p vfs --test corpus -- --ignored           # listing and indexing of real archives
+cargo test -p catalog -p formats -p media              # format and media regressions
+cargo test -p formats --test field_corpus -- --ignored # battlefield corpus closure
+cargo test --test archive_mount                        # archive-to-viewer end to end
+cargo run -p archive --example cpk_probe -- <x.cpk>    # archive diagnostics; FAIL exits non-zero
 
-# 前端
-pnpm check:lang                                        # 代码里不得出现中文
+# Frontend
+pnpm check:lang                                        # no Chinese allowed in code
+pnpm check:audio                                       # audio decode pipeline (HCA / lopus)
+pnpm check:video                                       # USM decode pipeline
+pnpm check:mbs                                         # MBS playback semantics (interpolation / frame order)
 npx tsc --noEmit
 ```
 
-语料路径可用 `CPK_CORPUS`、`CORPUS_13`、`CRIFS_ASSETS` 等环境变量覆盖，
-默认值写在对应 `tests/*.rs` 的常量里。
+Corpus paths can be overridden through `CPK_CORPUS`, `CORPUS_13`, `CRIFS_ASSETS`
+and friends; the defaults live as constants in the corresponding `tests/*.rs`.
 
-## 结构
+## Layout
 
 ```
 src-tauri/
-├── src/                 应用层：command（薄命令层）/ service（业务与缓存）/ model（DTO）
+├── src/                 app layer: command (thin) / service (business + cache) / model (DTO)
 └── crates/
-    ├── catalog          目录列举、格式注册表、索引、游戏档案（刻意不依赖 formats）
-    ├── formats          格式语义与投影（文档树、内容视图、纹理解码、反汇编…）
-    ├── archive          CRI CPK 读取器（容器 / @UTF 表 / TOC / CRILAYLA）
-    ├── vfs              归档挂载层：一个路径同时寻址磁盘与归档
-    ├── media            PNG 缓存、音频、影片、内容视图的媒体包装
-    └── schema           Kaitai 生成的结构定义
-src/                     前端：views / components（columns、library、viewers）/ store / lib / i18n
+    ├── catalog          directory listing, format registry, index, game profiles (never depends on formats)
+    ├── formats          format semantics and projections (doc trees, content views, texture decode, disassembly…)
+    ├── archive          CRI CPK reader (container / @UTF tables / TOC / CRILAYLA)
+    ├── vfs              archive mount layer: one path addresses both disk and archive
+    ├── media            PNG cache, audio, movies, media wrappers for content views
+    └── schema           Kaitai-generated structure definitions
+src/                     frontend: views / components (columns, library, viewers) / store / lib / i18n
+tools/                   ksc_gen.py (ksy → Kaitai codegen) and rev/ (NSO unpacking, function extraction, ADRP+ADD reference recovery)
 ```
 
-设计决策见 `docs/adr/`，领域术语见 `CONTEXT.md`。
+Design decisions live in `docs/adr/`, domain vocabulary in `CONTEXT.md`.
