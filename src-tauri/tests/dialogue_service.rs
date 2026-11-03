@@ -29,8 +29,5 @@ fn service_resolves_the_text_pool_and_reuses_it() {
 
     let second = service.open(&path).expect("second open");
     assert_eq!(second.stats.text_commands, first.stats.text_commands);
-    assert_eq!(
-        second.entries[0].lines.len(),
-        first.entries[0].lines.len()
-    );
+    assert_eq!(second.entries[0].lines.len(), first.entries[0].lines.len());
 }

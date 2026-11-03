@@ -88,9 +88,6 @@ pub struct TimelineEntry {
     pub dstquad_mix_id: i64,
     pub fogquad_mix_id: i64,
     pub hitquad_mix_id: i64,
-    pub in_rate: i64,
-    /// s7 fields in runtime order: move xyz, rotate xyz, scale xy.
-    pub transform: Vec<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attach: Option<Attach>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -427,17 +424,6 @@ fn q3d_sas8s9_loop(v55: &V55, salist: &[Pad<SaAnim>], quad: &mut Quad) -> Result
                     dstquad_mix_id: s8v.in_s6,
                     fogquad_mix_id: s8v.in_s6,
                     hitquad_mix_id: s8v.in_s5s3,
-                    in_rate: s8v.in_rate,
-                    transform: vec![
-                        f32_at(&s7v.move_, 0),
-                        f32_at(&s7v.move_, 1),
-                        f32_at(&s7v.move_, 2),
-                        f32_at(&s7v.rotate, 0),
-                        f32_at(&s7v.rotate, 1),
-                        f32_at(&s7v.rotate, 2),
-                        f32_at(&s7v.scale, 0),
-                        f32_at(&s7v.scale, 1),
-                    ],
                     attach,
                     color: None,
                     matrix,
@@ -479,10 +465,6 @@ fn attach(kind: &str, id: i64) -> Attach {
         kind: kind.to_string(),
         id,
     }
-}
-
-fn f32_at(values: &[f32], index: usize) -> f64 {
-    f64::from(values.get(index).copied().unwrap_or(0.0))
 }
 
 pub fn set_at<T>(list: &mut Vec<Pad<T>>, key: usize, value: Pad<T>) {
