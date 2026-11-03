@@ -15,9 +15,10 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ""
+            args: "--no-bundle"
+            artifact: "vanillaware-windows-x64.exe"
           - platform: ubuntu-22.04
-            args: ""
+            args: "--bundles appimage"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -58,14 +59,33 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build and upload to the release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        run: pnpm tauri build ${{ matrix.args }}
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+            echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rename Windows executable
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          cp src-tauri/target/release/vanillaware.exe \
+            "vanillaware-${{ steps.tag.outputs.tag }}-windows-x64.exe"
+
+      - name: Upload to the release
+        uses: softprops/action-gh-release@v2
         with:
-          tagName: v__VERSION__
-          releaseName: "Vanillaware Asset Browser v__VERSION__"
-          releaseBody: "See the assets below to download and install."
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Vanillaware Asset Browser ${{ steps.tag.outputs.tag }}"
+          body: "Unpack nothing: run the exe (Windows) or the AppImage (Linux) directly. The WebView2 runtime must be present on Windows (preinstalled on Windows 10 21H2+)."
+          files: |
+            vanillaware-*-windows-x64.exe
+            src-tauri/target/release/bundle/appimage/*.AppImage
