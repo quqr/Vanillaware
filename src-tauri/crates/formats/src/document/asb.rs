@@ -105,7 +105,7 @@ struct Module {
     used_obj_props: Vec<(Option<TypeInfo>, String)>,
 }
 
-struct Reader<'a> {
+pub struct Reader<'a> {
     bytes: &'a [u8],
     pos: usize,
     strings: Vec<String>,
@@ -114,7 +114,7 @@ struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    pub fn new(bytes: &'a [u8]) -> Self {
         Self {
             bytes,
             pos: 0,
@@ -148,7 +148,7 @@ impl<'a> Reader<'a> {
         Ok(raw.iter().fold(0u64, |acc, &byte| (acc << 8) | byte as u64))
     }
 
-    fn enc_int(&mut self) -> Result<i64, String> {
+    pub fn enc_int(&mut self) -> Result<i64, String> {
         let mut byte = self.u8()?;
         let negative = byte & 0x80 != 0;
         byte &= 0x7f;
@@ -172,10 +172,10 @@ impl<'a> Reader<'a> {
         Ok(if negative { -value } else { value })
     }
 
-    /// 读取一个计数值，并要求它不超过剩余字节数。
-    /// 每个表项至少消耗 1 字节，因此这个上界足以阻止伪造计数导致的
-    /// 巨量预分配或长时间空转。
-    fn take_count(&mut self, what: &str) -> Result<usize, String> {
+    /// Read a count and reject anything larger than the remaining byte count.
+    /// Every table entry costs at least one byte, so that bound is enough to
+    /// stop a forged count from reserving a huge buffer or spinning.
+    pub fn take_count(&mut self, what: &str) -> Result<usize, String> {
         let value = self.enc_int()?;
         let count = value.max(0) as usize;
         let remaining = self.bytes.len().saturating_sub(self.pos);
@@ -253,9 +253,11 @@ impl<'a> Reader<'a> {
         let value = self.enc_int()?;
         if value != 0 {
             let index = (value - 1) as usize;
-            return self.dtypes.get(index).cloned().ok_or_else(|| {
-                format!("dtype cache {index} out of range at {:#x}", self.pos)
-            });
+            return self
+                .dtypes
+                .get(index)
+                .cloned()
+                .ok_or_else(|| format!("dtype cache {index} out of range at {:#x}", self.pos));
         }
         let token = self.enc_int()?;
         let type_info = if token == TT_IDENTIFIER {
@@ -336,9 +338,7 @@ impl<'a> Reader<'a> {
             let kind = ASB_OPS
                 .get(op as usize)
                 .map(|(_, kind)| *kind)
-                .ok_or_else(|| {
-                    format!("unknown opcode {op} (instruction {index}) at {at:#x}")
-                })?;
+                .ok_or_else(|| format!("unknown opcode {op} (instruction {index}) at {at:#x}"))?;
             let arg_count = match kind {
                 ArgKind::None => 0,
                 ArgKind::One => 1,
@@ -638,7 +638,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// 一次解析的结果，可被缓存后在多个查看器之间复用。
+/// The result of one parse, cacheable and shareable between viewers.
 pub struct AsbModule {
     module: Module,
     file_len: usize,
@@ -898,7 +898,7 @@ pub struct AsmLineDto {
     pub op: String,
     pub args: Vec<String>,
     pub note: Option<String>,
-    /// 跳转类指令的有效目标指令序号；越界或非跳转时为 None。
+    /// Index of the target instruction for a jump; None when out of range or not a jump.
     pub target: Option<u32>,
 }
 
@@ -955,7 +955,7 @@ fn disassemble_module(module: &Module, function_index: Option<usize>) -> AsmDto 
     }
 }
 
-/// 默认选中第一个真正带字节码的函数，避免一打开就是空壳。
+/// Pick the first function that actually carries bytecode, so the viewer never opens empty.
 fn default_function(module: &Module) -> usize {
     module
         .functions
@@ -1091,7 +1091,7 @@ fn disassembly_note(
     }
 }
 
-/// 校验字节码操作数是否落在对应的使用表内，并检查跳转目标。
+/// Check that every operand index lands inside its usage table, and that jumps land in range.
 fn validate_refs(module: &Module) -> (bool, Option<String>) {
     struct Checker {
         total: usize,
@@ -1103,7 +1103,8 @@ fn validate_refs(module: &Module) -> (bool, Option<String>) {
             if value < 0 || value as usize >= len {
                 self.total += 1;
                 if self.samples.len() < 8 {
-                    self.samples.push(format!("{context}: {table}[{value}] / {len}"));
+                    self.samples
+                        .push(format!("{context}: {table}[{value}] / {len}"));
                 }
             }
         }
@@ -1130,8 +1131,8 @@ fn validate_refs(module: &Module) -> (bool, Option<String>) {
                     "CALLBND" => {
                         checker.check(&at, "bind", first, module.bind_sigs.len());
                     }
-                    "PGA" | "PshGPtr" | "LDG" | "PshG4" | "LdGRdR4" | "CpyGtoV4"
-                    | "CpyVtoG4" | "SetG4" => {
+                    "PGA" | "PshGPtr" | "LDG" | "PshG4" | "LdGRdR4" | "CpyGtoV4" | "CpyVtoG4"
+                    | "SetG4" => {
                         if first & 1 != 0 {
                             checker.check(&at, "gp", first >> 1, module.used_global_props.len());
                         } else {
@@ -1176,7 +1177,7 @@ fn validate_refs(module: &Module) -> (bool, Option<String>) {
     (ok, detail)
 }
 
-/// 把相对的跳转参数换算成绝对指令序号；越界时返回 None。
+/// Turn a relative jump operand into an absolute instruction index; None when out of range.
 fn jump_target(index: usize, delta: i64, limit: usize) -> Option<usize> {
     let target = (index as i64).checked_add(1)?.checked_add(delta)?;
     if target < 0 || target as usize >= limit {
@@ -1264,8 +1265,9 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
     let mut pending_cmp: Option<(String, String)> = None;
 
     for (index, (op, args)) in info.ops.iter().enumerate() {
-        // 比较标志不跨块；只有不可达的死代码才清空残留栈值，
-        // 跳转目标处的栈值可能是两条路径的合流结果，必须保留。
+        // A comparison flag never crosses a block; only unreachable dead code
+        // clears the leftovers. Values at a jump target may be the merge of two
+        // paths, so they must survive.
         if leaders[index] && index > 0 {
             let after_terminator = matches!(op_name(info.ops[index - 1].0), "RET" | "JMP");
             if after_terminator && !targeted[index] && !stack.is_empty() {
@@ -1411,16 +1413,12 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
             _ if is_jump(name) => {
                 let target = jump_target(index, first, info.ops.len());
                 let invalid = target.is_none();
-                let label = target
-                    .map(|value| format!("L{value}"))
-                    .unwrap_or_else(|| {
-                        format!(
-                            "L{}",
-                            (index as i64)
-                                .saturating_add(1)
-                                .saturating_add(first)
-                        )
-                    });
+                let label = target.map(|value| format!("L{value}")).unwrap_or_else(|| {
+                    format!(
+                        "L{}",
+                        (index as i64).saturating_add(1).saturating_add(first)
+                    )
+                });
                 if name == "JMP" {
                     out.push(format!(
                         "{}goto {label};",
@@ -1780,7 +1778,11 @@ fn format_float(value: i64) -> String {
 }
 
 fn display_name(name: &str) -> &str {
-    if name.is_empty() { "<anonymous>" } else { name }
+    if name.is_empty() {
+        "<anonymous>"
+    } else {
+        name
+    }
 }
 
 fn is_void(ret: &str) -> bool {
@@ -1839,194 +1841,5 @@ fn type_info_name(info: &TypeInfo) -> String {
         | TypeInfo::Subtype(name)
         | TypeInfo::Object { name, .. }
         | TypeInfo::Funcdef { name, .. } => name.clone(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn encode(value: i64) -> Vec<u8> {
-        let negative = value < 0;
-        let magnitude = value.unsigned_abs();
-        let sign = if negative { 0x80 } else { 0 };
-        let (prefix, bytes) = if magnitude < 0x40 {
-            (0, 0)
-        } else if magnitude <= 0xff {
-            (0x40, 1)
-        } else if magnitude <= 0xffff {
-            (0x60, 2)
-        } else if magnitude <= 0x1ff_ffff {
-            (0x70, 3)
-        } else if magnitude <= 0x1_ffff_ffff {
-            (0x78, 4)
-        } else if magnitude <= 0x3_ffff_ffff {
-            (0x7c, 5)
-        } else if magnitude <= 0x7f_ffff_ffff {
-            (0x7e, 6)
-        } else {
-            (0x7f, 8)
-        };
-        if bytes == 0 {
-            return vec![magnitude as u8 | sign];
-        }
-        let high = match bytes {
-            1 => (magnitude >> 8) as u8 & 0x1f,
-            2 => (magnitude >> 16) as u8 & 0x1f,
-            3 => (magnitude >> 24) as u8 & 0x0f,
-            4 => (magnitude >> 32) as u8 & 0x07,
-            5 => (magnitude >> 40) as u8 & 0x03,
-            6 => (magnitude >> 48) as u8 & 0x01,
-            _ => 0,
-        };
-        let mut out = vec![prefix | high | sign];
-        for shift in (0..bytes).rev() {
-            out.push((magnitude >> (shift * 8)) as u8);
-        }
-        out
-    }
-
-    fn read_int(bytes: &[u8]) -> i64 {
-        Reader::new(bytes).enc_int().expect("enc_int")
-    }
-
-    #[test]
-    fn enc_int_round_trips() {
-        for value in [0, 1, -1, 42, -42, 0x3f, -0x3f, 80, -80, 0xffff, 0x7fff_ffff] {
-            let bytes = encode(value);
-            assert_eq!(read_int(&bytes), value, "value {value} / {bytes:?}");
-        }
-        let mut raw = vec![0x7f];
-        raw.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 9]);
-        assert_eq!(read_int(&raw), 9);
-    }
-
-    #[test]
-    fn count_budget_rejects_oversized_tables() {
-        let bytes = [0x40, 0xff];
-        let mut reader = Reader::new(&bytes);
-        let error = reader.take_count("test").expect_err("must reject");
-        assert!(error.contains("exceeds remaining"), "{error}");
-    }
-
-    #[derive(Default)]
-    struct ModuleBuilder {
-        out: Vec<u8>,
-    }
-
-    impl ModuleBuilder {
-        fn int(&mut self, value: i64) {
-            self.out.extend(encode(value));
-        }
-
-        fn byte(&mut self, value: u8) {
-            self.out.push(value);
-        }
-
-        fn text(&mut self, value: &str) {
-            self.int((value.len() as i64) << 1);
-            self.out.extend(value.as_bytes());
-        }
-
-        fn void_type(&mut self) {
-            self.int(0);
-            self.int(80);
-            self.byte(0);
-        }
-
-        fn signature(&mut self, name: &str) {
-            self.text(name);
-            self.void_type();
-            self.int(0);
-            self.int(1);
-            self.int(0);
-            self.text("");
-        }
-
-        fn debug_body(&mut self) {
-            self.int(0);
-            self.int(0);
-            self.int(0);
-            self.text("");
-            self.int(0);
-            self.int(0);
-        }
-    }
-
-    fn minimal_module(ops: &[(u8, &[i64])], used_funcs: usize) -> Vec<u8> {
-        let mut b = ModuleBuilder::default();
-        b.int(0);
-        b.int(0);
-        b.int(0);
-        b.int(0);
-        b.int(0);
-        b.int(0);
-        b.int(1);
-        b.byte(b'f');
-        b.signature("main");
-        b.byte(0);
-        b.int(ops.len() as i64);
-        for (op, args) in ops {
-            b.byte(*op);
-            for arg in *args {
-                b.int(*arg);
-            }
-        }
-        b.int(0);
-        b.debug_body();
-        b.int(0);
-        b.int(0);
-        b.int(0);
-        b.int(0);
-        b.int(used_funcs as i64);
-        for _ in 0..used_funcs {
-            b.byte(b'n');
-        }
-        b.int(0);
-        b.int(0);
-        b.int(0);
-        b.out
-    }
-
-    #[test]
-    fn synthetic_module_parses_and_decompiles() {
-        let bytes = minimal_module(&[(2, &[42]), (10, &[0])], 0);
-        let doc = build(&bytes).expect("doc");
-        let check = doc
-            .checks()
-            .iter()
-            .find(|check| check.id == "asb.eof")
-            .expect("eof check");
-        assert!(check.ok);
-
-        let module = AsbModule::parse(&bytes).expect("parse");
-        let asm = module.disassemble(None);
-        assert_eq!(asm.functions.len(), 1);
-        assert_eq!(
-            asm.lines.iter().map(|line| line.op.as_str()).collect::<Vec<_>>(),
-            ["PshC4", "RET"]
-        );
-        assert_eq!(asm.lines[0].target, None);
-
-        let pseudo = module.pseudo(None);
-        assert!(pseudo.text.contains("return;"), "{}", pseudo.text);
-        assert!(pseudo.text.contains("main("), "{}", pseudo.text);
-    }
-
-    #[test]
-    fn dangling_call_target_is_reported() {
-        let bytes = minimal_module(&[(9, &[0]), (10, &[0])], 0);
-        let doc = build(&bytes).expect("doc");
-        let check = doc
-            .checks()
-            .iter()
-            .find(|check| check.id == "asb.refs")
-            .expect("refs check");
-        assert!(!check.ok);
-        assert!(
-            check.detail.as_deref().is_some_and(|text| text.contains("uf[0]")),
-            "{:?}",
-            check.detail
-        );
     }
 }

@@ -68,7 +68,7 @@ pub fn doc_children(
         .ok_or_else(|| format!("node {node} does not exist"))
 }
 
-/// 复用 doc 信号量并缓存解析结果，避免每切换一个函数就重读整个模块。
+/// Hold the doc semaphore and reuse the parse, so switching functions never re-reads the module.
 async fn load_asm_module(state: &AppState, path: &str) -> Result<Arc<AsbModule>, String> {
     let stat = state.mount.stat(path).map_err(err_string)?;
     let size = stat.size;

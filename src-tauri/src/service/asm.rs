@@ -18,7 +18,7 @@ struct Entry {
     module: Arc<AsbModule>,
 }
 
-/// 缓存 ASB 的一次解析结果，避免每切换一个函数就重读并重解析整个模块。
+/// Keep one ASB parse alive so switching functions never re-reads or re-parses the module.
 #[derive(Clone, Default)]
 pub struct AsmCache {
     entries: Arc<Mutex<VecDeque<Entry>>>,
