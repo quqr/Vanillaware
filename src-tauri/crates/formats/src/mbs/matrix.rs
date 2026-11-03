@@ -92,12 +92,12 @@ fn rotate_x_row(radian: f64) -> [f64; 16] {
     m
 }
 
-/// Engine transform matrix, transcribed from `f_700058d708` + `f_700058e014`.
+/// Engine transform matrix, transcribed from `f_700058d188` + `f_700058e014`.
 ///
 /// Layout is **row major with a row-vector convention** (`p' = p · M`), so the
 /// translation lives in `m[12..15]`. The rotations are right-multiplied in the
 /// order Z, X, Y, and the flip flags negate a whole column after the rotation
-/// (`f_700058d708` negates `m[0] m[4] m[8] m[12]`, i.e. column 0).
+/// (`f_700058d188` negates `m[0] m[4] m[8] m[12]`, i.e. column 0).
 pub fn engine_matrix(
     move_: &[f32],
     rotate: &[f32],
