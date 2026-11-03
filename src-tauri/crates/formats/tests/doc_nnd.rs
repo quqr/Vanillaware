@@ -60,7 +60,10 @@ fn splits_tail_into_names_and_links() {
         .map(|check| (check.id.as_str(), check.ok))
         .collect();
     assert!(checks.contains(&("nnd.tail", true)));
-    assert_eq!(arena.count_field_value("shape", "2 link pairs of 8 bytes"), 1);
+    assert_eq!(
+        arena.count_field_value("shape", "2 link pairs of 8 bytes"),
+        1
+    );
 }
 
 #[test]

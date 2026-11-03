@@ -8,8 +8,8 @@
 
 extern crate kaitai;
 use kaitai::*;
+use std::cell::{Cell, Ref, RefCell};
 use std::convert::{TryFrom, TryInto};
-use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Default, Debug, Clone)]
@@ -41,7 +41,12 @@ impl KStruct for RscCommand {
         {
             let mut _i = 0;
             while !_io.is_eof() {
-                let t = Self::read_into::<_, RscCommand_Command>(&*_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+                let t = Self::read_into::<_, RscCommand_Command>(
+                    &*_io,
+                    Some(self_rc._root.clone()),
+                    Some(self_rc._self.clone()),
+                )?
+                .into();
                 self_rc.commands.borrow_mut().push(t);
                 _i += 1;
             }
@@ -49,8 +54,7 @@ impl KStruct for RscCommand {
         Ok(())
     }
 }
-impl RscCommand {
-}
+impl RscCommand {}
 impl RscCommand {
     pub fn commands(&self) -> Ref<'_, Vec<OptRc<RscCommand_Command>>> {
         self.commands.borrow()
@@ -99,8 +103,7 @@ impl KStruct for RscCommand_Command {
         Ok(())
     }
 }
-impl RscCommand_Command {
-}
+impl RscCommand_Command {}
 impl RscCommand_Command {
     pub fn opcode(&self) -> Ref<'_, u32> {
         self.opcode.borrow()

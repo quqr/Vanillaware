@@ -8,8 +8,8 @@
 
 extern crate kaitai;
 use kaitai::*;
+use std::cell::{Cell, Ref, RefCell};
 use std::convert::{TryFrom, TryInto};
-use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Default, Debug, Clone)]
@@ -48,27 +48,38 @@ impl KStruct for Fms {
         let _r = _rrc.as_ref().unwrap();
         *self_rc.magic.borrow_mut() = _io.read_bytes(4 as usize)?.into();
         if !(*self_rc.magic() == vec![0x46u8, 0x4du8, 0x53u8, 0x42u8]) {
-            return Err(KError::ValidationFailed(ValidationFailedError { kind: ValidationKind::NotEqual, src_path: "/seq/0".to_string() }));
+            return Err(KError::ValidationFailed(ValidationFailedError {
+                kind: ValidationKind::NotEqual,
+                src_path: "/seq/0".to_string(),
+            }));
         }
         *self_rc.payload_size.borrow_mut() = _io.read_u4le()?.into();
         *self_rc.header_size.borrow_mut() = _io.read_u4le()?.into();
         *self_rc.reserved_0c.borrow_mut() = _io.read_bytes(8 as usize)?.into();
         *self_rc.string_count.borrow_mut() = _io.read_u4le()?.into();
         *self_rc.encoding.borrow_mut() = _io.read_u1()?.into();
-        *self_rc.reserved_19.borrow_mut() = _io.read_bytes(((*self_rc.header_size() as u32) - (25 as u32)) as usize)?.into();
-        *self_rc.slots.borrow_mut() = _io.read_bytes(((*self_rc.string_count() as u32) * (8 as u32)) as usize)?.into();
+        *self_rc.reserved_19.borrow_mut() = _io
+            .read_bytes(((*self_rc.header_size() as u32) - (25 as u32)) as usize)?
+            .into();
+        *self_rc.slots.borrow_mut() = _io
+            .read_bytes(((*self_rc.string_count() as u32) * (8 as u32)) as usize)?
+            .into();
         *self_rc.strings.borrow_mut() = Vec::new();
         let l_strings = *self_rc.string_count();
         for _i in 0..l_strings {
-            let t = Self::read_into::<_, Fms_Text>(&*_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+            let t = Self::read_into::<_, Fms_Text>(
+                &*_io,
+                Some(self_rc._root.clone()),
+                Some(self_rc._self.clone()),
+            )?
+            .into();
             self_rc.strings.borrow_mut().push(t);
         }
         *self_rc.tail.borrow_mut() = _io.read_bytes_full()?.into();
         Ok(())
     }
 }
-impl Fms {
-}
+impl Fms {}
 impl Fms {
     pub fn magic(&self) -> Ref<'_, Vec<u8>> {
         self.magic.borrow()
@@ -150,12 +161,12 @@ impl KStruct for Fms_Text {
         let _rrc = self_rc._root.get_value().borrow().upgrade();
         let _prc = self_rc._parent.get_value().borrow().upgrade();
         let _r = _rrc.as_ref().unwrap();
-        *self_rc.value.borrow_mut() = bytes_to_str(&_io.read_bytes_term(0, false, true, true)?.into(), "UTF-8")?;
+        *self_rc.value.borrow_mut() =
+            bytes_to_str(&_io.read_bytes_term(0, false, true, true)?.into(), "UTF-8")?;
         Ok(())
     }
 }
-impl Fms_Text {
-}
+impl Fms_Text {}
 impl Fms_Text {
     pub fn value(&self) -> Ref<'_, String> {
         self.value.borrow()

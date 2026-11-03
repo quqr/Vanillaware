@@ -48,14 +48,22 @@ fn bbs_graph_resolves_sibling_files() {
         .iter()
         .find(|node| node.label == "Target.mbs")
         .expect("mbs node");
-    assert_eq!(mbs.status.as_deref(), Some("resolved"), "a same-directory lookup must hit");
+    assert_eq!(
+        mbs.status.as_deref(),
+        Some("resolved"),
+        "a same-directory lookup must hit"
+    );
 
     let ftx = graph
         .nodes
         .iter()
         .find(|node| node.label == "Target.ftx")
         .expect("ftx node");
-    assert_eq!(ftx.status.as_deref(), Some("missing"), "a missing file must be flagged missing");
+    assert_eq!(
+        ftx.status.as_deref(),
+        Some("missing"),
+        "a missing file must be flagged missing"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -122,9 +130,15 @@ fn corpus_bbs_names_resolve() {
     }
 
     let ratio = resolved as f64 / total as f64;
-    eprintln!("bbs name table resolution {resolved}/{total} = {:.1}%", ratio * 100.0);
+    eprintln!(
+        "bbs name table resolution {resolved}/{total} = {:.1}%",
+        ratio * 100.0
+    );
     assert!(total > 0);
-    assert!(ratio >= 0.95, "the same-directory hit rate must be at least 95%");
+    assert!(
+        ratio >= 0.95,
+        "the same-directory hit rate must be at least 95%"
+    );
 }
 
 #[test]
@@ -155,7 +169,13 @@ fn corpus_otm_header_resource_resolves() {
     }
 
     let ratio = resolved as f64 / total as f64;
-    eprintln!("otm manifest resolution {resolved}/{total} = {:.1}%", ratio * 100.0);
+    eprintln!(
+        "otm manifest resolution {resolved}/{total} = {:.1}%",
+        ratio * 100.0
+    );
     assert!(total > 0);
-    assert!(ratio >= 0.90, "the bounded index must find resources in sibling directories");
+    assert!(
+        ratio >= 0.90,
+        "the bounded index must find resources in sibling directories"
+    );
 }

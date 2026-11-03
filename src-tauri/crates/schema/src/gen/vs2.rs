@@ -8,8 +8,8 @@
 
 extern crate kaitai;
 use kaitai::*;
+use std::cell::{Cell, Ref, RefCell};
 use std::convert::{TryFrom, TryInto};
-use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Default, Debug, Clone)]
@@ -52,14 +52,18 @@ impl KStruct for Vs2 {
         *self_rc.masks.borrow_mut() = Vec::new();
         let l_masks = *self_rc.count();
         for _i in 0..l_masks {
-            let t = Self::read_into::<_, Vs2_Mask>(&*_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+            let t = Self::read_into::<_, Vs2_Mask>(
+                &*_io,
+                Some(self_rc._root.clone()),
+                Some(self_rc._self.clone()),
+            )?
+            .into();
             self_rc.masks.borrow_mut().push(t);
         }
         Ok(())
     }
 }
-impl Vs2 {
-}
+impl Vs2 {}
 impl Vs2 {
     pub fn count(&self) -> Ref<'_, u32> {
         self.count.borrow()
@@ -122,8 +126,7 @@ impl KStruct for Vs2_Mask {
         Ok(())
     }
 }
-impl Vs2_Mask {
-}
+impl Vs2_Mask {}
 impl Vs2_Mask {
     pub fn low(&self) -> Ref<'_, u32> {
         self.low.borrow()

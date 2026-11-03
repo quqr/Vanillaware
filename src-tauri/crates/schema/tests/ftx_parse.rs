@@ -14,7 +14,8 @@ fn parses_barrier00_header() {
     }
 
     let io = BytesReader::open(SAMPLE).expect("open");
-    let root = <FtexSwitch as KStruct>::read_into::<_, FtexSwitch>(&io, None, None).expect("parse FtexSwitch");
+    let root = <FtexSwitch as KStruct>::read_into::<_, FtexSwitch>(&io, None, None)
+        .expect("parse FtexSwitch");
 
     assert_eq!(*root.version(), 0x0004_0140);
     assert_eq!(*root.header_size(), 0x80);
@@ -22,7 +23,9 @@ fn parses_barrier00_header() {
 
     let entries = root.entries();
     assert_eq!(entries.len(), 1);
-    let name = String::from_utf8_lossy(&entries[0].name()).trim_end_matches('\0').to_string();
+    let name = String::from_utf8_lossy(&entries[0].name())
+        .trim_end_matches('\0')
+        .to_string();
     assert_eq!(name, "barrier00.nvt");
 
     let blocks = root.blocks();

@@ -8,8 +8,8 @@
 
 extern crate kaitai;
 use kaitai::*;
+use std::cell::{Cell, Ref, RefCell};
 use std::convert::{TryFrom, TryInto};
-use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Default, Debug, Clone)]
@@ -104,7 +104,10 @@ impl KStruct for MbsV77 {
         let _r = _rrc.as_ref().unwrap();
         *self_rc.magic.borrow_mut() = _io.read_bytes(4 as usize)?.into();
         if !(*self_rc.magic() == vec![0x46u8, 0x4du8, 0x42u8, 0x53u8]) {
-            return Err(KError::ValidationFailed(ValidationFailedError { kind: ValidationKind::NotEqual, src_path: "/seq/0".to_string() }));
+            return Err(KError::ValidationFailed(ValidationFailedError {
+                kind: ValidationKind::NotEqual,
+                src_path: "/seq/0".to_string(),
+            }));
         }
         *self_rc.header_pad.borrow_mut() = _io.read_bytes(16 as usize)?.into();
         *self_rc.version.borrow_mut() = _io.read_u2le()?.into();
@@ -177,7 +180,22 @@ impl MbsV77 {
     }
 }
 impl MbsV77 {
-    pub fn set_params(&mut self, kind: u8, num_s0: u32, num_s1: u32, num_s2: u32, num_s3: u32, num_s4: u32, num_s5: u32, num_s6: u32, num_s7: u32, num_s8: u32, num_s9: u32, num_sa: u32, num_sb: u32) {
+    pub fn set_params(
+        &mut self,
+        kind: u8,
+        num_s0: u32,
+        num_s1: u32,
+        num_s2: u32,
+        num_s3: u32,
+        num_s4: u32,
+        num_s5: u32,
+        num_s6: u32,
+        num_s7: u32,
+        num_s8: u32,
+        num_s9: u32,
+        num_sa: u32,
+        num_sb: u32,
+    ) {
         *self.kind.borrow_mut() = kind;
         *self.num_s0.borrow_mut() = num_s0;
         *self.num_s1.borrow_mut() = num_s1;
@@ -194,9 +212,7 @@ impl MbsV77 {
     }
 }
 impl MbsV77 {
-    pub fn s0_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS0>>>> {
+    pub fn s0_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS0>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -210,15 +226,18 @@ impl MbsV77 {
         *self.s0_records.borrow_mut() = Vec::new();
         let l_s0_records = *self.num_s0();
         for _i in 0..l_s0_records {
-            let t = Self::read_into::<_, MbsV77_RecS0>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecS0>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s0_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s0_records.borrow())
     }
-    pub fn s0_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s0_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -233,9 +252,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s0_sp.borrow())
     }
-    pub fn s1_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecQuad30>>>> {
+    pub fn s1_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecQuad30>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -249,15 +266,18 @@ impl MbsV77 {
         *self.s1_records.borrow_mut() = Vec::new();
         let l_s1_records = *self.num_s1();
         for _i in 0..l_s1_records {
-            let t = Self::read_into::<_, MbsV77_RecQuad30>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecQuad30>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s1_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s1_records.borrow())
     }
-    pub fn s1_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s1_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -272,9 +292,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s1_sp.borrow())
     }
-    pub fn s2_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecQuad30>>>> {
+    pub fn s2_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecQuad30>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -288,15 +306,18 @@ impl MbsV77 {
         *self.s2_records.borrow_mut() = Vec::new();
         let l_s2_records = *self.num_s2();
         for _i in 0..l_s2_records {
-            let t = Self::read_into::<_, MbsV77_RecQuad30>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecQuad30>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s2_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s2_records.borrow())
     }
-    pub fn s2_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s2_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -311,9 +332,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s2_sp.borrow())
     }
-    pub fn s3_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS3>>>> {
+    pub fn s3_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS3>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -327,15 +346,18 @@ impl MbsV77 {
         *self.s3_records.borrow_mut() = Vec::new();
         let l_s3_records = *self.num_s3();
         for _i in 0..l_s3_records {
-            let t = Self::read_into::<_, MbsV77_RecS3>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecS3>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s3_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s3_records.borrow())
     }
-    pub fn s3_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s3_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -350,9 +372,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s3_sp.borrow())
     }
-    pub fn s4_records_v72(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS4V72>>>> {
+    pub fn s4_records_v72(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS4V72>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -367,16 +387,19 @@ impl MbsV77 {
             *self.s4_records_v72.borrow_mut() = Vec::new();
             let l_s4_records_v72 = *self.num_s4();
             for _i in 0..l_s4_records_v72 {
-                let t = Self::read_into::<_, MbsV77_RecS4V72>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+                let t = Self::read_into::<_, MbsV77_RecS4V72>(
+                    &*_io,
+                    Some(self._root.clone()),
+                    Some(self._self.clone()),
+                )?
+                .into();
                 self.s4_records_v72.borrow_mut().push(t);
             }
             _io.seek(_pos)?;
         }
         Ok(self.s4_records_v72.borrow())
     }
-    pub fn s4_records_v76(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS4V76>>>> {
+    pub fn s4_records_v76(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS4V76>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -391,16 +414,19 @@ impl MbsV77 {
             *self.s4_records_v76.borrow_mut() = Vec::new();
             let l_s4_records_v76 = *self.num_s4();
             for _i in 0..l_s4_records_v76 {
-                let t = Self::read_into::<_, MbsV77_RecS4V76>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+                let t = Self::read_into::<_, MbsV77_RecS4V76>(
+                    &*_io,
+                    Some(self._root.clone()),
+                    Some(self._self.clone()),
+                )?
+                .into();
                 self.s4_records_v76.borrow_mut().push(t);
             }
             _io.seek(_pos)?;
         }
         Ok(self.s4_records_v76.borrow())
     }
-    pub fn s4_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s4_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -415,9 +441,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s4_sp.borrow())
     }
-    pub fn s5_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS5>>>> {
+    pub fn s5_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS5>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -431,15 +455,18 @@ impl MbsV77 {
         *self.s5_records.borrow_mut() = Vec::new();
         let l_s5_records = *self.num_s5();
         for _i in 0..l_s5_records {
-            let t = Self::read_into::<_, MbsV77_RecS5>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecS5>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s5_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s5_records.borrow())
     }
-    pub fn s5_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s5_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -454,9 +481,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s5_sp.borrow())
     }
-    pub fn s6_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS6>>>> {
+    pub fn s6_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS6>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -470,15 +495,18 @@ impl MbsV77 {
         *self.s6_records.borrow_mut() = Vec::new();
         let l_s6_records = *self.num_s6();
         for _i in 0..l_s6_records {
-            let t = Self::read_into::<_, MbsV77_RecS6>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecS6>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s6_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s6_records.borrow())
     }
-    pub fn s6_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s6_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -493,9 +521,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s6_sp.borrow())
     }
-    pub fn s7_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS7>>>> {
+    pub fn s7_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS7>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -509,15 +535,18 @@ impl MbsV77 {
         *self.s7_records.borrow_mut() = Vec::new();
         let l_s7_records = *self.num_s7();
         for _i in 0..l_s7_records {
-            let t = Self::read_into::<_, MbsV77_RecS7>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecS7>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s7_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s7_records.borrow())
     }
-    pub fn s7_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s7_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -532,9 +561,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s7_sp.borrow())
     }
-    pub fn s8_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS8>>>> {
+    pub fn s8_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS8>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -548,15 +575,18 @@ impl MbsV77 {
         *self.s8_records.borrow_mut() = Vec::new();
         let l_s8_records = *self.num_s8();
         for _i in 0..l_s8_records {
-            let t = Self::read_into::<_, MbsV77_RecS8>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecS8>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s8_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s8_records.borrow())
     }
-    pub fn s8_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s8_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -571,9 +601,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s8_sp.borrow())
     }
-    pub fn s9_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS9>>>> {
+    pub fn s9_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecS9>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -587,15 +615,18 @@ impl MbsV77 {
         *self.s9_records.borrow_mut() = Vec::new();
         let l_s9_records = *self.num_s9();
         for _i in 0..l_s9_records {
-            let t = Self::read_into::<_, MbsV77_RecS9>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecS9>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.s9_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.s9_records.borrow())
     }
-    pub fn s9_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn s9_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -610,9 +641,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.s9_sp.borrow())
     }
-    pub fn sa_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecSa>>>> {
+    pub fn sa_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecSa>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -626,15 +655,18 @@ impl MbsV77 {
         *self.sa_records.borrow_mut() = Vec::new();
         let l_sa_records = *self.num_sa();
         for _i in 0..l_sa_records {
-            let t = Self::read_into::<_, MbsV77_RecSa>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecSa>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.sa_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.sa_records.borrow())
     }
-    pub fn sa_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn sa_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -649,9 +681,7 @@ impl MbsV77 {
         _io.seek(_pos)?;
         Ok(self.sa_sp.borrow())
     }
-    pub fn sb_records(
-        &self
-    ) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecSb>>>> {
+    pub fn sb_records(&self) -> KResult<Ref<'_, Vec<OptRc<MbsV77_RecSb>>>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -665,15 +695,18 @@ impl MbsV77 {
         *self.sb_records.borrow_mut() = Vec::new();
         let l_sb_records = *self.num_sb();
         for _i in 0..l_sb_records {
-            let t = Self::read_into::<_, MbsV77_RecSb>(&*_io, Some(self._root.clone()), Some(self._self.clone()))?.into();
+            let t = Self::read_into::<_, MbsV77_RecSb>(
+                &*_io,
+                Some(self._root.clone()),
+                Some(self._self.clone()),
+            )?
+            .into();
             self.sb_records.borrow_mut().push(t);
         }
         _io.seek(_pos)?;
         Ok(self.sb_records.borrow())
     }
-    pub fn sb_sp(
-        &self
-    ) -> KResult<Ref<'_, u32>> {
+    pub fn sb_sp(&self) -> KResult<Ref<'_, u32>> {
         let _io = self._io.borrow();
         let _rrc = self._root.get_value().borrow().upgrade();
         let _prc = self._parent.get_value().borrow().upgrade();
@@ -743,8 +776,7 @@ impl KStruct for MbsV77_RecQuad30 {
         Ok(())
     }
 }
-impl MbsV77_RecQuad30 {
-}
+impl MbsV77_RecQuad30 {}
 impl MbsV77_RecQuad30 {
     pub fn floats(&self) -> Ref<'_, Vec<f32>> {
         self.floats.borrow()
@@ -795,8 +827,7 @@ impl KStruct for MbsV77_RecS0 {
         Ok(())
     }
 }
-impl MbsV77_RecS0 {
-}
+impl MbsV77_RecS0 {}
 impl MbsV77_RecS0 {
     pub fn center(&self) -> Ref<'_, Vec<u8>> {
         self.center.borrow()
@@ -872,8 +903,7 @@ impl KStruct for MbsV77_RecS3 {
         Ok(())
     }
 }
-impl MbsV77_RecS3 {
-}
+impl MbsV77_RecS3 {}
 impl MbsV77_RecS3 {
     pub fn rect(&self) -> Ref<'_, Vec<f32>> {
         self.rect.borrow()
@@ -935,8 +965,7 @@ impl KStruct for MbsV77_RecS4V72 {
         Ok(())
     }
 }
-impl MbsV77_RecS4V72 {
-}
+impl MbsV77_RecS4V72 {}
 impl MbsV77_RecS4V72 {
     pub fn b00(&self) -> Ref<'_, u32> {
         self.b00.borrow()
@@ -1035,8 +1064,7 @@ impl KStruct for MbsV77_RecS4V76 {
         Ok(())
     }
 }
-impl MbsV77_RecS4V76 {
-}
+impl MbsV77_RecS4V76 {}
 impl MbsV77_RecS4V76 {
     pub fn b00(&self) -> Ref<'_, u32> {
         self.b00.borrow()
@@ -1128,8 +1156,7 @@ impl KStruct for MbsV77_RecS5 {
         Ok(())
     }
 }
-impl MbsV77_RecS5 {
-}
+impl MbsV77_RecS5 {}
 impl MbsV77_RecS5 {
     pub fn s3(&self) -> Ref<'_, u16> {
         self.s3.borrow()
@@ -1203,8 +1230,7 @@ impl KStruct for MbsV77_RecS6 {
         Ok(())
     }
 }
-impl MbsV77_RecS6 {
-}
+impl MbsV77_RecS6 {}
 impl MbsV77_RecS6 {
     pub fn left(&self) -> Ref<'_, f32> {
         self.left.borrow()
@@ -1308,8 +1334,7 @@ impl KStruct for MbsV77_RecS7 {
         Ok(())
     }
 }
-impl MbsV77_RecS7 {
-}
+impl MbsV77_RecS7 {}
 impl MbsV77_RecS7 {
     pub fn move_(&self) -> Ref<'_, Vec<f32>> {
         self.move_.borrow()
@@ -1395,8 +1420,7 @@ impl KStruct for MbsV77_RecS8 {
         Ok(())
     }
 }
-impl MbsV77_RecS8 {
-}
+impl MbsV77_RecS8 {}
 impl MbsV77_RecS8 {
     pub fn s6(&self) -> Ref<'_, u16> {
         self.s6.borrow()
@@ -1532,8 +1556,7 @@ impl KStruct for MbsV77_RecS9 {
         Ok(())
     }
 }
-impl MbsV77_RecS9 {
-}
+impl MbsV77_RecS9 {}
 impl MbsV77_RecS9 {
     pub fn left(&self) -> Ref<'_, f32> {
         self.left.borrow()
@@ -1642,8 +1665,7 @@ impl KStruct for MbsV77_RecSa {
         Ok(())
     }
 }
-impl MbsV77_RecSa {
-}
+impl MbsV77_RecSa {}
 impl MbsV77_RecSa {
     pub fn s8_set(&self) -> Ref<'_, u16> {
         self.s8_set.borrow()
@@ -1741,8 +1763,7 @@ impl KStruct for MbsV77_RecSb {
         Ok(())
     }
 }
-impl MbsV77_RecSb {
-}
+impl MbsV77_RecSb {}
 impl MbsV77_RecSb {
     pub fn b00(&self) -> Ref<'_, u32> {
         self.b00.borrow()

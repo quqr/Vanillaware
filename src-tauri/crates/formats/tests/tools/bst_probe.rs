@@ -1,5 +1,5 @@
-use std::path::Path;
 use formats::document::bst;
+use std::path::Path;
 
 fn main() {
     for path in std::env::args().skip(1) {

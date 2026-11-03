@@ -50,7 +50,9 @@ fn reads_tokens_and_builds_tree() {
 
 #[test]
 fn truncated_input_never_panics() {
-    let bytes = encode(&["ROOT", "{", "@PAGE", "(", "\"p\"", ")", "{", "Text", "(", "\"x\"", ")", ";", "}", "}"]);
+    let bytes = encode(&[
+        "ROOT", "{", "@PAGE", "(", "\"p\"", ")", "{", "Text", "(", "\"x\"", ")", ";", "}", "}",
+    ]);
     for len in 0..bytes.len() {
         let arena = build(&bytes[..len]);
         assert!(arena.total_nodes() > 0);

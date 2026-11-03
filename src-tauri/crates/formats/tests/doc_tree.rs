@@ -24,7 +24,10 @@ fn nnd_view_reads_header_units_and_names() {
 
     let arena = parse_bytes(&bytes, "nnd", None).expect("nnd");
     let page = arena.page(1, arena.root(), 0, 100).unwrap();
-    assert!(page.total >= 4, "must contain header / summary / units / tail");
+    assert!(
+        page.total >= 4,
+        "must contain header / summary / units / tail"
+    );
     let checks = arena.checks();
     assert!(checks
         .iter()

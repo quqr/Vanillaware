@@ -8,8 +8,8 @@
 
 extern crate kaitai;
 use kaitai::*;
+use std::cell::{Cell, Ref, RefCell};
 use std::convert::{TryFrom, TryInto};
-use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Default, Debug, Clone)]
@@ -46,14 +46,18 @@ impl KStruct for Rsc {
         *self_rc.entries.borrow_mut() = Vec::new();
         let l_entries = *self_rc.entry_count();
         for _i in 0..l_entries {
-            let t = Self::read_into::<_, Rsc_Entry>(&*_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+            let t = Self::read_into::<_, Rsc_Entry>(
+                &*_io,
+                Some(self_rc._root.clone()),
+                Some(self_rc._self.clone()),
+            )?
+            .into();
             self_rc.entries.borrow_mut().push(t);
         }
         Ok(())
     }
 }
-impl Rsc {
-}
+impl Rsc {}
 impl Rsc {
     pub fn entry_count(&self) -> Ref<'_, u32> {
         self.entry_count.borrow()
@@ -131,8 +135,7 @@ impl KStruct for Rsc_Entry {
         Ok(())
     }
 }
-impl Rsc_Entry {
-}
+impl Rsc_Entry {}
 impl Rsc_Entry {
     pub fn name(&self) -> Ref<'_, Vec<u8>> {
         self.name.borrow()

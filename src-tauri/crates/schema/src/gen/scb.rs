@@ -8,8 +8,8 @@
 
 extern crate kaitai;
 use kaitai::*;
+use std::cell::{Cell, Ref, RefCell};
 use std::convert::{TryFrom, TryInto};
-use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Default, Debug, Clone)]
@@ -42,14 +42,18 @@ impl KStruct for Scb {
         *self_rc.tokens.borrow_mut() = Vec::new();
         let l_tokens = *self_rc.token_count();
         for _i in 0..l_tokens {
-            let t = Self::read_into::<_, Scb_Token>(&*_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+            let t = Self::read_into::<_, Scb_Token>(
+                &*_io,
+                Some(self_rc._root.clone()),
+                Some(self_rc._self.clone()),
+            )?
+            .into();
             self_rc.tokens.borrow_mut().push(t);
         }
         Ok(())
     }
 }
-impl Scb {
-}
+impl Scb {}
 impl Scb {
     pub fn token_count(&self) -> Ref<'_, u32> {
         self.token_count.borrow()
@@ -97,8 +101,7 @@ impl KStruct for Scb_Token {
         Ok(())
     }
 }
-impl Scb_Token {
-}
+impl Scb_Token {}
 impl Scb_Token {
     pub fn len(&self) -> Ref<'_, u32> {
         self.len.borrow()

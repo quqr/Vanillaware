@@ -8,8 +8,8 @@
 
 extern crate kaitai;
 use kaitai::*;
+use std::cell::{Cell, Ref, RefCell};
 use std::convert::{TryFrom, TryInto};
-use std::cell::{Ref, Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 #[derive(Default, Debug, Clone)]
@@ -46,7 +46,10 @@ impl KStruct for FtexIndex {
         let _r = _rrc.as_ref().unwrap();
         *self_rc.magic.borrow_mut() = _io.read_bytes(4 as usize)?.into();
         if !(*self_rc.magic() == vec![0x46u8, 0x54u8, 0x45u8, 0x58u8]) {
-            return Err(KError::ValidationFailed(ValidationFailedError { kind: ValidationKind::NotEqual, src_path: "/seq/0".to_string() }));
+            return Err(KError::ValidationFailed(ValidationFailedError {
+                kind: ValidationKind::NotEqual,
+                src_path: "/seq/0".to_string(),
+            }));
         }
         *self_rc.version.borrow_mut() = _io.read_u4le()?.into();
         *self_rc.header_size.borrow_mut() = _io.read_u4le()?.into();
@@ -55,23 +58,41 @@ impl KStruct for FtexIndex {
         *self_rc.entries.borrow_mut() = Vec::new();
         let l_entries = *self_rc.texture_count();
         for _i in 0..l_entries {
-            let t = Self::read_into::<_, FtexIndex_TextureEntry>(&*_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+            let t = Self::read_into::<_, FtexIndex_TextureEntry>(
+                &*_io,
+                Some(self_rc._root.clone()),
+                Some(self_rc._self.clone()),
+            )?
+            .into();
             self_rc.entries.borrow_mut().push(t);
         }
-        if ((*self_rc.header_size() as i32) > (((32 as i32) + (((*self_rc.texture_count() as u32) * (48 as u32)) as i32)) as i32)) {
-            *self_rc.header_padding.borrow_mut() = _io.read_bytes(((*self_rc.header_size() as i32) - (((32 as i32) + (((*self_rc.texture_count() as u32) * (48 as u32)) as i32)) as i32)) as usize)?.into();
+        if ((*self_rc.header_size() as i32)
+            > (((32 as i32) + (((*self_rc.texture_count() as u32) * (48 as u32)) as i32)) as i32))
+        {
+            *self_rc.header_padding.borrow_mut() = _io
+                .read_bytes(
+                    ((*self_rc.header_size() as i32)
+                        - (((32 as i32)
+                            + (((*self_rc.texture_count() as u32) * (48 as u32)) as i32))
+                            as i32)) as usize,
+                )?
+                .into();
         }
         *self_rc.blocks.borrow_mut() = Vec::new();
         let l_blocks = *self_rc.texture_count();
         for _i in 0..l_blocks {
-            let t = Self::read_into::<_, FtexIndex_FtxBlock>(&*_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+            let t = Self::read_into::<_, FtexIndex_FtxBlock>(
+                &*_io,
+                Some(self_rc._root.clone()),
+                Some(self_rc._self.clone()),
+            )?
+            .into();
             self_rc.blocks.borrow_mut().push(t);
         }
         Ok(())
     }
 }
-impl FtexIndex {
-}
+impl FtexIndex {}
 impl FtexIndex {
     pub fn magic(&self) -> Ref<'_, Vec<u8>> {
         self.magic.borrow()
@@ -150,23 +171,32 @@ impl KStruct for FtexIndex_FtxBlock {
         let _r = _rrc.as_ref().unwrap();
         *self_rc.magic.borrow_mut() = _io.read_bytes(4 as usize)?.into();
         if !(*self_rc.magic() == vec![0x46u8, 0x54u8, 0x58u8, 0x30u8]) {
-            return Err(KError::ValidationFailed(ValidationFailedError { kind: ValidationKind::NotEqual, src_path: "/types/ftx_block/seq/0".to_string() }));
+            return Err(KError::ValidationFailed(ValidationFailedError {
+                kind: ValidationKind::NotEqual,
+                src_path: "/types/ftx_block/seq/0".to_string(),
+            }));
         }
         *self_rc.nvt_size.borrow_mut() = _io.read_u4le()?.into();
         *self_rc.nvt_offset.borrow_mut() = _io.read_u4le()?.into();
         if ((*self_rc.nvt_offset() as u32) > (12 as u32)) {
-            *self_rc.padding.borrow_mut() = _io.read_bytes(((*self_rc.nvt_offset() as u32) - (12 as u32)) as usize)?.into();
+            *self_rc.padding.borrow_mut() = _io
+                .read_bytes(((*self_rc.nvt_offset() as u32) - (12 as u32)) as usize)?
+                .into();
         }
         *self_rc.nvt_raw.borrow_mut() = _io.read_bytes(*self_rc.nvt_size() as usize)?.into();
         let nvt_raw = self_rc.nvt_raw.borrow();
         let _t_nvt_raw_io = BytesReader::from(nvt_raw.clone());
-        let t = Self::read_into::<BytesReader, FtexIndex_NvtHeader>(&_t_nvt_raw_io, Some(self_rc._root.clone()), Some(self_rc._self.clone()))?.into();
+        let t = Self::read_into::<BytesReader, FtexIndex_NvtHeader>(
+            &_t_nvt_raw_io,
+            Some(self_rc._root.clone()),
+            Some(self_rc._self.clone()),
+        )?
+        .into();
         *self_rc.nvt.borrow_mut() = t;
         Ok(())
     }
 }
-impl FtexIndex_FtxBlock {
-}
+impl FtexIndex_FtxBlock {}
 impl FtexIndex_FtxBlock {
     pub fn magic(&self) -> Ref<'_, Vec<u8>> {
         self.magic.borrow()
@@ -238,7 +268,10 @@ impl KStruct for FtexIndex_NvtHeader {
         let _r = _rrc.as_ref().unwrap();
         *self_rc.magic.borrow_mut() = _io.read_bytes(4 as usize)?.into();
         if !(*self_rc.magic() == vec![0x2eu8, 0x74u8, 0x65u8, 0x78u8]) {
-            return Err(KError::ValidationFailed(ValidationFailedError { kind: ValidationKind::NotEqual, src_path: "/types/nvt_header/seq/0".to_string() }));
+            return Err(KError::ValidationFailed(ValidationFailedError {
+                kind: ValidationKind::NotEqual,
+                src_path: "/types/nvt_header/seq/0".to_string(),
+            }));
         }
         *self_rc.format.borrow_mut() = _io.read_u2le()?.into();
         *self_rc.reserved_06.borrow_mut() = _io.read_bytes(2 as usize)?.into();
@@ -251,8 +284,7 @@ impl KStruct for FtexIndex_NvtHeader {
         Ok(())
     }
 }
-impl FtexIndex_NvtHeader {
-}
+impl FtexIndex_NvtHeader {}
 impl FtexIndex_NvtHeader {
     pub fn magic(&self) -> Ref<'_, Vec<u8>> {
         self.magic.borrow()
@@ -335,8 +367,7 @@ impl KStruct for FtexIndex_TextureEntry {
         Ok(())
     }
 }
-impl FtexIndex_TextureEntry {
-}
+impl FtexIndex_TextureEntry {}
 impl FtexIndex_TextureEntry {
     pub fn name(&self) -> Ref<'_, Vec<u8>> {
         self.name.borrow()
