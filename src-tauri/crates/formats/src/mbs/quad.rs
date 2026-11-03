@@ -65,6 +65,8 @@ pub struct Keyframe {
     pub debug: String,
     pub name: String,
     pub layer: Vec<Pad<KeyframeLayer>>,
+    #[serde(skip)]
+    pub rect: Vec<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -303,6 +305,7 @@ fn s6_loop(v55: &V55, quad: &mut Quad) -> Result<()> {
                     debug: s6v.bits.clone(),
                     name: format!("keyframe {s6k}"),
                     layer,
+                    rect: s6v.rect.clone(),
                 }),
             );
             has_keyframe = true;
