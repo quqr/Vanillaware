@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::Serialize;
 
 use super::arena::{Builder, DocArena, DocMark};
@@ -40,7 +42,7 @@ enum TypeInfo {
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 enum TemplateSub {
-    Sub(DataType),
+    Sub(Arc<DataType>),
     Tok(i64),
 }
 
@@ -98,7 +100,7 @@ struct Module {
     bind_sigs: Vec<(FuncInfo, String)>,
     used_funcs: Vec<Option<FuncInfo>>,
     used_types: Vec<Option<TypeInfo>>,
-    used_type_ids: Vec<DataType>,
+    used_type_ids: Vec<Arc<DataType>>,
     used_global_props: Vec<(String, String)>,
     used_obj_props: Vec<(Option<TypeInfo>, String)>,
 }
@@ -107,7 +109,7 @@ struct Reader<'a> {
     bytes: &'a [u8],
     pos: usize,
     strings: Vec<String>,
-    dtypes: Vec<DataType>,
+    dtypes: Vec<Arc<DataType>>,
     strip_debug: bool,
 }
 
@@ -168,6 +170,22 @@ impl<'a> Reader<'a> {
             (byte & 0x3f) as i64
         };
         Ok(if negative { -value } else { value })
+    }
+
+    /// 读取一个计数值，并要求它不超过剩余字节数。
+    /// 每个表项至少消耗 1 字节，因此这个上界足以阻止伪造计数导致的
+    /// 巨量预分配或长时间空转。
+    fn take_count(&mut self, what: &str) -> Result<usize, String> {
+        let value = self.enc_int()?;
+        let count = value.max(0) as usize;
+        let remaining = self.bytes.len().saturating_sub(self.pos);
+        if count > remaining {
+            return Err(format!(
+                "{what} count {count} exceeds remaining {remaining} bytes at {:#x}",
+                self.pos
+            ));
+        }
+        Ok(count)
     }
 
     fn string(&mut self) -> Result<String, String> {
@@ -231,15 +249,13 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn data_type(&mut self) -> Result<DataType, String> {
+    fn data_type(&mut self) -> Result<Arc<DataType>, String> {
         let value = self.enc_int()?;
         if value != 0 {
             let index = (value - 1) as usize;
-            return self
-                .dtypes
-                .get(index)
-                .cloned()
-                .ok_or_else(|| format!("dtype cache {index} out of range"));
+            return self.dtypes.get(index).cloned().ok_or_else(|| {
+                format!("dtype cache {index} out of range at {:#x}", self.pos)
+            });
         }
         let token = self.enc_int()?;
         let type_info = if token == TT_IDENTIFIER {
@@ -248,11 +264,11 @@ impl<'a> Reader<'a> {
             None
         };
         let bits = self.u8()?;
-        let dtype = DataType {
+        let dtype = Arc::new(DataType {
             token,
             type_info,
             bits,
-        };
+        });
         self.dtypes.push(dtype.clone());
         Ok(dtype)
     }
@@ -269,19 +285,19 @@ impl<'a> Reader<'a> {
             ));
         }
         let ret = self.data_type()?;
-        let param_count = self.enc_int()?.max(0) as usize;
+        let param_count = self.take_count("parameter")?;
         for _ in 0..param_count {
             self.data_type()?;
         }
         if param_count > 0 {
-            let inout = self.enc_int()?.max(0);
+            let inout = self.take_count("in/out parameter")?;
             for _ in 0..inout {
                 self.enc_int()?;
             }
         }
         let ftype = self.enc_int()?;
         if param_count > 0 {
-            let defaults = self.enc_int()?.max(0);
+            let defaults = self.take_count("default argument")?;
             for _ in 0..defaults {
                 self.string()?;
             }
@@ -312,14 +328,17 @@ impl<'a> Reader<'a> {
     }
 
     fn byte_code(&mut self) -> Result<Vec<(u8, Vec<i64>)>, String> {
-        let count = self.enc_int()?.max(0) as usize;
-        let mut out = Vec::with_capacity(count);
-        for _ in 0..count {
+        let count = self.take_count("instruction")?;
+        let mut out = Vec::with_capacity(count.min(4096));
+        for index in 0..count {
+            let at = self.pos;
             let op = self.u8()?;
             let kind = ASB_OPS
                 .get(op as usize)
                 .map(|(_, kind)| *kind)
-                .ok_or_else(|| format!("unknown opcode {op}"))?;
+                .ok_or_else(|| {
+                    format!("unknown opcode {op} (instruction {index}) at {at:#x}")
+                })?;
             let arg_count = match kind {
                 ArgKind::None => 0,
                 ArgKind::One => 1,
@@ -355,11 +374,13 @@ impl<'a> Reader<'a> {
                         if bits & 4 != 0 {
                             return Ok(Some(info));
                         }
-                        info.ops = self.byte_code()?;
+                        info.ops = self.byte_code().map_err(|error| {
+                            format!("function {}: {error}", display_name(&info.name))
+                        })?;
                         info.bytecode = info.ops.len();
                         info.var_space = self.enc_int()?;
                         if bits & 8 != 0 {
-                            let count = self.enc_int()?.max(0);
+                            let count = self.take_count("object variable")?;
                             for _ in 0..count {
                                 self.type_info()?;
                                 self.enc_int()?;
@@ -367,23 +388,23 @@ impl<'a> Reader<'a> {
                             if count > 0 {
                                 self.enc_int()?;
                             }
-                            let count = self.enc_int()?.max(0);
-                            for _ in 0..count * 3 {
+                            let count = self.take_count("object variable type")?;
+                            for _ in 0..count.saturating_mul(3) {
                                 self.enc_int()?;
                             }
                         }
                         if bits & 16 != 0 {
-                            let count = self.enc_int()?.max(0);
-                            for _ in 0..count * 2 {
+                            let count = self.take_count("jump table")?;
+                            for _ in 0..count.saturating_mul(2) {
                                 self.enc_int()?;
                             }
                         }
                         if !self.strip_debug {
-                            info.lines = self.enc_int()?.max(0) as usize;
+                            info.lines = self.take_count("line")?;
                             for _ in 0..info.lines {
                                 self.enc_int()?;
                             }
-                            let sections = self.enc_int()?.max(0);
+                            let sections = self.take_count("section")?;
                             for index in 0..sections {
                                 if index % 2 == 0 {
                                     self.enc_int()?;
@@ -391,7 +412,7 @@ impl<'a> Reader<'a> {
                                     self.string()?;
                                 }
                             }
-                            let var_count = self.enc_int()?.max(0);
+                            let var_count = self.take_count("local variable")?;
                             for _ in 0..var_count {
                                 let _stack_pos = self.enc_int()?;
                                 let offset = self.enc_int()?;
@@ -402,7 +423,7 @@ impl<'a> Reader<'a> {
                             info.vars = info.var_list.len();
                             info.section = self.string()?;
                             info.declared_at = self.enc_int()?;
-                            let param_count = self.enc_int()?.max(0);
+                            let param_count = self.take_count("parameter name")?;
                             for _ in 0..param_count {
                                 info.param_list.push(self.string()?);
                             }
@@ -441,7 +462,7 @@ impl<'a> Reader<'a> {
 
         if phase == 2 {
             if decl.flags & ASOBJ_ENUM != 0 {
-                let count = self.enc_int()?.max(0);
+                let count = self.take_count("enum value")?;
                 for _ in 0..count {
                     let name = self.string()?;
                     let raw = self.u32()? as i32;
@@ -451,7 +472,7 @@ impl<'a> Reader<'a> {
                 decl.alias = self.enc_int()?;
             } else {
                 decl.derived = type_name(&self.type_info()?);
-                let interfaces = self.enc_int()?.max(0);
+                let interfaces = self.take_count("interface")?;
                 for _ in 0..interfaces {
                     self.type_info()?;
                     if !decl.interface {
@@ -460,24 +481,24 @@ impl<'a> Reader<'a> {
                 }
                 if !decl.interface {
                     decl.has_destructor = self.function()?.is_some();
-                    decl.ctors = self.enc_int()?.max(0) as usize;
+                    decl.ctors = self.take_count("constructor")?;
                     for _ in 0..decl.ctors {
                         self.function()?;
                         self.function()?;
                     }
                 }
-                decl.methods = self.enc_int()?.max(0) as usize;
+                decl.methods = self.take_count("method")?;
                 for _ in 0..decl.methods {
                     self.function()?;
                 }
-                decl.vft = self.enc_int()?.max(0) as usize;
+                decl.vft = self.take_count("virtual method")?;
                 for _ in 0..decl.vft {
                     self.function()?;
                 }
             }
         } else if phase == 3 {
-            let count = self.enc_int()?.max(0);
-            decl.props = count as usize;
+            let count = self.take_count("property")?;
+            decl.props = count;
             for _ in 0..count {
                 self.string()?;
                 self.data_type()?;
@@ -494,7 +515,7 @@ impl<'a> Reader<'a> {
         };
         self.strip_debug = module.strip_debug;
 
-        let enum_count = self.enc_int()?.max(0);
+        let enum_count = self.take_count("enum")?;
         for _ in 0..enum_count {
             let mut decl = TypeDecl::default();
             self.type_declaration(&mut decl, 1)?;
@@ -502,7 +523,7 @@ impl<'a> Reader<'a> {
             module.enums.push(decl);
         }
 
-        let class_count = self.enc_int()?.max(0);
+        let class_count = self.take_count("class")?;
         for _ in 0..class_count {
             let mut decl = TypeDecl::default();
             self.type_declaration(&mut decl, 1)?;
@@ -510,7 +531,7 @@ impl<'a> Reader<'a> {
             module.classes.push(decl);
         }
 
-        module.funcdefs = self.enc_int()?.max(0) as usize;
+        module.funcdefs = self.take_count("funcdef")?;
         for _ in 0..module.funcdefs {
             self.function()?;
         }
@@ -531,7 +552,7 @@ impl<'a> Reader<'a> {
             }
         }
 
-        let typedef_count = self.enc_int()?.max(0);
+        let typedef_count = self.take_count("typedef")?;
         for _ in 0..typedef_count {
             let mut decl = TypeDecl::default();
             self.type_declaration(&mut decl, 1)?;
@@ -539,7 +560,7 @@ impl<'a> Reader<'a> {
             module.typedefs.push(decl);
         }
 
-        let global_count = self.enc_int()?.max(0);
+        let global_count = self.take_count("global")?;
         for _ in 0..global_count {
             let name = self.string()?;
             let namespace = self.string()?;
@@ -550,20 +571,26 @@ impl<'a> Reader<'a> {
                 .push((name, format!("{namespace} {}", dtype_brief(&dtype))));
         }
 
-        let function_count = self.enc_int()?.max(0);
-        for _ in 0..function_count {
-            if let Some(info) = self.function()? {
+        let function_count = self.take_count("function")?;
+        for index in 0..function_count {
+            let info = self
+                .function()
+                .map_err(|error| format!("function[{index}]: {error}"))?;
+            if let Some(info) = info {
                 module.functions.push(info);
             }
         }
-        let global_func_count = self.enc_int()?.max(0);
-        for _ in 0..global_func_count {
-            if let Some(info) = self.function()? {
+        let global_func_count = self.take_count("global function")?;
+        for index in 0..global_func_count {
+            let info = self
+                .function()
+                .map_err(|error| format!("global function[{index}]: {error}"))?;
+            if let Some(info) = info {
                 module.global_funcs.push(info);
             }
         }
 
-        let bind_count = self.enc_int()?.max(0);
+        let bind_count = self.take_count("bind")?;
         for _ in 0..bind_count {
             let (info, _) = self.func_signature()?;
             let target = self.string()?;
@@ -571,15 +598,15 @@ impl<'a> Reader<'a> {
             module.bind_sigs.push((info, target));
         }
 
-        let used_types = self.enc_int()?.max(0);
+        let used_types = self.take_count("used type")?;
         for _ in 0..used_types {
             module.used_types.push(self.type_info()?);
         }
-        let used_type_ids = self.enc_int()?.max(0);
+        let used_type_ids = self.take_count("used type id")?;
         for _ in 0..used_type_ids {
             module.used_type_ids.push(self.data_type()?);
         }
-        let used_funcs = self.enc_int()?.max(0);
+        let used_funcs = self.take_count("used function")?;
         for _ in 0..used_funcs {
             let tag = self.u8()?;
             if tag == b'n' {
@@ -588,7 +615,7 @@ impl<'a> Reader<'a> {
                 module.used_funcs.push(Some(self.func_signature()?.0));
             }
         }
-        let used_global_props = self.enc_int()?.max(0);
+        let used_global_props = self.take_count("used global property")?;
         for _ in 0..used_global_props {
             let name = self.string()?;
             let namespace = self.string()?;
@@ -596,11 +623,11 @@ impl<'a> Reader<'a> {
             self.u8()?;
             module.used_global_props.push((name, namespace));
         }
-        let string_count = self.enc_int()?.max(0);
+        let string_count = self.take_count("string")?;
         for _ in 0..string_count {
             module.strings.push(self.string()?);
         }
-        let used_obj_props = self.enc_int()?.max(0);
+        let used_obj_props = self.take_count("used object property")?;
         for _ in 0..used_obj_props {
             let owner = self.type_info()?;
             let name = self.string()?;
@@ -611,15 +638,48 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// 一次解析的结果，可被缓存后在多个查看器之间复用。
+pub struct AsbModule {
+    module: Module,
+    file_len: usize,
+    parsed_end: usize,
+}
+
+impl AsbModule {
+    pub fn parse(bytes: &[u8]) -> Result<Self, String> {
+        let mut reader = Reader::new(bytes);
+        let module = reader.read_module()?;
+        Ok(Self {
+            module,
+            file_len: bytes.len(),
+            parsed_end: reader.pos,
+        })
+    }
+
+    pub fn disassemble(&self, function_index: Option<usize>) -> AsmDto {
+        disassemble_module(&self.module, function_index)
+    }
+
+    pub fn pseudo(&self, function_index: Option<usize>) -> PseudoDto {
+        pseudo_module(&self.module, function_index)
+    }
+
+    pub fn into_doc(self) -> DocArena {
+        build_doc(&self.module, self.file_len, self.parsed_end)
+    }
+}
+
 pub fn build(bytes: &[u8]) -> Result<DocArena, String> {
-    let mut reader = Reader::new(bytes);
-    let module = reader.read_module()?;
-    let eof = reader.pos == bytes.len();
+    Ok(AsbModule::parse(bytes)?.into_doc())
+}
+
+fn build_doc(module: &Module, file_len: usize, parsed_end: usize) -> DocArena {
+    let eof = parsed_end == file_len;
 
     let mut builder = Builder::new();
     let root = builder.root("ASB");
-    builder.field(root, "size", bytes.len().to_string());
-    builder.field(root, "parsedEnd", format!("0x{:x}", reader.pos));
+    builder.field(root, "size", file_len.to_string());
+    builder.field(root, "parsedEnd", format!("0x{parsed_end:x}"));
     builder.field(root, "stripDebug", module.strip_debug.to_string());
     builder.field(root, "enums", module.enums.len().to_string());
     builder.field(root, "classes", module.classes.len().to_string());
@@ -635,11 +695,19 @@ pub fn build(bytes: &[u8]) -> Result<DocArena, String> {
         "asb.eof",
         "modules consume the file exactly",
         eof,
-        Some(format!("{:#x} vs {:#x}", reader.pos, bytes.len())),
+        Some(format!("{parsed_end:#x} vs {file_len:#x}")),
     );
     if !eof {
         builder.mark(root, DocMark::Error);
     }
+
+    let (refs_ok, refs_detail) = validate_refs(module);
+    builder.check(
+        "asb.refs",
+        "opcode operands reference existing tables",
+        refs_ok,
+        refs_detail,
+    );
 
     build_enums(&mut builder, root, &module.enums);
     build_classes(&mut builder, root, &module.classes);
@@ -670,6 +738,16 @@ pub fn build(bytes: &[u8]) -> Result<DocArena, String> {
     if module.functions.len() > MAX_ITEMS as usize || module.global_funcs.len() > MAX_ITEMS as usize
     {
         builder.truncate();
+        builder.check(
+            "asb.limit",
+            "document tree lists at most the first functions",
+            false,
+            Some(format!(
+                "{} functions / {} global functions; the asm viewer still shows all",
+                module.functions.len(),
+                module.global_funcs.len()
+            )),
+        );
     }
 
     let binds = builder.array(
@@ -693,7 +771,7 @@ pub fn build(bytes: &[u8]) -> Result<DocArena, String> {
         builder.text(strings, &key, format!("string[{index}]"), text, None);
     }
 
-    Ok(builder.finish())
+    builder.finish()
 }
 
 fn build_enums(builder: &mut Builder, root: u32, enums: &[TypeDecl]) {
@@ -820,6 +898,8 @@ pub struct AsmLineDto {
     pub op: String,
     pub args: Vec<String>,
     pub note: Option<String>,
+    /// 跳转类指令的有效目标指令序号；越界或非跳转时为 None。
+    pub target: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -831,9 +911,10 @@ pub struct AsmDto {
 }
 
 pub fn disassemble_file(bytes: &[u8], function_index: Option<usize>) -> Result<AsmDto, String> {
-    let mut reader = Reader::new(bytes);
-    let module = reader.read_module()?;
+    Ok(AsbModule::parse(bytes)?.disassemble(function_index))
+}
 
+fn disassemble_module(module: &Module, function_index: Option<usize>) -> AsmDto {
     let mut functions = Vec::with_capacity(module.functions.len() + module.global_funcs.len());
     for (index, info) in module
         .functions
@@ -851,25 +932,37 @@ pub fn disassemble_file(bytes: &[u8], function_index: Option<usize>) -> Result<A
     }
 
     if functions.is_empty() {
-        return Ok(AsmDto {
+        return AsmDto {
             functions,
             selected: 0,
             lines: Vec::new(),
-        });
+        };
     }
 
-    let selected = function_index.unwrap_or(0).min(functions.len() - 1);
+    let selected = function_index
+        .unwrap_or_else(|| default_function(module))
+        .min(functions.len() - 1);
     let info = if selected < module.functions.len() {
         &module.functions[selected]
     } else {
         &module.global_funcs[selected - module.functions.len()]
     };
 
-    Ok(AsmDto {
+    AsmDto {
         functions,
         selected: selected as u32,
-        lines: disassemble(&module, info),
-    })
+        lines: disassemble(module, info),
+    }
+}
+
+/// 默认选中第一个真正带字节码的函数，避免一打开就是空壳。
+fn default_function(module: &Module) -> usize {
+    module
+        .functions
+        .iter()
+        .chain(module.global_funcs.iter())
+        .position(|info| info.bytecode > 0)
+        .unwrap_or(0)
 }
 
 fn disassemble(module: &Module, info: &FuncInfo) -> Vec<AsmLineDto> {
@@ -879,18 +972,25 @@ fn disassemble(module: &Module, info: &FuncInfo) -> Vec<AsmLineDto> {
             .get(*op as usize)
             .map(|(name, _)| *name)
             .unwrap_or("???");
-        let note = disassembly_note(module, name, args, index);
+        let target = jump_target(index, args.first().copied().unwrap_or(0), info.ops.len());
+        let note = disassembly_note(module, name, args, target);
         lines.push(AsmLineDto {
             index: index as u32,
             op: name.to_string(),
             args: args.iter().map(i64::to_string).collect(),
             note,
+            target: target.map(|value| value as u32),
         });
     }
     lines
 }
 
-fn disassembly_note(module: &Module, op: &str, args: &[i64], index: usize) -> Option<String> {
+fn disassembly_note(
+    module: &Module,
+    op: &str,
+    args: &[i64],
+    target: Option<usize>,
+) -> Option<String> {
     let first = args.first().copied().unwrap_or(-1);
     match op {
         "CALL" | "CALLSYS" | "CALLINTF" | "Thiscall1" => module
@@ -903,7 +1003,7 @@ fn disassembly_note(module: &Module, op: &str, args: &[i64], index: usize) -> Op
             let mut note = module
                 .used_type_ids
                 .get(first as usize)
-                .map(dtype_brief)
+                .map(|dtype| dtype_brief(dtype))
                 .unwrap_or_else(|| format!("ut[{first}]?"));
             if op == "ALLOC" && args.len() > 1 && args[1] > 0 {
                 if let Some(Some(ctor)) = module.used_funcs.get((args[1] - 1) as usize) {
@@ -940,10 +1040,15 @@ fn disassembly_note(module: &Module, op: &str, args: &[i64], index: usize) -> Op
                 }
             }
         }
-        "JMP" | "JZ" | "JNZ" | "JS" | "JNS" | "JP" | "JNP" | "JLowZ" | "JLowNZ" => {
-            Some(format!("-> {}", index as i64 + 1 + first))
-        }
-        "COPY" => module.used_type_ids.get(first as usize).map(dtype_brief),
+        "JMP" | "JZ" | "JNZ" | "JS" | "JNS" | "JP" | "JNP" | "JLowZ" | "JLowNZ" => Some(
+            target
+                .map(|value| format!("-> {value}"))
+                .unwrap_or_else(|| "-> <out of range>".to_string()),
+        ),
+        "COPY" => module
+            .used_type_ids
+            .get(first as usize)
+            .map(|dtype| dtype_brief(dtype)),
         "CALLBND" => module
             .bind_sigs
             .get(first as usize)
@@ -963,7 +1068,7 @@ fn disassembly_note(module: &Module, op: &str, args: &[i64], index: usize) -> Op
             let type_name = module
                 .used_type_ids
                 .get(type_index)
-                .map(dtype_brief)
+                .map(|dtype| dtype_brief(dtype))
                 .unwrap_or_else(|| format!("ut[{type_index}]"));
             Some(format!("{prop_name} ; {type_name}"))
         }
@@ -978,11 +1083,106 @@ fn disassembly_note(module: &Module, op: &str, args: &[i64], index: usize) -> Op
             let type_name = module
                 .used_type_ids
                 .get(type_index)
-                .map(dtype_brief)
+                .map(|dtype| dtype_brief(dtype))
                 .unwrap_or_else(|| format!("ut[{type_index}]"));
             Some(format!("{prop_name} ; {type_name}"))
         }
         _ => None,
+    }
+}
+
+/// 校验字节码操作数是否落在对应的使用表内，并检查跳转目标。
+fn validate_refs(module: &Module) -> (bool, Option<String>) {
+    struct Checker {
+        total: usize,
+        samples: Vec<String>,
+    }
+
+    impl Checker {
+        fn check(&mut self, context: &str, table: &str, value: i64, len: usize) {
+            if value < 0 || value as usize >= len {
+                self.total += 1;
+                if self.samples.len() < 8 {
+                    self.samples.push(format!("{context}: {table}[{value}] / {len}"));
+                }
+            }
+        }
+    }
+
+    let mut checker = Checker {
+        total: 0,
+        samples: Vec::new(),
+    };
+    for (kind, functions) in [
+        ("function", &module.functions),
+        ("global", &module.global_funcs),
+    ] {
+        for (fi, info) in functions.iter().enumerate() {
+            let context = format!("{kind}[{fi}] {}", display_name(&info.name));
+            for (index, (op, args)) in info.ops.iter().enumerate() {
+                let name = op_name(*op);
+                let first = args.first().copied().unwrap_or(-1);
+                let at = format!("{context} #{index} {name}");
+                match name {
+                    "CALL" | "CALLSYS" | "CALLINTF" | "Thiscall1" => {
+                        checker.check(&at, "uf", first, module.used_funcs.len());
+                    }
+                    "CALLBND" => {
+                        checker.check(&at, "bind", first, module.bind_sigs.len());
+                    }
+                    "PGA" | "PshGPtr" | "LDG" | "PshG4" | "LdGRdR4" | "CpyGtoV4"
+                    | "CpyVtoG4" | "SetG4" => {
+                        if first & 1 != 0 {
+                            checker.check(&at, "gp", first >> 1, module.used_global_props.len());
+                        } else {
+                            checker.check(&at, "str", first >> 1, module.strings.len());
+                        }
+                    }
+                    "ADDSi" | "LoadThisR" if args.len() >= 2 => {
+                        checker.check(&at, "prop", args[0], module.used_obj_props.len());
+                        checker.check(&at, "ut", args[1], module.used_type_ids.len());
+                    }
+                    "LoadRObjR" | "LoadVObjR" if args.len() >= 3 => {
+                        checker.check(&at, "prop", args[1], module.used_obj_props.len());
+                        checker.check(&at, "ut", args[2], module.used_type_ids.len());
+                    }
+                    _ if is_jump(name) && jump_target(index, first, info.ops.len()).is_none() => {
+                        checker.total += 1;
+                        if checker.samples.len() < 8 {
+                            checker
+                                .samples
+                                .push(format!("{at}: jump target out of range"));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let ok = checker.total == 0;
+    let detail = if ok {
+        None
+    } else {
+        let mut text = checker.samples.join("; ");
+        if checker.total > checker.samples.len() {
+            text.push_str(&format!(
+                " (+{} more)",
+                checker.total - checker.samples.len()
+            ));
+        }
+        Some(text)
+    };
+    (ok, detail)
+}
+
+/// 把相对的跳转参数换算成绝对指令序号；越界时返回 None。
+fn jump_target(index: usize, delta: i64, limit: usize) -> Option<usize> {
+    let target = (index as i64).checked_add(1)?.checked_add(delta)?;
+    if target < 0 || target as usize >= limit {
+        None
+    } else {
+        Some(target as usize)
     }
 }
 
@@ -993,23 +1193,27 @@ pub struct PseudoDto {
 }
 
 pub fn pseudo_file(bytes: &[u8], function_index: Option<usize>) -> Result<PseudoDto, String> {
-    let mut reader = Reader::new(bytes);
-    let module = reader.read_module()?;
+    Ok(AsbModule::parse(bytes)?.pseudo(function_index))
+}
+
+fn pseudo_module(module: &Module, function_index: Option<usize>) -> PseudoDto {
     let total = module.functions.len() + module.global_funcs.len();
     if total == 0 {
-        return Ok(PseudoDto {
+        return PseudoDto {
             text: String::new(),
-        });
+        };
     }
-    let selected = function_index.unwrap_or(0).min(total - 1);
+    let selected = function_index
+        .unwrap_or_else(|| default_function(module))
+        .min(total - 1);
     let info = if selected < module.functions.len() {
         &module.functions[selected]
     } else {
         &module.global_funcs[selected - module.functions.len()]
     };
-    Ok(PseudoDto {
-        text: decompile(&module, info),
-    })
+    PseudoDto {
+        text: decompile(module, info),
+    }
 }
 
 fn decompile(module: &Module, info: &FuncInfo) -> String {
@@ -1034,26 +1238,46 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
         );
     }
 
-    let mut targets = std::collections::HashSet::new();
+    let mut leaders = vec![false; info.ops.len()];
+    let mut targeted = vec![false; info.ops.len()];
+    if !info.ops.is_empty() {
+        leaders[0] = true;
+    }
     for (index, (op, args)) in info.ops.iter().enumerate() {
         let name = op_name(*op);
         if is_jump(name) {
-            if let Some(delta) = args.first() {
-                let target = index as i64 + 1 + delta;
-                if target >= 0 {
-                    targets.insert(target as usize);
-                }
+            if let Some(target) =
+                jump_target(index, args.first().copied().unwrap_or(0), info.ops.len())
+            {
+                targeted[target] = true;
+                leaders[target] = true;
             }
+        }
+        if (is_jump(name) || name == "RET") && index + 1 < info.ops.len() {
+            leaders[index + 1] = true;
         }
     }
 
     let mut out: Vec<String> = Vec::new();
-    let mut stack: Vec<(String, Option<i64>)> = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
     let mut retreg: Option<String> = None;
     let mut pending_cmp: Option<(String, String)> = None;
 
     for (index, (op, args)) in info.ops.iter().enumerate() {
-        if targets.contains(&index) {
+        // 比较标志不跨块；只有不可达的死代码才清空残留栈值，
+        // 跳转目标处的栈值可能是两条路径的合流结果，必须保留。
+        if leaders[index] && index > 0 {
+            let after_terminator = matches!(op_name(info.ops[index - 1].0), "RET" | "JMP");
+            if after_terminator && !targeted[index] && !stack.is_empty() {
+                out.push(format!(
+                    "// L{index}: discarded stack [{}]",
+                    stack.join(", ")
+                ));
+                stack.clear();
+            }
+            pending_cmp = None;
+        }
+        if targeted[index] {
             out.push(format!("L{index}:"));
         }
         let name = op_name(*op);
@@ -1065,17 +1289,21 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
         };
 
         match name {
-            "PshC4" => {
-                let raw = signed_i32(first);
-                stack.push((raw.to_string(), Some(raw as i64)));
+            "PshC4" => stack.push(signed_i32(first).to_string()),
+            "PshC8" => stack.push(first.to_string()),
+            "PshV4" | "PshVPtr" | "PSF" | "PshV8" | "VAR" => stack.push(var(first)),
+            "PGA" | "PshGPtr" | "PshG4" => stack.push(str_or_global(module, first)),
+            "PshNull" => stack.push("null".to_string()),
+            "PopPtr" | "PopRPtr" => {
+                stack.pop();
             }
-            "PshC8" => stack.push((first.to_string(), None)),
-            "PshV4" | "PshVPtr" | "PSF" | "PshV8" | "VAR" => {
-                stack.push((var(first), None));
+            "SwapPtr" => {
+                let len = stack.len();
+                if len >= 2 {
+                    stack.swap(len - 1, len - 2);
+                }
             }
-            "PGA" | "PshGPtr" | "PshG4" => {
-                stack.push((str_or_global(module, first), None));
-            }
+            "ClrVPtr" => out.push(format!("{} = null;", var(first))),
             "SetV4" if args.len() == 2 => {
                 out.push(format!("{} = {};", var(args[0]), signed_i32(args[1])));
             }
@@ -1095,11 +1323,11 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
                     signed_i32(args[1])
                 ));
             }
-            "CpyVtoV4" if args.len() == 2 => {
+            "CpyVtoV4" | "CpyVtoV8" if args.len() == 2 => {
                 out.push(format!("{} = {};", var(args[0]), var(args[1])));
             }
-            "CpyVtoR4" => retreg = Some(var(first)),
-            "CpyRtoV4" => {
+            "CpyVtoR4" | "CpyVtoR8" => retreg = Some(var(first)),
+            "CpyRtoV4" | "CpyRtoV8" => {
                 out.push(format!(
                     "{} = {};",
                     var(first),
@@ -1143,6 +1371,24 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
                     imm
                 ));
             }
+            _ if is_pow(name) && args.len() == 3 => {
+                out.push(format!(
+                    "{} = pow({}, {});",
+                    var(args[0]),
+                    var(args[1]),
+                    var(args[2])
+                ));
+            }
+            _ if is_conversion(name) && !args.is_empty() => {
+                let dst = var(args[0]);
+                let src = if args.len() > 1 {
+                    var(args[1])
+                } else {
+                    dst.clone()
+                };
+                out.push(format!("{dst} = {name}({src});"));
+            }
+            _ if is_neg(name) => out.push(format!("{} = -{};", var(first), var(first))),
             "INCi" | "INCf" | "INCi64" | "IncVi" | "INCu" => {
                 out.push(format!("++{};", var(first)));
             }
@@ -1160,13 +1406,26 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
                 };
                 pending_cmp = Some((var(args[0]), imm));
             }
-            "NOT" | "BNOT" | "BNOT64" => {
-                out.push(format!("{} = !{};", var(first), var(first)));
-            }
-            _ if is_jump(name) && !args.is_empty() => {
-                let target = index as i64 + 1 + first;
+            "NOT" => out.push(format!("{} = !{};", var(first), var(first))),
+            "BNOT" | "BNOT64" => out.push(format!("{} = ~{};", var(first), var(first))),
+            _ if is_jump(name) => {
+                let target = jump_target(index, first, info.ops.len());
+                let invalid = target.is_none();
+                let label = target
+                    .map(|value| format!("L{value}"))
+                    .unwrap_or_else(|| {
+                        format!(
+                            "L{}",
+                            (index as i64)
+                                .saturating_add(1)
+                                .saturating_add(first)
+                        )
+                    });
                 if name == "JMP" {
-                    out.push(format!("goto L{target};"));
+                    out.push(format!(
+                        "{}goto {label};",
+                        if invalid { "/* out of range */ " } else { "" }
+                    ));
                 } else {
                     let condition = match name {
                         "JZ" | "JLowZ" => pending_cmp
@@ -1193,7 +1452,10 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
                         }
                         _ => "cond".into(),
                     };
-                    out.push(format!("if ({condition}) goto L{target};"));
+                    out.push(format!(
+                        "{}if ({condition}) goto {label};",
+                        if invalid { "/* out of range */ " } else { "" }
+                    ));
                 }
             }
             "RET" => {
@@ -1218,12 +1480,7 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
                 };
                 let mut values = Vec::new();
                 for _ in 0..param_count {
-                    values.push(
-                        stack
-                            .pop()
-                            .map(|(text, _)| text)
-                            .unwrap_or_else(|| "??".into()),
-                    );
+                    values.push(stack.pop().unwrap_or_else(|| "??".into()));
                 }
                 values.reverse();
                 let call = format!("{call_name}({})", values.join(", "));
@@ -1252,17 +1509,14 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
             "LoadRObjR" | "LoadVObjR" if args.len() >= 3 => {
                 let property = args[1] as usize;
                 if let Some((_, name)) = module.used_obj_props.get(property) {
-                    stack.push((name.clone(), None));
+                    stack.push(name.clone());
                 }
             }
             "STOREOBJ" => {
-                let value = stack
-                    .pop()
-                    .map(|(text, _)| text)
-                    .unwrap_or_else(|| "??".into());
+                let value = stack.pop().unwrap_or_else(|| "??".into());
                 out.push(format!("{} = {};", var(first), value));
             }
-            "LOADOBJ" => stack.push((var(first), None)),
+            "LOADOBJ" => stack.push(var(first)),
             _ => {
                 if !is_noise(name) {
                     out.push(format!("/* {name} {args:?} */"));
@@ -1271,13 +1525,17 @@ fn decompile(module: &Module, info: &FuncInfo) -> String {
         }
     }
 
-    while let Some((value, _)) = stack.pop() {
+    while let Some(value) = stack.pop() {
         out.push(format!("// [stack leftovers] {value}"));
     }
 
     let mut text = String::new();
     let head_params = params.join(", ");
-    text.push_str(&format!("{} {}({head_params})\n", info.ret, info.name));
+    text.push_str(&format!(
+        "{} {}({head_params})\n",
+        info.ret,
+        display_name(&info.name)
+    ));
     if !info.section.is_empty() {
         text.push_str(&format!(
             "    // {}:{}:{}\n",
@@ -1394,6 +1652,51 @@ fn bin_op(name: &str) -> &'static str {
     }
 }
 
+fn is_pow(name: &str) -> bool {
+    matches!(
+        name,
+        "POWi" | "POWu" | "POWf" | "POWd" | "POWdi" | "POWi64" | "POWu64"
+    )
+}
+
+fn is_conversion(name: &str) -> bool {
+    matches!(
+        name,
+        "iTOf"
+            | "fTOi"
+            | "uTOf"
+            | "fTOu"
+            | "sbTOi"
+            | "swTOi"
+            | "ubTOi"
+            | "uwTOi"
+            | "iTOb"
+            | "iTOw"
+            | "Cast"
+            | "dTOi"
+            | "dTOu"
+            | "dTOf"
+            | "iTOd"
+            | "uTOd"
+            | "fTOd"
+            | "i64TOi"
+            | "uTOi64"
+            | "iTOi64"
+            | "fTOi64"
+            | "dTOi64"
+            | "fTOu64"
+            | "dTOu64"
+            | "i64TOf"
+            | "u64TOf"
+            | "i64TOd"
+            | "u64TOd"
+    )
+}
+
+fn is_neg(name: &str) -> bool {
+    matches!(name, "NEGi" | "NEGf" | "NEGd" | "NEGi64")
+}
+
 fn is_noise(name: &str) -> bool {
     matches!(
         name,
@@ -1476,6 +1779,10 @@ fn format_float(value: i64) -> String {
     format!("{:?}", f32::from_bits(raw))
 }
 
+fn display_name(name: &str) -> &str {
+    if name.is_empty() { "<anonymous>" } else { name }
+}
+
 fn is_void(ret: &str) -> bool {
     let base = ret.split('@').next().unwrap_or(ret).trim();
     base == "void" || base == "?"
@@ -1532,5 +1839,194 @@ fn type_info_name(info: &TypeInfo) -> String {
         | TypeInfo::Subtype(name)
         | TypeInfo::Object { name, .. }
         | TypeInfo::Funcdef { name, .. } => name.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn encode(value: i64) -> Vec<u8> {
+        let negative = value < 0;
+        let magnitude = value.unsigned_abs();
+        let sign = if negative { 0x80 } else { 0 };
+        let (prefix, bytes) = if magnitude < 0x40 {
+            (0, 0)
+        } else if magnitude <= 0xff {
+            (0x40, 1)
+        } else if magnitude <= 0xffff {
+            (0x60, 2)
+        } else if magnitude <= 0x1ff_ffff {
+            (0x70, 3)
+        } else if magnitude <= 0x1_ffff_ffff {
+            (0x78, 4)
+        } else if magnitude <= 0x3_ffff_ffff {
+            (0x7c, 5)
+        } else if magnitude <= 0x7f_ffff_ffff {
+            (0x7e, 6)
+        } else {
+            (0x7f, 8)
+        };
+        if bytes == 0 {
+            return vec![magnitude as u8 | sign];
+        }
+        let high = match bytes {
+            1 => (magnitude >> 8) as u8 & 0x1f,
+            2 => (magnitude >> 16) as u8 & 0x1f,
+            3 => (magnitude >> 24) as u8 & 0x0f,
+            4 => (magnitude >> 32) as u8 & 0x07,
+            5 => (magnitude >> 40) as u8 & 0x03,
+            6 => (magnitude >> 48) as u8 & 0x01,
+            _ => 0,
+        };
+        let mut out = vec![prefix | high | sign];
+        for shift in (0..bytes).rev() {
+            out.push((magnitude >> (shift * 8)) as u8);
+        }
+        out
+    }
+
+    fn read_int(bytes: &[u8]) -> i64 {
+        Reader::new(bytes).enc_int().expect("enc_int")
+    }
+
+    #[test]
+    fn enc_int_round_trips() {
+        for value in [0, 1, -1, 42, -42, 0x3f, -0x3f, 80, -80, 0xffff, 0x7fff_ffff] {
+            let bytes = encode(value);
+            assert_eq!(read_int(&bytes), value, "value {value} / {bytes:?}");
+        }
+        let mut raw = vec![0x7f];
+        raw.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 9]);
+        assert_eq!(read_int(&raw), 9);
+    }
+
+    #[test]
+    fn count_budget_rejects_oversized_tables() {
+        let bytes = [0x40, 0xff];
+        let mut reader = Reader::new(&bytes);
+        let error = reader.take_count("test").expect_err("must reject");
+        assert!(error.contains("exceeds remaining"), "{error}");
+    }
+
+    #[derive(Default)]
+    struct ModuleBuilder {
+        out: Vec<u8>,
+    }
+
+    impl ModuleBuilder {
+        fn int(&mut self, value: i64) {
+            self.out.extend(encode(value));
+        }
+
+        fn byte(&mut self, value: u8) {
+            self.out.push(value);
+        }
+
+        fn text(&mut self, value: &str) {
+            self.int((value.len() as i64) << 1);
+            self.out.extend(value.as_bytes());
+        }
+
+        fn void_type(&mut self) {
+            self.int(0);
+            self.int(80);
+            self.byte(0);
+        }
+
+        fn signature(&mut self, name: &str) {
+            self.text(name);
+            self.void_type();
+            self.int(0);
+            self.int(1);
+            self.int(0);
+            self.text("");
+        }
+
+        fn debug_body(&mut self) {
+            self.int(0);
+            self.int(0);
+            self.int(0);
+            self.text("");
+            self.int(0);
+            self.int(0);
+        }
+    }
+
+    fn minimal_module(ops: &[(u8, &[i64])], used_funcs: usize) -> Vec<u8> {
+        let mut b = ModuleBuilder::default();
+        b.int(0);
+        b.int(0);
+        b.int(0);
+        b.int(0);
+        b.int(0);
+        b.int(0);
+        b.int(1);
+        b.byte(b'f');
+        b.signature("main");
+        b.byte(0);
+        b.int(ops.len() as i64);
+        for (op, args) in ops {
+            b.byte(*op);
+            for arg in *args {
+                b.int(*arg);
+            }
+        }
+        b.int(0);
+        b.debug_body();
+        b.int(0);
+        b.int(0);
+        b.int(0);
+        b.int(0);
+        b.int(used_funcs as i64);
+        for _ in 0..used_funcs {
+            b.byte(b'n');
+        }
+        b.int(0);
+        b.int(0);
+        b.int(0);
+        b.out
+    }
+
+    #[test]
+    fn synthetic_module_parses_and_decompiles() {
+        let bytes = minimal_module(&[(2, &[42]), (10, &[0])], 0);
+        let doc = build(&bytes).expect("doc");
+        let check = doc
+            .checks()
+            .iter()
+            .find(|check| check.id == "asb.eof")
+            .expect("eof check");
+        assert!(check.ok);
+
+        let module = AsbModule::parse(&bytes).expect("parse");
+        let asm = module.disassemble(None);
+        assert_eq!(asm.functions.len(), 1);
+        assert_eq!(
+            asm.lines.iter().map(|line| line.op.as_str()).collect::<Vec<_>>(),
+            ["PshC4", "RET"]
+        );
+        assert_eq!(asm.lines[0].target, None);
+
+        let pseudo = module.pseudo(None);
+        assert!(pseudo.text.contains("return;"), "{}", pseudo.text);
+        assert!(pseudo.text.contains("main("), "{}", pseudo.text);
+    }
+
+    #[test]
+    fn dangling_call_target_is_reported() {
+        let bytes = minimal_module(&[(9, &[0]), (10, &[0])], 0);
+        let doc = build(&bytes).expect("doc");
+        let check = doc
+            .checks()
+            .iter()
+            .find(|check| check.id == "asb.refs")
+            .expect("refs check");
+        assert!(!check.ok);
+        assert!(
+            check.detail.as_deref().is_some_and(|text| text.contains("uf[0]")),
+            "{:?}",
+            check.detail
+        );
     }
 }

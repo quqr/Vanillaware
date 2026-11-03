@@ -11,7 +11,7 @@ export type Kind =
   | "grid"
   | "audio"
   | "video"
-  | "binary";
+  | "archive";
 
 export type GameId = "unicorn_overlord" | "thirteen_sentinels" | "unknown";
 
@@ -37,6 +37,32 @@ export interface FormatInfo {
 export interface DirEntry {
   path: string;
   name: string;
+  kind?: Kind | null;
+}
+
+export interface ArchiveSummary {
+  path: string;
+  magic: string;
+  version: number;
+  revision: number;
+  align: number;
+  fileSize: number;
+  entries: number;
+  directories: number;
+  declaredFiles: number;
+  totalExtract: number;
+  compressed: number;
+  outOfRange: number;
+  tocOffset: number;
+  contentOffset: number;
+  headerEncrypted: boolean;
+  tocEncrypted: boolean;
+}
+
+export interface ArchiveCacheInfo {
+  usedBytes: number;
+  budgetBytes: number;
+  root: string | null;
 }
 
 export interface FileEntry {
@@ -143,6 +169,7 @@ export interface AsmLine {
   op: string;
   args: string[];
   note: string | null;
+  target: number | null;
 }
 
 export interface Asm {
@@ -476,6 +503,15 @@ export interface Content {
   imageNote: string | null;
 }
 
+export interface FieldMap {
+  name: string;
+  group: string;
+  files: string[];
+  layers: number;
+  tiles: number;
+  window: [number, number, number, number];
+}
+
 export interface DialoguePool {
   path: string | null;
   strings: number;
@@ -518,6 +554,11 @@ export interface Dialogue {
 
 export const api = {
   listDir: (path: string) => invoke<DirListing>("list_dir", { path }),
+  archiveSummary: (path: string) => invoke<ArchiveSummary>("archive_summary", { path }),
+  archiveExport: (path: string, outPath: string) =>
+    invoke<number>("archive_export", { path, outPath }),
+  archiveCacheInfo: () => invoke<ArchiveCacheInfo>("archive_cache_info"),
+  archiveCacheClear: () => invoke<ArchiveCacheInfo>("archive_cache_clear"),
   listFormats: () => invoke<FormatInfo[]>("list_formats"),
   detectProfile: (root: string) => invoke<GameProfile>("detect_profile", { root }),
   openDoc: (path: string, tag?: string) => invoke<DocOpen>("open_doc", { path, tag }),
@@ -561,6 +602,14 @@ export const api = {
     invoke<ArrayBuffer>("audio_clip_data", { path, index }),
 
   contentOpen: (path: string) => invoke<Content>("content_open", { path }),
+  fieldMaps: (path: string) => invoke<FieldMap[]>("field_maps", { path }),
+  fieldRender: (
+    path: string,
+    layer: string | null,
+    x0: number | null,
+    width: number,
+    mode?: string,
+  ) => invoke<Content>("field_render", { path, layer, x0, width, mode: mode ?? null }),
 
   dialogueOpen: (path: string) => invoke<Dialogue>("dialogue_open", { path }),
 

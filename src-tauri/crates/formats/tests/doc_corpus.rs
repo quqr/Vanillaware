@@ -18,7 +18,10 @@ fn files(dir: &Path, ext: &str) -> Vec<PathBuf> {
     };
     read.flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|value| value.eq_ignore_ascii_case(ext)))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|value| value.eq_ignore_ascii_case(ext))
+        })
         .collect()
 }
 
@@ -89,14 +92,23 @@ fn rsc_corpus_is_closed() {
 fn otm_corpus_is_closed() {
     assert_corpus(
         "otm",
-        &["otm.magic", "otm.size", "otm.offB", "otm.offC", "otm.sections"],
+        &[
+            "otm.magic",
+            "otm.size",
+            "otm.offB",
+            "otm.offC",
+            "otm.sections",
+        ],
     );
 }
 
 #[test]
 #[ignore = "requires the local 13 Sentinels corpus"]
 fn mpd_corpus_is_closed() {
-    assert_corpus("mpd", &["mpd.magic", "mpd.size", "mpd.payload", "mpd.offset"]);
+    assert_corpus(
+        "mpd",
+        &["mpd.magic", "mpd.size", "mpd.payload", "mpd.offset"],
+    );
 }
 
 #[test]
@@ -127,7 +139,11 @@ fn fmd_mesh_scene_has_geometry() {
     let bytes = std::fs::read(path).unwrap();
     let scene = document::fmd::mesh_scene(&bytes).expect("mesh scene");
 
-    let meshes: Vec<_> = scene.nodes.iter().filter_map(|node| node.mesh.as_ref()).collect();
+    let meshes: Vec<_> = scene
+        .nodes
+        .iter()
+        .filter_map(|node| node.mesh.as_ref())
+        .collect();
     let triangles: usize = meshes.iter().map(|mesh| mesh.indices.len() / 3).sum();
     let with_uv = meshes.iter().filter(|mesh| !mesh.uvs.is_empty()).count();
     let uv_range = meshes
@@ -136,7 +152,10 @@ fn fmd_mesh_scene_has_geometry() {
         .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), value| {
             (lo.min(*value), hi.max(*value))
         });
-    let ranges: Vec<_> = meshes.iter().flat_map(|mesh| mesh.sub_ranges.iter()).collect();
+    let ranges: Vec<_> = meshes
+        .iter()
+        .flat_map(|mesh| mesh.sub_ranges.iter())
+        .collect();
     let textured = ranges.iter().filter(|range| range.page >= 0).count();
     let collision = ranges
         .iter()
@@ -164,11 +183,15 @@ fn fmd_mesh_scene_has_geometry() {
     assert!(scene.bounds.iter().all(|value| value.is_finite()));
     assert!(meshes.iter().all(|mesh| mesh.positions.len() % 3 == 0));
     assert!(meshes.iter().all(|mesh| mesh.uvs.len() % 2 == 0));
-    assert!(textured > 0, "the sample FMD must have a textured draw section");
-    assert_eq!(collision, 0, "collision materials must not enter draw sections");
-    assert!(ranges
-        .iter()
-        .all(|range| (-1..=3).contains(&range.tex_ref)));
+    assert!(
+        textured > 0,
+        "the sample FMD must have a textured draw section"
+    );
+    assert_eq!(
+        collision, 0,
+        "collision materials must not enter draw sections"
+    );
+    assert!(ranges.iter().all(|range| (-1..=3).contains(&range.tex_ref)));
 }
 
 #[test]
@@ -203,7 +226,10 @@ fn fmd_mesh_count_matches_python() {
         files.len()
     );
 
-    assert_eq!(declared, parsed as u64, "declared and parsed mesh counts differ");
+    assert_eq!(
+        declared, parsed as u64,
+        "declared and parsed mesh counts differ"
+    );
     if let Ok(expected) = std::env::var("FMD_MESHES") {
         assert_eq!(meshes, expected.parse::<usize>().unwrap());
     }
@@ -230,6 +256,7 @@ fn asb_corpus_parses_to_eof() {
     }
 
     let mut failed = 0usize;
+    let mut broken_refs = 0usize;
     let mut enums = 0u64;
     let mut functions = 0u64;
     let mut globals = 0u64;
@@ -241,6 +268,10 @@ fn asb_corpus_parses_to_eof() {
                 functions += arena.sum_field("functions") + arena.sum_field("globalFuncs");
                 globals += arena.sum_field("globals");
                 strings += arena.sum_field("strings");
+                if check_ok(&arena, "asb.refs") != Some(true) {
+                    broken_refs += 1;
+                    eprintln!("dangling operands: {}", path.display());
+                }
             }
             Ok(_) => {
                 failed += 1;
@@ -253,10 +284,11 @@ fn asb_corpus_parses_to_eof() {
         }
     }
     eprintln!(
-        ".asb: {} files, {failed} failed; enum {enums} / func {functions} / global {globals} / string {strings}",
+        ".asb: {} files, {failed} failed, {broken_refs} dangling; enum {enums} / func {functions} / global {globals} / string {strings}",
         files.len()
     );
     assert_eq!(failed, 0);
+    assert_eq!(broken_refs, 0);
 }
 
 #[test]
@@ -273,14 +305,14 @@ fn asb_disasm_sample_matches_golden() {
     assert_eq!(
         ops,
         [
-            "SUSPEND", "SetV1", "CpyVtoR4", "JLowZ", "SUSPEND", "SUSPEND", "PshC4",
-            "CALLSYS", "JMP", "SUSPEND", "RET",
+            "SUSPEND", "SetV1", "CpyVtoR4", "JLowZ", "SUSPEND", "SUSPEND", "PshC4", "CALLSYS",
+            "JMP", "SUSPEND", "RET",
         ]
     );
-    assert!(asm
-        .lines
-        .iter()
-        .any(|line| line.note.as_deref().is_some_and(|note| note.contains("Wait"))));
+    assert!(asm.lines.iter().any(|line| line
+        .note
+        .as_deref()
+        .is_some_and(|note| note.contains("Wait"))));
 
     let pseudo = document::asb::pseudo_file(&bytes, Some(0)).expect("pseudo");
     assert!(pseudo.text.contains("Wait(100)"));
@@ -371,7 +403,11 @@ fn osb_scene_sample_has_geometry() {
     let bytes = std::fs::read(&path).unwrap();
     let scene = document::osb::scene(&bytes, &path);
 
-    let meshes: Vec<_> = scene.nodes.iter().filter_map(|node| node.mesh.as_ref()).collect();
+    let meshes: Vec<_> = scene
+        .nodes
+        .iter()
+        .filter_map(|node| node.mesh.as_ref())
+        .collect();
     let triangles: usize = meshes.iter().map(|mesh| mesh.indices.len() / 3).sum();
     let references: usize = scene
         .nodes
@@ -396,7 +432,10 @@ fn osb_scene_sample_has_geometry() {
 
     assert!(scene.nodes.len() > 1);
     assert!(!scene.references.is_empty());
-    assert!(resolved > 0, "the sample OSB references must resolve by relative path");
+    assert!(
+        resolved > 0,
+        "the sample OSB references must resolve by relative path"
+    );
     assert!(!meshes.is_empty());
     assert!(triangles > 0);
     assert!(scene.bounds.iter().all(|value| value.is_finite()));
@@ -423,10 +462,26 @@ fn rsc_graph_sample_has_entries() {
         let bytes = std::fs::read(&path).unwrap();
         let graph = document::rsc::graph(&bytes, &path);
 
-        let entries = graph.nodes.iter().filter(|node| node.kind == "entry").count();
-        let scripts = graph.nodes.iter().filter(|node| node.kind == "script").count();
-        let externals = graph.nodes.iter().filter(|node| node.kind == "external").count();
-        let loads = graph.edges.iter().filter(|edge| edge.label == "loads").count();
+        let entries = graph
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "entry")
+            .count();
+        let scripts = graph
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "script")
+            .count();
+        let externals = graph
+            .nodes
+            .iter()
+            .filter(|node| node.kind == "external")
+            .count();
+        let loads = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.label == "loads")
+            .count();
         eprintln!(
             "{}: {} nodes (entry {entries}, script {scripts}, external {externals}), {} edges (loads {loads}), truncated {}",
             path.file_name().unwrap().to_string_lossy(),
@@ -440,13 +495,20 @@ fn rsc_graph_sample_has_entries() {
         assert!(entries > 0);
         assert!(scripts > 0);
         assert_eq!(graph.edges.len(), entries + scripts + externals);
-        assert_eq!(externals, 1 + loads, "external = paired .fms plus payload assets");
+        assert_eq!(
+            externals,
+            1 + loads,
+            "external = paired .fms plus payload assets"
+        );
         assert!(graph
             .nodes
             .iter()
             .filter(|node| node.kind == "external")
             .all(|node| node.status.is_some()));
-        assert!(graph.edges.iter().all(|edge| (edge.from as usize) < graph.nodes.len()));
+        assert!(graph
+            .edges
+            .iter()
+            .all(|edge| (edge.from as usize) < graph.nodes.len()));
         assert!(graph
             .edges
             .iter()
@@ -456,9 +518,15 @@ fn rsc_graph_sample_has_entries() {
             let resolved = graph
                 .nodes
                 .iter()
-                .filter(|node| node.kind == "external" && node.status.as_deref() == Some("resolved"))
+                .filter(|node| {
+                    node.kind == "external" && node.status.as_deref() == Some("resolved")
+                })
                 .count();
-            assert_eq!(resolved, 1 + loads, "every reference must resolve in the corpus");
+            assert_eq!(
+                resolved,
+                1 + loads,
+                "every reference must resolve in the corpus"
+            );
             assert!(graph
                 .nodes
                 .iter()
@@ -569,14 +637,27 @@ fn nnd_container_invariants_hold_for_all_files() {
         for check in arena.checks() {
             if !check.ok {
                 failed += 1;
-                eprintln!("failed {}: {} - {:?}", check.id, path.display(), check.detail);
+                eprintln!(
+                    "failed {}: {} - {:?}",
+                    check.id,
+                    path.display(),
+                    check.detail
+                );
             }
         }
         let page = arena.page(0, arena.root(), 0, 100).expect("root page");
-        if page.items.iter().any(|node| node.name.starts_with("Units (")) {
+        if page
+            .items
+            .iter()
+            .any(|node| node.name.starts_with("Units ("))
+        {
             with_units += 1;
         }
-        if page.items.iter().any(|node| node.name.starts_with("Tail (")) {
+        if page
+            .items
+            .iter()
+            .any(|node| node.name.starts_with("Tail ("))
+        {
             with_tail += 1;
         }
         units += page
@@ -591,5 +672,9 @@ fn nnd_container_invariants_hold_for_all_files() {
         list.len()
     );
     assert_eq!(failed, 0);
-    assert_eq!(with_units, list.len(), "every file must carry a payload section");
+    assert_eq!(
+        with_units,
+        list.len(),
+        "every file must carry a payload section"
+    );
 }

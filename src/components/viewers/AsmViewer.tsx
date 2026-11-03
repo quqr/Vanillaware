@@ -1,5 +1,5 @@
 import { t } from "../../i18n";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type Asm, type FileEntry } from "../../lib/ipc";
 
@@ -9,6 +9,7 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"asm" | "pseudo">("asm");
   const [pseudo, setPseudo] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
   const pathRef = useRef(entry.path);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -18,11 +19,12 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
     setData(null);
     setPseudo(null);
     setMode("asm");
+    setFilter("");
     setError(null);
     setBusy(true);
 
     api
-      .docAsm(entry.path, 0)
+      .docAsm(entry.path)
       .then((next) => {
         if (alive) setData(next);
       })
@@ -39,6 +41,12 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
   }, [entry.path]);
 
   const lines = data?.lines ?? [];
+  const functions = useMemo(() => {
+    const all = data?.functions ?? [];
+    const needle = filter.trim().toLowerCase();
+    if (!needle) return all;
+    return all.filter((fn) => fn.name.toLowerCase().includes(needle));
+  }, [data, filter]);
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => scrollRef.current,
@@ -105,9 +113,18 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      <div className="w-56 shrink-0 overflow-auto border-r border-base-300 bg-base-200">
-        <ul className="menu menu-xs w-full p-0">
-          {data.functions.map((fn) => (
+      <div className="flex w-56 shrink-0 flex-col border-r border-base-300 bg-base-200">
+        <div className="flex-none p-1.5">
+          <input
+            className="input input-xs w-full"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={t("asm.filterPlaceholder")}
+            aria-label={t("asm.filter")}
+          />
+        </div>
+        <ul className="menu menu-xs w-full flex-1 overflow-auto p-0">
+          {functions.map((fn) => (
             <li key={fn.index}>
               <button
                 className={fn.index === data.selected ? "menu-active" : ""}
@@ -119,6 +136,9 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
               </button>
             </li>
           ))}
+          {functions.length === 0 && (
+            <li className="px-2 py-1 text-base-content/50">{t("asm.noMatch")}</li>
+          )}
         </ul>
       </div>
 
@@ -160,7 +180,17 @@ export function AsmViewer({ entry }: { entry: FileEntry }) {
                     <span className="w-24 shrink-0 text-primary">{line.op}</span>
                     <span className="min-w-0 flex-1 break-all">
                       {line.args.join(", ")}
-                      {line.note && <span className="ml-2 text-base-content/50">; {line.note}</span>}
+                      {line.target !== null ? (
+                        <button
+                          className="link link-primary ml-2"
+                          title={t("asm.jump", { line: line.target })}
+                          onClick={() => virtualizer.scrollToIndex(line.target!, { align: "center" })}
+                        >
+                          ; -&gt; L{line.target}
+                        </button>
+                      ) : (
+                        line.note && <span className="ml-2 text-base-content/50">; {line.note}</span>
+                      )}
                     </span>
                   </div>
                 );
