@@ -172,7 +172,10 @@ fn a_placement_set_renders_one_window_without_borrowing_other_sets() {
         .expect("the window renders");
 
     assert_eq!(scene.map, "AC00_00P");
-    assert_eq!(scene.layers, scene.drawn + scene.models + scene.missing);
+    assert_eq!(
+        scene.layers,
+        scene.drawn + scene.models + scene.hollow + scene.missing
+    );
     assert!(scene.drawn > 0, "nothing was drawn");
     assert_eq!(scene.missing, 0, "every panel resolved");
     assert_eq!(
@@ -194,6 +197,95 @@ fn a_placement_set_renders_one_window_without_borrowing_other_sets() {
         others,
         39 - 11,
         "AC00 owns 11 pairs, the rest belong elsewhere"
+    );
+}
+
+#[test]
+#[ignore]
+fn every_prop_layer_lands_inside_its_authored_box() {
+    use std::collections::HashMap;
+
+    let Some(path) = corpus() else {
+        eprintln!("no corpus, set CORPUS_UFB");
+        return;
+    };
+    let bytes = std::fs::read(&path).expect("read ufb");
+    let layout = field::parse(&bytes).expect("layout");
+    let dir = path.parent().expect("directory");
+
+    let mut cache: HashMap<usize, Vec<Vec<field::Piece>>> = HashMap::new();
+    let (mut art, mut hollow, mut resolved, mut quads) = (0usize, 0usize, 0usize, 0usize);
+    let mut inside = 0usize;
+    let mut widths: Vec<f32> = Vec::new();
+    let mut out_of_range = 0usize;
+
+    for record in &layout.records {
+        for layer in &record.layers {
+            if layer.pair < 0 || layer.flags & 4 != 0 {
+                continue;
+            }
+            let Some(pair) = layout.pairs.get(layer.pair as usize) else {
+                continue;
+            };
+            if pair.is_panel() {
+                continue;
+            }
+            let props = cache.entry(layer.pair as usize).or_insert_with(|| {
+                field::read_pair(dir, pair)
+                    .and_then(|(model, _)| formats::mbs::parse_bytes(&model, field::MBS_TAG).ok())
+                    .and_then(|v55| formats::mbs::convert(&v55).ok())
+                    .map(|quad| field::props(&quad))
+                    .unwrap_or_default()
+            });
+            resolved += 1;
+            let Some(pieces) = props.get(layer.panel as usize) else {
+                out_of_range += 1;
+                continue;
+            };
+            if pieces.is_empty() {
+                hollow += 1;
+                continue;
+            }
+            let Some(bounds) = field::model_bounds(layer, pieces) else {
+                continue;
+            };
+            art += 1;
+            quads += pieces.len();
+            let centre_x = (bounds[0] + bounds[2]) * 0.5;
+            let centre_y = (bounds[1] + bounds[3]) * 0.5;
+            if centre_x >= layer.min[0] - 1.0
+                && centre_x <= layer.max[0] + 1.0
+                && centre_y >= layer.min[1] - 1.0
+                && centre_y <= layer.max[1] + 1.0
+            {
+                inside += 1;
+            }
+            let authored = (layer.max[0] - layer.min[0]).abs();
+            if authored > 1.0 {
+                widths.push((bounds[2] - bounds[0]) / authored);
+            }
+        }
+    }
+
+    widths.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let median = widths.get(widths.len() / 2).copied().unwrap_or(0.0);
+    let centred = inside as f32 / art as f32;
+
+    eprintln!(
+        "{resolved} prop layers: {art} carry art ({quads} quads), {hollow} name a prop with no art, {out_of_range} name a prop that is out of range | {inside}/{art} stay inside the authored box ({centred:.3}) | median width vs box {median:.3}"
+    );
+    assert_eq!(
+        out_of_range, 0,
+        "every prop index must fall inside the .mbs"
+    );
+    assert!(art > 5_000, "the corpus carries {art} props with art");
+    assert!(
+        centred > 0.98,
+        "the rest pose must sit in the authored box ({centred:.3})"
+    );
+    assert!(
+        (median - 1.0).abs() < 0.02,
+        "the authored box is the rest pose at 1 world unit per model unit ({median:.3})"
     );
 }
 

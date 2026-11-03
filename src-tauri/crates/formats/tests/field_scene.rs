@@ -352,39 +352,43 @@ fn a_panel_quad_is_the_page_rectangle_halved_scaled_and_rotated() {
         ..Default::default()
     };
     let quad = field::quad_corners(&plain, &panel);
-    close(quad[0], (-100.0, -50.0), "page units are twice texels");
-    close(quad[2], (100.0, 50.0), "opposite corner");
+    close(quad[0], (-100.0, 50.0), "page units are twice texels");
+    close(quad[2], (100.0, -50.0), "opposite corner");
 
     let wide = field::Layer {
         scale_x: 8192,
         ..plain
     };
     let quad = field::quad_corners(&wide, &panel);
-    close(quad[0], (-200.0, -50.0), "scale x only stretches x");
-    close(quad[2], (200.0, 50.0), "scale x keeps y");
+    close(quad[0], (-200.0, 50.0), "scale x only stretches x");
+    close(quad[2], (200.0, -50.0), "scale x keeps y");
 
     let tall = field::Layer {
         scale_y: 2048,
         ..plain
     };
     let quad = field::quad_corners(&tall, &panel);
-    close(quad[0], (-100.0, -25.0), "scale y only stretches y");
+    close(quad[0], (-100.0, 25.0), "scale y only stretches y");
 
     let quarter_turn = field::Layer {
         roll: 16384,
         ..plain
     };
     let quad = field::quad_corners(&quarter_turn, &panel);
-    close(quad[0], (-50.0, 100.0), "a quarter turn swaps the axes");
-    close(quad[2], (50.0, -100.0), "a quarter turn swaps both corners");
+    close(quad[0], (50.0, 100.0), "a quarter turn swaps the axes");
+    close(
+        quad[2],
+        (-50.0, -100.0),
+        "a quarter turn swaps both corners",
+    );
 
     let half_turn = field::Layer {
         roll: -32768,
         ..plain
     };
     let quad = field::quad_corners(&half_turn, &panel);
-    close(quad[0], (100.0, 50.0), "half a turn flips both axes");
-    close(quad[2], (-100.0, -50.0), "half a turn flips both corners");
+    close(quad[0], (100.0, -50.0), "half a turn flips both axes");
+    close(quad[2], (-100.0, 50.0), "half a turn flips both corners");
 
     let face_on = field::Layer {
         pitch: 16384,
@@ -403,7 +407,7 @@ fn a_panel_quad_is_the_page_rectangle_halved_scaled_and_rotated() {
     let quad = field::quad_corners(&tilted, &panel);
     close(
         quad[2],
-        (100.0, 35.35534),
+        (100.0, -35.35534),
         "a 45 degree pitch keeps cos(45) of the height",
     );
     assert!(

@@ -54,3 +54,7 @@ path = "tests/tools/ufb_models.rs"
 [[example]]
 name = "content_render"
 path = "tests/tools/content_render.rs"
+
+[[example]]
+name = "model_render"
+path = "tests/tools/model_render.rs"

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::content::{ColorMap, Projection, Section};
 use super::document::rdr;
+use super::mbs;
 use super::raster::{paint_quad, Page, Raster};
 
 pub const HEAD: usize = 0x88;
@@ -503,6 +504,8 @@ pub struct Scene {
     pub layers: usize,
     pub drawn: usize,
     pub models: usize,
+    pub quads: usize,
+    pub hollow: usize,
     pub missing: usize,
     pub scale: f32,
     pub window: [f32; 4],
@@ -778,8 +781,11 @@ pub fn compose_window(
 
     let mut panel_cache: HashMap<usize, Vec<Panel>> = HashMap::new();
     let mut page_cache: HashMap<usize, Vec<(u32, u32, Vec<u8>)>> = HashMap::new();
+    let mut model_cache: HashMap<usize, Option<Vec<Vec<Piece>>>> = HashMap::new();
     let mut drawn = 0usize;
     let mut models = 0usize;
+    let mut quads = 0usize;
+    let mut hollow = 0usize;
     let mut missing = 0usize;
 
     let mut order: Vec<&Layer> = layers;
@@ -794,11 +800,61 @@ pub fn compose_window(
             missing += 1;
             continue;
         };
+        let key = layer.pair as usize;
+
         if !pair.is_panel() || layer.flags & 4 == 0 {
-            models += 1;
+            let frames = model_cache.entry(key).or_insert_with(|| {
+                load(pair)
+                    .and_then(|(model, _)| mbs::parse_bytes(&model, MBS_TAG).ok())
+                    .and_then(|v55| mbs::convert(&v55).ok())
+                    .map(|quad| props(&quad))
+            });
+            let Some(frames) = frames else {
+                missing += 1;
+                continue;
+            };
+            let Some(list) = frames.get(layer.panel as usize) else {
+                missing += 1;
+                continue;
+            };
+            if list.is_empty() {
+                hollow += 1;
+                continue;
+            }
+
+            let pages = page_cache.entry(key).or_insert_with(|| {
+                load(pair)
+                    .and_then(|(_, texture)| decode_pages(&texture))
+                    .unwrap_or_default()
+            });
+            let mut painted = 0usize;
+            for piece in list {
+                let Some((page_w, page_h, rgba)) = pages.get(piece.page) else {
+                    continue;
+                };
+                let Some(page) = Page::new(*page_w, *page_h, rgba) else {
+                    continue;
+                };
+                let corners = piece_corners(layer, piece.dst);
+                let mut dst = [(0.0f32, 0.0f32); 4];
+                for corner in 0..4 {
+                    let world_x = layer.center_x + corners[corner].0;
+                    let world_y = layer.center_y + corners[corner].1;
+                    dst[corner] = ((world_x - x0) * scale, (max_y - world_y) * scale);
+                }
+                let tint = shade(layer.color, piece.color);
+                paint_quad(&mut raster, dst, piece.uv, &page, tint);
+                painted += 1;
+            }
+            if painted == 0 {
+                missing += 1;
+            } else {
+                models += 1;
+                quads += painted;
+            }
             continue;
         }
-        let key = layer.pair as usize;
+
         let list = panel_cache.entry(key).or_insert_with(|| {
             load(pair)
                 .map(|(model, _)| panels(&model))
@@ -837,17 +893,32 @@ pub fn compose_window(
         drawn += 1;
     }
 
-    let total = drawn + models + missing;
+    let total = drawn + models + hollow + missing;
     Some(Scene {
         raster,
         map: map.to_string(),
         layers: total,
         drawn,
         models,
+        quads,
+        hollow,
         missing,
         scale,
         window: [x0, min_y, x1, max_y],
     })
+}
+
+/// Both page space (`.mpd` panel corners) and model space (`.mbs` quads) put y
+/// downwards, while the field world puts y upwards, so every corner is mirrored
+/// into world orientation first and only then turned by the layer's roll and
+/// tilted by its pitch.
+fn turn(layer: &Layer, local_x: f32, local_y: f32) -> (f32, f32) {
+    let (sin_roll, cos_roll) = (layer.roll as f32 * ANGLE_UNIT).sin_cos();
+    let cos_pitch = (layer.pitch as f32 * ANGLE_UNIT).cos();
+    (
+        cos_roll * local_x + sin_roll * local_y,
+        cos_pitch * (cos_roll * local_y - sin_roll * local_x),
+    )
 }
 
 pub fn quad_corners(layer: &Layer, panel: &Panel) -> [(f32, f32); 4] {
@@ -861,19 +932,187 @@ pub fn quad_corners(layer: &Layer, panel: &Panel) -> [(f32, f32); 4] {
 
     let scale_x = layer.scale_x as f32 * SCALE_UNIT;
     let scale_y = layer.scale_y as f32 * SCALE_UNIT;
-    let (sin_roll, cos_roll) = (layer.roll as f32 * ANGLE_UNIT).sin_cos();
-    let cos_pitch = (layer.pitch as f32 * ANGLE_UNIT).cos();
 
     let mut out = [(0.0f32, 0.0f32); 4];
     for (slot, corner) in panel.corners.iter().enumerate() {
         let local_x = (corner.0 - centre.0) * 0.5 * scale_x;
-        let local_y = (corner.1 - centre.1) * 0.5 * scale_y;
-        out[slot] = (
-            cos_roll * local_x + sin_roll * local_y,
-            cos_pitch * (cos_roll * local_y - sin_roll * local_x),
-        );
+        let local_y = -(corner.1 - centre.1) * 0.5 * scale_y;
+        out[slot] = turn(layer, local_x, local_y);
     }
     out
+}
+
+/// Only UNICORN OVERLORD ships a field background, so the mbs tag is fixed.
+pub const MBS_TAG: &str = "swi_unic";
+/// Model quads are authored in texels, so one model unit is one world unit at
+/// scale 1 (a panel span is twice its texels, a model quad is not; ADR-0032).
+pub const MODEL_UNIT: f32 = 1.0;
+
+#[derive(Clone, Copy)]
+pub struct Piece {
+    pub page: usize,
+    pub dst: [(f32, f32); 4],
+    pub uv: [(f32, f32); 4],
+    pub color: [u8; 4],
+}
+
+/// One entry per skeleton of the paired `.mbs`: the prop's rest pose, already
+/// turned by its own `s7` transform.
+pub fn props(quad: &mbs::Quad) -> Vec<Vec<Piece>> {
+    quad.skeleton
+        .iter()
+        .map(|cell| match cell {
+            mbs::quad::Pad::Filled(skeleton) => skeleton_pieces(quad, skeleton),
+            mbs::quad::Pad::Empty(_) => Vec::new(),
+        })
+        .collect()
+}
+
+fn skeleton_pieces(quad: &mbs::Quad, skeleton: &mbs::quad::Skeleton) -> Vec<Piece> {
+    let mut out = Vec::new();
+    for bone in &skeleton.bone {
+        if bone.attach.kind != "animation" {
+            continue;
+        }
+        let Some(mbs::quad::Pad::Filled(animation)) = quad.animation.get(bone.attach.id as usize)
+        else {
+            continue;
+        };
+        let Some(entry) = animation.timeline.first() else {
+            continue;
+        };
+        let Some(attach) = &entry.attach else {
+            continue;
+        };
+        let Some(frame) = frame_of(quad, &attach.kind, attach.id) else {
+            continue;
+        };
+        let flags = mbs::quad::hexdec(&entry.debug);
+        let matrix = mbs::matrix::engine_matrix(
+            &entry.transform.move_,
+            &entry.transform.rotate,
+            &entry.transform.scale,
+            flags & 0x01 != 0,
+            flags & 0x02 != 0,
+        );
+        out.extend(pieces(quad, frame).into_iter().map(|mut piece| {
+            for point in piece.dst.iter_mut() {
+                *point = place(&matrix, *point);
+            }
+            piece
+        }));
+    }
+    out
+}
+
+fn frame_of(quad: &mbs::Quad, kind: &str, id: i64) -> Option<usize> {
+    match kind {
+        "slot" => match quad.slot.get(id as usize) {
+            Some(mbs::quad::Pad::Filled(slot)) => frame_of(quad, &slot[0].kind, slot[0].id),
+            _ => None,
+        },
+        "keyframe" => Some(id as usize),
+        _ => None,
+    }
+}
+
+fn place(matrix: &[f64; 16], point: (f32, f32)) -> (f32, f32) {
+    let x = f64::from(point.0);
+    let y = f64::from(point.1);
+    let out_x = x * matrix[0] + y * matrix[4] + matrix[12];
+    let out_y = x * matrix[1] + y * matrix[5] + matrix[13];
+    (out_x as f32, out_y as f32)
+}
+
+pub fn pieces(quad: &mbs::Quad, frame: usize) -> Vec<Piece> {
+    let Some(mbs::quad::Pad::Filled(keyframe)) = quad.keyframe.get(frame) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for cell in &keyframe.layer {
+        let mbs::quad::Pad::Filled(layer) = cell else {
+            continue;
+        };
+        let Some(page) = layer.tex_id.filter(|page| *page >= 0) else {
+            continue;
+        };
+        if layer.dstquad.len() < 8 {
+            continue;
+        }
+        let source = layer
+            .srcquad
+            .clone()
+            .unwrap_or_else(|| vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0]);
+        if source.len() < 8 {
+            continue;
+        }
+        let mut dst = [(0.0f32, 0.0f32); 4];
+        let mut uv = [(0.0f32, 0.0f32); 4];
+        for corner in 0..4 {
+            dst[corner] = (layer.dstquad[corner * 2], layer.dstquad[corner * 2 + 1]);
+            uv[corner] = (source[corner * 2], source[corner * 2 + 1]);
+        }
+        let color = match &layer.fogquad {
+            Some(mbs::v55::FogQuad::One(text)) => parse_color(text),
+            Some(mbs::v55::FogQuad::Four(list)) => parse_color(&list[0]),
+            None => [255, 255, 255, 255],
+        };
+        out.push(Piece {
+            page: page as usize,
+            dst,
+            uv,
+            color,
+        });
+    }
+    out
+}
+
+fn parse_color(text: &str) -> [u8; 4] {
+    let digits: Vec<u8> = text
+        .trim_start_matches('#')
+        .bytes()
+        .filter_map(|byte| (byte as char).to_digit(16).map(|digit| digit as u8))
+        .collect();
+    if digits.len() < 8 {
+        return [255, 255, 255, 255];
+    }
+    [
+        digits[0] * 16 + digits[1],
+        digits[2] * 16 + digits[3],
+        digits[4] * 16 + digits[5],
+        digits[6] * 16 + digits[7],
+    ]
+}
+
+pub fn piece_corners(layer: &Layer, dst: [(f32, f32); 4]) -> [(f32, f32); 4] {
+    let scale_x = layer.scale_x as f32 * SCALE_UNIT;
+    let scale_y = layer.scale_y as f32 * SCALE_UNIT;
+
+    let mut out = [(0.0f32, 0.0f32); 4];
+    for (slot, (x, y)) in dst.iter().enumerate() {
+        out[slot] = turn(layer, x * MODEL_UNIT * scale_x, -y * MODEL_UNIT * scale_y);
+    }
+    out
+}
+
+pub fn model_bounds(layer: &Layer, list: &[Piece]) -> Option<[f32; 4]> {
+    let mut low = (f32::MAX, f32::MAX);
+    let mut high = (f32::MIN, f32::MIN);
+    for piece in list {
+        for (x, y) in piece_corners(layer, piece.dst) {
+            low = (low.0.min(x), low.1.min(y));
+            high = (high.0.max(x), high.1.max(y));
+        }
+    }
+    if low.0 > high.0 {
+        return None;
+    }
+    Some([
+        layer.center_x + low.0,
+        layer.center_y + low.1,
+        layer.center_x + high.0,
+        layer.center_y + high.1,
+    ])
 }
 
 pub fn tint(color: u32) -> [u8; 4] {
@@ -883,6 +1122,15 @@ pub fn tint(color: u32) -> [u8; 4] {
         (color >> 16) as u8,
         (color >> 24) as u8,
     ]
+}
+
+pub fn shade(base: u32, color: [u8; 4]) -> [u8; 4] {
+    let layer = tint(base);
+    let mut out = [0u8; 4];
+    for channel in 0..4 {
+        out[channel] = (layer[channel] as u32 * color[channel] as u32 / 255) as u8;
+    }
+    out
 }
 
 fn decode_pages(texture: &[u8]) -> Option<Vec<(u32, u32, Vec<u8>)>> {
@@ -1283,11 +1531,13 @@ pub fn view_layout(
             height: scene.raster.height,
             rgba: scene.raster.rgba.clone(),
             legend: format!(
-                "Layer set {}: {} layers inside the window, {} textured panels drawn, {} model layers not composited, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. Every layer is a quad taken from one of the paired .mpd files, textured from the paired .ftx, then scaled, turned and tilted into place; they are painted far to near by z. One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) can be stacked, but the .01P kind is soft cloud: it covers the ground by design, so the viewer shows one set unless the scope names a whole battlefield (AC00).",
+                "Layer set {}: {} layers inside the window, {} textured panels drawn, {} props drawn from {} model quads, {} prop layers with no art, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. A panel layer names a quad of the paired .mpd and is textured from the paired .ftx; a prop layer names a skeleton of the paired .mbs, and that whole prop is drawn in its rest pose. Both are kept as authored: page space and model space put y downwards, so every quad is mirrored into the upwards world before the layer's scale, roll and pitch are applied; they are painted far to near by z. One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) can be stacked, but the .01P kind is soft cloud: it covers the ground by design, so the viewer shows one set unless the scope names a whole battlefield (AC00).",
                 scene.map,
                 scene.layers,
                 scene.drawn,
                 scene.models,
+                scene.quads,
+                scene.hollow,
                 scene.missing,
                 1.0 / scene.scale,
                 scene.window[0].round(),
@@ -1300,11 +1550,13 @@ pub fn view_layout(
         header_rows.push(vec![
             "world window".to_string(),
             format!(
-                "x {}..{} · {} layers · {} drawn",
+                "x {}..{} · {} layers · {} panels · {} props ({})",
                 scene.window[0].round(),
                 scene.window[2].round(),
                 scene.layers,
-                scene.drawn
+                scene.drawn,
+                scene.models,
+                scene.quads
             ),
         ]);
     } else if let Some((width, height, rgba, legend)) = area_image(layout, bytes) {
@@ -1414,7 +1666,11 @@ pub fn view_layout(
         row3("+0x28", "f32", "box center z"),
         row3("+0x2c", "u32", "rotation words, zero in 92% of layers"),
         row3("+0x30", "2 × u16", "scale x / y, 1.0 = 0x1000"),
-        row3("+0x34", "u16", "flags, bit 2 = has extension block"),
+        row3(
+            "+0x34",
+            "u16",
+            "flags: bit 2 = page panel (clear = prop of the paired .mbs); the other bits are not decoded yet",
+        ),
         row3("+0x36", "u8", "extension block index"),
         row3(
             "+0x37",
@@ -1423,7 +1679,11 @@ pub fn view_layout(
         ),
         row3("+0x38", "u8", "slot number from 16, 0xff on model layers"),
         row3("+0x39", "s8", "resource pair index"),
-        row3("+0x3a", "u16", "panel index, & 0x7ff"),
+        row3(
+            "+0x3a",
+            "u16",
+            "quad index, & 0x7ff: a page panel when bit 2 of +0x34 is set, otherwise a prop (skeleton) of the paired .mbs",
+        ),
         row3(
             "+0x3c",
             "u16",

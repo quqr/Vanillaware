@@ -82,10 +82,11 @@ fn main() {
         return;
     };
     println!(
-        "  {} layers, {} drawn, {} model layers skipped, {} unresolved, raster {}x{}",
+        "  {} layers, {} panels drawn, {} models drawn from {} quads, {} unresolved, raster {}x{}",
         scene.layers,
         scene.drawn,
         scene.models,
+        scene.quads,
         scene.missing,
         scene.raster.width,
         scene.raster.height

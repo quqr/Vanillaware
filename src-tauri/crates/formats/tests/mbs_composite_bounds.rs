@@ -11,8 +11,8 @@
 
 use std::path::{Path, PathBuf};
 
-use formats::mbs::quad::Pad;
 use formats::mbs;
+use formats::mbs::quad::Pad;
 
 const TAG: &str = "swi_unic";
 

@@ -268,11 +268,11 @@ export const en = {
   "field.area": "Area",
   "field.class": "Terrain class",
   "field.layers": "layers",
-  "field.models": "model layers",
+  "field.models": "prop layers",
   "field.props": "Props",
   "field.propsNone": "no prop name on these layers",
   "field.propsHint":
-    "A layer may name a prop from the 337-entry sample pool (Town_C18_1, Gate_C08, …). UFB stores that name and the placement only; the geometry lives in the paired .MBS, so these layers are listed but not drawn.",
+    "A layer may carry a name from the 337-entry editor pool (Town_C18_1, Gate_C08, …). The name is a label: the geometry is the skeleton of the paired .MBS that the layer points at, drawn in its rest pose.",
   "field.rendering": "Rendering…",
   "field.noImage": "This file produced no image",
   "image.fit": "Fit",
