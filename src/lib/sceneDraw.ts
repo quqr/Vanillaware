@@ -381,48 +381,6 @@ export function mixColor(
   return `#${out.join("")}`;
 }
 
-/** `s2` / `s1` interpolation, gated by `in_s6` and the same weights as the rect. */
-export function mixQuad(
-  prev: number[] | null | undefined,
-  cur: number[] | null | undefined,
-  next: number[] | null | undefined,
-  next2: number[] | null | undefined,
-  t: number,
-  mixId: number,
-): number[] {
-  const base = cur ?? [];
-  if (mixId !== 1 && mixId !== 2) return base;
-  const length = Math.max(base.length, (next ?? []).length);
-  const out = new Array<number>(length);
-  if (mixId === 1) {
-    for (let i = 0; i < length; i += 1) {
-      const a = base[i] ?? 0;
-      const b = next?.[i] ?? a;
-      out[i] = a + (b - a) * t;
-    }
-    return out;
-  }
-  const [w0, w1, w2, w3] = splineWeights(t);
-  for (let i = 0; i < length; i += 1) {
-    const a = base[i] ?? 0;
-    const b = prev?.[i] ?? a;
-    const c = next?.[i] ?? a;
-    const d = next2?.[i] ?? c;
-    out[i] = b * w0 + a * w1 + c * w2 + d * w3;
-  }
-  return out;
-}
-
-function keyframeOf(scene: Scene, frame: SceneFrame | undefined) {
-  if (!frame) return null;
-  const targets = frameTargets(frame.attach);
-  for (const id of targets.keyframes) {
-    const keyframe = scene.keyframe[id];
-    if (keyframe) return keyframe;
-  }
-  return null;
-}
-
 export function resolveBones(
   scene: Scene,
   bones: SceneAttach[],
@@ -456,39 +414,14 @@ export function resolveBones(
     for (const id of targets.keyframes) {
       const keyframe = scene.keyframe[id];
       if (!keyframe) continue;
-      const prevKeyframe = keyframeOf(scene, prev);
-      const nextKeyframe = keyframeOf(scene, next);
-      const next2Keyframe = keyframeOf(scene, next2);
-
-      for (let layerIndex = 0; layerIndex < keyframe.layers.length; layerIndex += 1) {
-        const layer = keyframe.layers[layerIndex];
+      // Only `s7` and the fog colour are mixed between keyframes. The geometry
+      // stays on the current keyframe: the sprite the engine builds carries the
+      // four `s6` records for the interleaved *bounds* (`f_700058d188`), never the
+      // four layer quads, and a layer quad reaches the draw item through the
+      // per-layer template rather than through that mix.
+      for (const layer of keyframe.layers) {
         if (!layer) continue;
-        const prevLayer = prevKeyframe?.layers[layerIndex] ?? null;
-        const nextLayer = nextKeyframe?.layers[layerIndex] ?? null;
-        const next2Layer = next2Keyframe?.layers[layerIndex] ?? null;
-
-        // `in_s6` drives the same three-state mix for the `s6` rect and for the
-        // per-layer `s2`/`s1`/`s0` records (the rect equals their union bbox in
-        // 98.6% of the corpus), so the quad follows the same weights.
-        const dst = mixQuad(prevLayer?.dst, layer.dst, nextLayer?.dst, next2Layer?.dst, t, cur.dstQuadMixId);
-        const src = layer.src
-          ? mixQuad(prevLayer?.src, layer.src, nextLayer?.src, next2Layer?.src, t, cur.dstQuadMixId)
-          : null;
-        const fog = layer.fog
-          ? layer.fog.map(
-              (corner, cornerIndex) =>
-                mixColor(
-                  prevLayer?.fog?.[cornerIndex],
-                  corner,
-                  nextLayer?.fog?.[cornerIndex],
-                  next2Layer?.fog?.[cornerIndex],
-                  t,
-                  cur.fogQuadMixId,
-                ) ?? corner,
-            )
-          : null;
-
-        layers.push({ layer: { ...layer, dst, src, fog }, matrix, color });
+        layers.push({ layer, matrix, color });
       }
     }
 

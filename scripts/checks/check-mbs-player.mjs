@@ -223,15 +223,25 @@ function frameOf(time, extra = {}) {
     name: "mix",
     loopId: -1,
     frames: [
-      frameOf(2, { attach: { kind: "keyframe", id: 0 }, matrixMixId: 1, move: [0, 0, 0] }),
-      frameOf(2, { attach: { kind: "keyframe", id: 1 }, matrixMixId: 1, move: [10, 0, 0] }),
+      frameOf(2, {
+        attach: { kind: "keyframe", id: 0 },
+        matrixMixId: 1,
+        dstQuadMixId: 1,
+        move: [0, 0, 0],
+      }),
+      frameOf(2, {
+        attach: { kind: "keyframe", id: 1 },
+        matrixMixId: 1,
+        dstQuadMixId: 1,
+        move: [10, 0, 0],
+      }),
     ],
   };
   const animations = new Map([[0, animation]]);
   const state = { frameIndex: 0, remaining: 1000, done: false };
   const resolved = resolveBones(scene, [{ kind: "animation", id: 0 }], [state], animations);
   report.equal(resolved.layers.length, 1, "one layer resolved");
-  close(resolved.layers[0].layer.dst[2], 0, "quad stays on the current keyframe", 1e-9);
+  close(resolved.layers[0].layer.dst[2], 0, "quad stays on the current keyframe even with in_s6 on", 1e-9);
   close(resolved.layers[0].matrix[12], 5, "translation tweened at t=0.5", 1e-9);
 
   const noMix = { ...animation, frames: [frameOf(2, { attach: { kind: "keyframe", id: 0 } })] };
