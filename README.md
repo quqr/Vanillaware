@@ -142,22 +142,21 @@ Frontend Tauri v2 + React 19 + Tailwind 4 + daisyUI 5, backend Rust.
 
 ```bash
 pnpm install
-pnpm tauri dev          # develop
-pnpm build              # frontend type-check + build
+pnpm tauri dev
+pnpm build
 ```
 
 ## Acceptance
 
 ```bash
-# Rust
-cargo test -p archive                                  # CPK reader
-cargo test -p archive --test corpus -- --ignored       # byte-exact closure on four real CPKs
-cargo test -p vfs                                      # mount layer
-cargo test -p vfs --test corpus -- --ignored           # listing and indexing of real archives
-cargo test -p catalog -p formats -p media              # format and media regressions
-cargo test -p formats --test field_corpus -- --ignored # battlefield corpus closure
-cargo test --test archive_mount                        # archive-to-viewer end to end
-cargo run -p archive --example cpk_probe -- <x.cpk>    # archive diagnostics; FAIL exits non-zero
+cargo test -p archive
+cargo test -p archive --test corpus -- --ignored
+cargo test -p vfs
+cargo test -p vfs --test corpus -- --ignored
+cargo test -p catalog -p formats -p media
+cargo test -p formats --test field_corpus -- --ignored
+cargo test --test archive_mount
+cargo run -p archive --example cpk_probe -- <x.cpk>
 
 npx tsc --noEmit
 ```

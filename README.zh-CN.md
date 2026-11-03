@@ -129,22 +129,21 @@
 
 ```bash
 pnpm install
-pnpm tauri dev          # 开发
-pnpm build              # 前端类型检查 + 构建
+pnpm tauri dev
+pnpm build
 ```
 
 ## 验收
 
 ```bash
-# Rust
-cargo test -p archive                                  # CPK 读取器
-cargo test -p archive --test corpus -- --ignored       # 四个真实 CPK 的字节级闭合
-cargo test -p vfs                                      # 挂载层
-cargo test -p vfs --test corpus -- --ignored           # 真实归档的列举与索引
-cargo test -p catalog -p formats -p media              # 格式与媒体回归
-cargo test -p formats --test field_corpus -- --ignored # 战场地图语料闭合
-cargo test --test archive_mount                        # 归档到查看器链路的端到端
-cargo run -p archive --example cpk_probe -- <x.cpk>    # 归档诊断，有 FAIL 非零退出
+cargo test -p archive
+cargo test -p archive --test corpus -- --ignored
+cargo test -p vfs
+cargo test -p vfs --test corpus -- --ignored
+cargo test -p catalog -p formats -p media
+cargo test -p formats --test field_corpus -- --ignored
+cargo test --test archive_mount
+cargo run -p archive --example cpk_probe -- <x.cpk>
 
 npx tsc --noEmit
 ```
