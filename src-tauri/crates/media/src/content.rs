@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use formats::content::{self, Projection};
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentDto {
     pub title: String,
@@ -18,7 +18,7 @@ pub struct ContentDto {
     pub image_note: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SectionDto {
     pub title: String,
@@ -27,7 +27,7 @@ pub struct SectionDto {
     pub total: u64,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeriesDto {
     pub label: String,
@@ -54,7 +54,7 @@ pub fn open_path(path: &Path) -> Option<ContentDto> {
     Some(render(projection))
 }
 
-fn render(projection: Projection) -> ContentDto {
+pub fn render(projection: Projection) -> ContentDto {
     let color = projection.color.as_ref();
     let (image, projection_legend) = match color {
         Some(map) => (render_color_png(map), Some(map.legend.clone())),

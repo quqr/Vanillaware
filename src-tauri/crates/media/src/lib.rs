@@ -11,5 +11,5 @@ pub use audio::{
 };
 pub use cache::{CacheInfo, ThumbCache};
 pub use content::{ContentDto, SectionDto, SeriesDto};
-pub use video::{UsmIndex, VideoChunk, VideoFrame};
 pub use formats::ftx::TextureInfo;
+pub use video::{UsmIndex, VideoChunk, VideoFrame};

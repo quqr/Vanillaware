@@ -2,9 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use serde::{Deserialize, Serialize};
 use formats::ftx::TextureInfo;
 use formats::{DecodedTexture, Error, Result};
+use serde::{Deserialize, Serialize};
 
 use crate::encode;
 use crate::hash::fnv1a64_path;
@@ -38,6 +38,31 @@ pub struct CacheInfo {
     pub misses: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stamp {
+    pub size: u64,
+    pub mtime_ms: u64,
+}
+
+impl Stamp {
+    pub fn new(size: u64, mtime_ms: u64) -> Self {
+        Self { size, mtime_ms }
+    }
+
+    pub fn of(path: &Path) -> Self {
+        let Ok(metadata) = fs::metadata(path) else {
+            return Self {
+                size: 0,
+                mtime_ms: 0,
+            };
+        };
+        Self {
+            size: metadata.len(),
+            mtime_ms: mtime_ms(&metadata),
+        }
+    }
+}
+
 pub struct ThumbCache {
     root: PathBuf,
     hits: AtomicU64,
@@ -69,8 +94,13 @@ impl ThumbCache {
         self.root.join(fnv1a64_path(source_lower))
     }
 
-    pub fn ensure_meta(&self, source: &Path, frames: &[TextureInfo]) -> Result<usize> {
-        let meta = self.current_meta(source)?;
+    pub fn ensure_meta(
+        &self,
+        source: &Path,
+        stamp: Stamp,
+        frames: &[TextureInfo],
+    ) -> Result<usize> {
+        let meta = self.current_meta(source, stamp)?;
         if let Some(meta) = meta {
             return Ok(meta.frames.len());
         }
@@ -78,8 +108,8 @@ impl ThumbCache {
         let stored = Meta {
             schema: SCHEMA,
             source: source.display().to_string(),
-            size: file_size(source)?,
-            mtime_ms: file_mtime_ms(source),
+            size: stamp.size,
+            mtime_ms: stamp.mtime_ms,
             frames: frames
                 .iter()
                 .map(|f| FrameInfo {
@@ -95,7 +125,13 @@ impl ThumbCache {
         Ok(stored.frames.len())
     }
 
-    pub fn ensure_png<F>(&self, source: &Path, index: usize, decode_frame: F) -> Result<Vec<u8>>
+    pub fn ensure_png<F>(
+        &self,
+        source: &Path,
+        stamp: Stamp,
+        index: usize,
+        decode_frame: F,
+    ) -> Result<Vec<u8>>
     where
         F: FnOnce() -> Result<DecodedTexture>,
     {
@@ -103,19 +139,15 @@ impl ThumbCache {
         let dir = self.dir_for(&source_lower);
         let png_path = dir.join(format!("{index}.png"));
 
-        let meta = self.current_meta(source)?;
+        let meta = self.current_meta(source, stamp)?;
         let valid = meta
             .as_ref()
             .is_some_and(|m| m.schema == SCHEMA && index < m.frames.len());
 
         if valid {
-            match fs::read(&png_path) {
-                Ok(bytes) => {
-                    self.hits.fetch_add(1, Ordering::Relaxed);
-                    return Ok(bytes);
-                }
-                Err(_) => {
-                }
+            if let Ok(bytes) = fs::read(&png_path) {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                return Ok(bytes);
             }
         }
 
@@ -151,8 +183,8 @@ impl ThumbCache {
                 &Meta {
                     schema: SCHEMA,
                     source: source.display().to_string(),
-                    size: file_size(source)?,
-                    mtime_ms: file_mtime_ms(source),
+                    size: stamp.size,
+                    mtime_ms: stamp.mtime_ms,
                     frames,
                 },
             )?;
@@ -165,6 +197,7 @@ impl ThumbCache {
     pub fn ensure_png_full<F>(
         &self,
         source: &Path,
+        stamp: Stamp,
         index: usize,
         decode_frame: F,
     ) -> Result<Vec<u8>>
@@ -175,7 +208,7 @@ impl ThumbCache {
         let dir = self.dir_for(&source_lower).join("full");
         let png_path = dir.join(format!("{index}.png"));
 
-        let meta = self.current_meta(source)?;
+        let meta = self.current_meta(source, stamp)?;
         let valid = meta
             .as_ref()
             .is_some_and(|m| m.schema == SCHEMA && index < m.frames.len());
@@ -224,7 +257,7 @@ impl ThumbCache {
         Ok(info)
     }
 
-    fn current_meta(&self, source: &Path) -> Result<Option<Meta>> {
+    fn current_meta(&self, source: &Path, stamp: Stamp) -> Result<Option<Meta>> {
         let source_lower = source.display().to_string().to_lowercase();
         let meta_path = self.dir_for(&source_lower).join("meta.json");
         let Ok(text) = fs::read_to_string(&meta_path) else {
@@ -235,10 +268,7 @@ impl ThumbCache {
             return Ok(None);
         };
 
-        if meta.schema != SCHEMA
-            || meta.size != file_size(source)?
-            || meta.mtime_ms != file_mtime_ms(source)
-        {
+        if meta.schema != SCHEMA || meta.size != stamp.size || meta.mtime_ms != stamp.mtime_ms {
             return Ok(None);
         }
 
@@ -263,16 +293,12 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn file_size(path: &Path) -> Result<u64> {
-    Ok(fs::metadata(path).map_err(io_err)?.len())
-}
-
-fn file_mtime_ms(path: &Path) -> u64 {
-    fs::metadata(path)
+fn mtime_ms(metadata: &fs::Metadata) -> u64 {
+    metadata
+        .modified()
         .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
 }
 

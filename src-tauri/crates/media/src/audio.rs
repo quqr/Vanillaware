@@ -141,10 +141,9 @@ impl Bundle {
                 .file_data_for_cue_id(track.wav_id)
                 .map_err(|error| AudioError::Malformed(error.to_string()));
         }
-        let embedded = self
-            .embedded_awb
-            .as_ref()
-            .ok_or_else(|| AudioError::Malformed(format!("track {} has no embedded AWB", track.name)))?;
+        let embedded = self.embedded_awb.as_ref().ok_or_else(|| {
+            AudioError::Malformed(format!("track {} has no embedded AWB", track.name))
+        })?;
         let mut archive = AfsArchive::new(Cursor::new(embedded.as_slice()))
             .map_err(|error| AudioError::Malformed(error.to_string()))?;
         archive
@@ -193,7 +192,8 @@ pub fn open_acb(path: &Path) -> Result<Bundle, AudioError> {
         return Err(AudioError::NoTracks);
     }
     if embedded_awb.is_none() && external.is_empty() {
-        warnings.push("the ACB has neither an embedded AWB nor a sibling streaming AWB".to_string());
+        warnings
+            .push("the ACB has neither an embedded AWB nor a sibling streaming AWB".to_string());
     }
 
     let mut seen = std::collections::BTreeSet::new();
@@ -212,7 +212,7 @@ pub fn open_acb(path: &Path) -> Result<Bundle, AudioError> {
             index,
             name: track.name.clone(),
             cue_id: track.cue_id,
-            codec: Codec::from_wave_ext(&cridecoder::acb::wave_type_extension(track.enc_type)),
+            codec: Codec::from_wave_ext(cridecoder::acb::wave_type_extension(track.enc_type)),
             stream: track.is_stream,
             stream_awb_id: track.stream_awb_id,
             wav_id: track.wav_id,
@@ -338,7 +338,9 @@ fn decode_hca(bytes: &[u8]) -> Result<Clip, AudioError> {
 
 pub fn parse_lopus(bytes: &[u8]) -> Result<Clip, AudioError> {
     if bytes.len() < 0x20 {
-        return Err(AudioError::Malformed("lopus header is shorter than 0x20 bytes".to_string()));
+        return Err(AudioError::Malformed(
+            "lopus header is shorter than 0x20 bytes".to_string(),
+        ));
     }
     let Some(base) = (0..bytes.len().min(0x20)).find(|&at| u32_at(bytes, at) == CHUNK_BASIC) else {
         return Err(AudioError::Malformed(format!(

@@ -42,3 +42,15 @@ path = "tests/tools/quad_probe.rs"
 [[example]]
 name = "ftx_page"
 path = "tests/tools/ftx_page.rs"
+
+[[example]]
+name = "ufb_render"
+path = "tests/tools/ufb_render.rs"
+
+[[example]]
+name = "ufb_models"
+path = "tests/tools/ufb_models.rs"
+
+[[example]]
+name = "content_render"
+path = "tests/tools/content_render.rs"

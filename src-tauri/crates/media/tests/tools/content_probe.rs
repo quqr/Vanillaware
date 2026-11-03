@@ -14,10 +14,6 @@ fn main() {
                 continue;
             }
         };
-        let ext = target
-            .extension()
-            .map(|value| value.to_string_lossy().to_ascii_lowercase())
-            .unwrap_or_default();
         match media::content::open_path(target) {
             Some(content) => {
                 let image = content

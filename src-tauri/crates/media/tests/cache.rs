@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use tempfile::TempDir;
 use formats::DecodedTexture;
+use tempfile::TempDir;
 
-use media::cache::ThumbCache;
+use media::cache::{Stamp, ThumbCache};
 use media::encode::render_thumb_png;
 
 fn texture(width: u32, height: u32, channels: u8) -> DecodedTexture {
@@ -39,7 +39,11 @@ fn png_is_bounded_by_max_edge_and_never_upscales() {
 
     let small = render_thumb_png(&texture(96, 96, 4)).unwrap();
     let decoded = image::load_from_memory(&small).unwrap();
-    assert_eq!((decoded.width(), decoded.height()), (96, 96), "small images are not upscaled");
+    assert_eq!(
+        (decoded.width(), decoded.height()),
+        (96, 96),
+        "small images are not upscaled"
+    );
 
     let odd = render_thumb_png(&texture(960, 540, 4)).unwrap();
     let decoded = image::load_from_memory(&odd).unwrap();
@@ -73,27 +77,37 @@ fn cache_hit_and_invalidation() {
         format: 0x4D,
         channels: 4,
     }];
-    cache.ensure_meta(&source, &frames).unwrap();
+    cache
+        .ensure_meta(&source, Stamp::of(&source), &frames)
+        .unwrap();
 
     let misses_at_start = cache.misses();
     let first = cache
-        .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
+        .ensure_png(&source, Stamp::of(&source), 0, || Ok(texture(64, 64, 4)))
         .unwrap();
     assert_eq!(cache.misses(), misses_at_start + 1);
 
     let hits_at_start = cache.hits();
     let second = cache
-        .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
+        .ensure_png(&source, Stamp::of(&source), 0, || Ok(texture(64, 64, 4)))
         .unwrap();
-    assert_eq!(cache.hits(), hits_at_start + 1, "the second lookup must hit");
+    assert_eq!(
+        cache.hits(),
+        hits_at_start + 1,
+        "the second lookup must hit"
+    );
     assert_eq!(first, second, "a hit returns identical content");
 
     touch_mtime(&source);
     let misses_before = cache.misses();
     cache
-        .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
+        .ensure_png(&source, Stamp::of(&source), 0, || Ok(texture(64, 64, 4)))
         .unwrap();
-    assert_eq!(cache.misses(), misses_before + 1, "an mtime change must invalidate");
+    assert_eq!(
+        cache.misses(),
+        misses_before + 1,
+        "an mtime change must invalidate"
+    );
 
     let info = cache.info();
     assert_eq!(info.entries, 1);
@@ -109,7 +123,7 @@ fn clear_empties_cache_but_keeps_other_files() {
     let source = dir.path().join("A.ftx");
     std::fs::write(&source, [1u8; 8]).unwrap();
     cache
-        .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
+        .ensure_png(&source, Stamp::of(&source), 0, || Ok(texture(64, 64, 4)))
         .unwrap();
 
     let settings = dir.path().join("settings.json");
@@ -118,9 +132,12 @@ fn clear_empties_cache_but_keeps_other_files() {
     let removed = cache.clear().unwrap();
     assert_eq!(removed.entries, 1);
     assert_eq!(cache_root.read_dir().unwrap().count(), 0);
-    assert!(settings.exists(), "unrelated files in the app directory must survive");
+    assert!(
+        settings.exists(),
+        "unrelated files in the app directory must survive"
+    );
 
     cache
-        .ensure_png(&source, 0, || Ok(texture(64, 64, 4)))
+        .ensure_png(&source, Stamp::of(&source), 0, || Ok(texture(64, 64, 4)))
         .unwrap();
 }

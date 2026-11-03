@@ -78,7 +78,9 @@ impl UsmIndex {
 
 pub fn chunk_span(size: u64) -> (u64, u32) {
     let total = (size + CHUNK_SIZE_BIAS).div_ceil(CHUNK_HEADER as u64) * CHUNK_HEADER as u64;
-    let payload = size.saturating_sub(PAYLOAD_PREFIX).min(total - CHUNK_HEADER as u64);
+    let payload = size
+        .saturating_sub(PAYLOAD_PREFIX)
+        .min(total - CHUNK_HEADER as u64);
     (total, payload as u32)
 }
 
@@ -152,22 +154,19 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
                 });
                 stream_offset += payload_len as u64;
             }
-            b"@SFA" => {
-                if audio == "none" {
-                    let mut probe = [0u8; 4];
-                    file.seek(SeekFrom::Start(cursor + CHUNK_HEADER as u64))?;
-                    let probed = file.read(&mut probe).unwrap_or(0);
-                    let is_table = probed >= 4 && (&probe == b"@UTF" || probe[0] == b'#');
-                    if is_table {
-                    } else if probed == 4 {
-                        audio = if probe.starts_with(b"HCA\0") {
-                            "hca".to_string()
-                        } else if probe[0] == 0x80 && probe[1] == 0x00 {
-                            "adx".to_string()
-                        } else {
-                            "unknown".to_string()
-                        };
-                    }
+            b"@SFA" if audio == "none" => {
+                let mut probe = [0u8; 4];
+                file.seek(SeekFrom::Start(cursor + CHUNK_HEADER as u64))?;
+                let probed = file.read(&mut probe).unwrap_or(0);
+                let is_table = probed >= 4 && (&probe == b"@UTF" || probe[0] == b'#');
+                if !is_table && probed == 4 {
+                    audio = if probe.starts_with(b"HCA\0") {
+                        "hca".to_string()
+                    } else if probe[0] == 0x80 && probe[1] == 0x00 {
+                        "adx".to_string()
+                    } else {
+                        "unknown".to_string()
+                    };
                 }
             }
             b"@END" => break,
@@ -181,7 +180,9 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
     }
 
     if chunks.is_empty() {
-        return Err(AudioError::Malformed("the USM has no @SFV chunk".to_string()));
+        return Err(AudioError::Malformed(
+            "the USM has no @SFV chunk".to_string(),
+        ));
     }
 
     let stream_len = stream_offset;
@@ -213,11 +214,13 @@ pub fn open(path: &Path) -> Result<UsmIndex, AudioError> {
     })
 }
 
+type FrameScan = (Vec<VideoFrame>, Vec<u8>, Vec<u8>);
+
 fn scan_frames(
     file: &mut BufReader<File>,
     chunks: &[VideoChunk],
     stream_len: u64,
-) -> Result<(Vec<VideoFrame>, Vec<u8>, Vec<u8>), AudioError> {
+) -> Result<FrameScan, AudioError> {
     let mut frames: Vec<VideoFrame> = Vec::new();
     let mut sps: Vec<u8> = Vec::new();
     let mut pps: Vec<u8> = Vec::new();
@@ -278,7 +281,9 @@ fn scan_frames(
         last.size = (stream_len.saturating_sub(last.stream_offset)) as u32;
     }
     if frames.is_empty() {
-        return Err(AudioError::Malformed("the stream has no AUD, cannot split frames".to_string()));
+        return Err(AudioError::Malformed(
+            "the stream has no AUD, cannot split frames".to_string(),
+        ));
     }
     Ok((frames, sps, pps))
 }
