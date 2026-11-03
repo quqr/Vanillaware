@@ -80,6 +80,18 @@ pub struct Layer {
     pub at: usize,
 }
 
+/// One ground tile: a quad whose four corners are `corners`, plus an explicit
+/// centre vertex so the atlas rect can bend instead of mapping affinely. The
+/// sixth stored vertex is a repeat of `corners[0]` that closes the fan.
+#[derive(Clone, Copy, Default)]
+pub struct Ext {
+    pub center: Vertex,
+    pub corners: [Vertex; 4],
+}
+
+/// Ground tiles cover the record's tile on a 128-unit grid.
+pub const TERRAIN_CELL: f32 = 128.0;
+
 pub struct GroupBlock {
     pub at: usize,
     pub id: u16,
@@ -465,6 +477,46 @@ pub struct Panel {
     pub uv: [(f32, f32); 4],
 }
 
+/// Ground tiles of a record, in the order the file stores them.
+pub fn ext_blocks(bytes: &[u8], record: &Record) -> Vec<Ext> {
+    let mut out = Vec::with_capacity(record.ext_count);
+    for index in 0..record.ext_count {
+        let at = record.ext_at + index * EXT;
+        if at + 6 * VERTEX > bytes.len() {
+            break;
+        }
+        let verts = vertices(bytes, at, 6);
+        out.push(Ext {
+            center: verts[0],
+            corners: [verts[1], verts[2], verts[3], verts[4]],
+        });
+    }
+    out
+}
+
+/// Tiles per row and per column: the record's footprint divided by 128.
+pub fn ext_grid(record: &Record) -> (usize, usize) {
+    let cols = ((record.max[0] - record.min[0]).abs() / TERRAIN_CELL)
+        .round()
+        .max(1.0) as usize;
+    let rows = ((record.max[2] - record.min[2]).abs() / TERRAIN_CELL)
+        .round()
+        .max(1.0) as usize;
+    (cols, rows)
+}
+
+/// World centre of ground tile `index`, in the record's tile.
+pub fn ext_center(record: &Record, index: usize) -> (f32, f32, f32) {
+    let (cols, _) = ext_grid(record);
+    let column = (index % cols.max(1)) as f32;
+    let row = (index / cols.max(1)) as f32;
+    (
+        record.min[0] + TERRAIN_CELL * 0.5 + column * TERRAIN_CELL,
+        record.min[2] + TERRAIN_CELL * 0.5 + row * TERRAIN_CELL,
+        0.0,
+    )
+}
+
 pub fn panels(bytes: &[u8]) -> Vec<Panel> {
     if bytes.get(..4) != Some(b"MPD\0") {
         return Vec::new();
@@ -507,6 +559,8 @@ pub struct Scene {
     pub quads: usize,
     pub hollow: usize,
     pub missing: usize,
+    pub tiles: usize,
+    pub tick: u64,
     pub scale: f32,
     pub window: [f32; 4],
 }
@@ -708,14 +762,45 @@ pub fn default_window(layout: &Layout, map: &str, span: f32) -> f32 {
 }
 
 pub type PairLoader<'a> = dyn Fn(&Pair) -> Option<(Vec<u8>, Vec<u8>)> + 'a;
+/// What a render asks for beyond the window itself.
+#[derive(Clone, Copy, Default)]
+pub struct Render {
+    /// Engine clock: one tick is 1/60 s, and prop poses are sampled at it.
+    pub tick: u64,
+    /// Draw the ground tiles of every record that carries them.
+    pub terrain: bool,
+}
 
 pub fn compose_window(
+    bytes: &[u8],
     layout: &Layout,
     map: &str,
     x0: f32,
     width: f32,
     load: &PairLoader<'_>,
     max_side: u32,
+) -> Option<Scene> {
+    compose_window_with(
+        bytes,
+        layout,
+        map,
+        x0,
+        width,
+        load,
+        max_side,
+        Render::default(),
+    )
+}
+
+pub fn compose_window_with(
+    bytes: &[u8],
+    layout: &Layout,
+    map: &str,
+    x0: f32,
+    width: f32,
+    load: &PairLoader<'_>,
+    max_side: u32,
+    render: Render,
 ) -> Option<Scene> {
     let width = width.max(1.0);
     let x1 = x0 + width;
@@ -781,12 +866,13 @@ pub fn compose_window(
 
     let mut panel_cache: HashMap<usize, Vec<Panel>> = HashMap::new();
     let mut page_cache: HashMap<usize, Vec<(u32, u32, Vec<u8>)>> = HashMap::new();
-    let mut model_cache: HashMap<usize, Option<Vec<Vec<Piece>>>> = HashMap::new();
+    let mut model_cache: HashMap<usize, Option<mbs::Quad>> = HashMap::new();
     let mut drawn = 0usize;
     let mut models = 0usize;
     let mut quads = 0usize;
     let mut hollow = 0usize;
     let mut missing = 0usize;
+    let mut tiles = 0usize;
 
     let mut order: Vec<&Layer> = layers;
     order.sort_by(|left, right| {
@@ -794,6 +880,23 @@ pub fn compose_window(
             .partial_cmp(&left.min[2])
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+
+    if render.terrain {
+        tiles = paint_terrain(
+            bytes,
+            layout,
+            &mut raster,
+            &load,
+            &mut page_cache,
+            &Canvas {
+                left: x0,
+                top: max_y,
+                scale,
+            },
+            x0,
+            x1,
+        );
+    }
 
     for layer in order {
         let Some(pair) = layout.pairs.get(layer.pair as usize) else {
@@ -803,20 +906,16 @@ pub fn compose_window(
         let key = layer.pair as usize;
 
         if !pair.is_panel() || layer.flags & 4 == 0 {
-            let frames = model_cache.entry(key).or_insert_with(|| {
+            let quad = model_cache.entry(key).or_insert_with(|| {
                 load(pair)
                     .and_then(|(model, _)| mbs::parse_bytes(&model, MBS_TAG).ok())
                     .and_then(|v55| mbs::convert(&v55).ok())
-                    .map(|quad| props(&quad))
             });
-            let Some(frames) = frames else {
+            let Some(quad) = quad else {
                 missing += 1;
                 continue;
             };
-            let Some(list) = frames.get(layer.panel as usize) else {
-                missing += 1;
-                continue;
-            };
+            let list = prop_at(quad, layer.panel as usize, render.tick);
             if list.is_empty() {
                 hollow += 1;
                 continue;
@@ -903,6 +1002,8 @@ pub fn compose_window(
         quads,
         hollow,
         missing,
+        tiles,
+        tick: render.tick,
         scale,
         window: [x0, min_y, x1, max_y],
     })
@@ -948,6 +1049,159 @@ pub const MBS_TAG: &str = "swi_unic";
 /// scale 1 (a panel span is twice its texels, a model quad is not; ADR-0032).
 pub const MODEL_UNIT: f32 = 1.0;
 
+/// World box covered by every layer of one layer set: `x0, y0, x1, y1`.
+pub fn scope_span(layout: &Layout, map: &str) -> Option<[f32; 4]> {
+    let mut out: Option<[f32; 4]> = None;
+    for record in &layout.records {
+        for layer in &record.layers {
+            if layer.pair < 0 {
+                continue;
+            }
+            let Some(pair) = layout.pairs.get(layer.pair as usize) else {
+                continue;
+            };
+            if !matches(map, pair) {
+                continue;
+            }
+            let half = (layer.max[1] - layer.min[1]).abs() * 0.5;
+            let box_ = out.get_or_insert([f32::MAX, f32::MAX, f32::MIN, f32::MIN]);
+            box_[0] = box_[0].min(layer.min[0]);
+            box_[1] = box_[1].min(layer.center_y - half);
+            box_[2] = box_[2].max(layer.max[0]);
+            box_[3] = box_[3].max(layer.center_y + half);
+        }
+    }
+    out
+}
+
+/// The whole layer set in one strip, for the minimap. No ground tiles and no
+/// props: at this scale one pixel is tens of world units.
+pub fn overview(
+    bytes: &[u8],
+    layout: &Layout,
+    map: &str,
+    load: &PairLoader<'_>,
+    max_side: u32,
+) -> Option<Scene> {
+    let span = scope_span(layout, map)?;
+    let width = (span[2] - span[0]).max(1.0);
+    compose_window(bytes, layout, map, span[0], width, load, max_side)
+}
+
+/// The whole layer set as one strip, wrapped as a projection so the content
+/// pipeline can encode it.
+pub fn overview_view(
+    bytes: &[u8],
+    layout: &Layout,
+    dir: Option<&Path>,
+    map: &str,
+    max_side: u32,
+) -> Projection {
+    let mut out = Projection::new("UFB · field overview");
+    let Some(dir) = dir else {
+        out.note = Some("the file has no directory".to_string());
+        return out;
+    };
+    let load = |pair: &Pair| read_pair(dir, pair);
+    let Some(scene) = overview(bytes, layout, map, &load, max_side) else {
+        out.note = Some(format!("layer set {map} has no layers"));
+        return out;
+    };
+    out.color = Some(ColorMap {
+        width: scene.raster.width,
+        height: scene.raster.height,
+        rgba: scene.raster.rgba.clone(),
+        legend: format!(
+            "Layer set {}: world x {}..{}, {} layers, 1 px = {:.1} world units.",
+            scene.map,
+            scene.window[0].round(),
+            scene.window[2].round(),
+            scene.layers,
+            1.0 / scene.scale
+        ),
+    });
+    out
+}
+
+struct Canvas {
+    left: f32,
+    top: f32,
+    scale: f32,
+}
+
+impl Canvas {
+    fn pixel(&self, x: f32, y: f32) -> (f32, f32) {
+        ((x - self.left) * self.scale, (self.top - y) * self.scale)
+    }
+}
+
+/// Ground tiles are 128-unit atlas rects laid over each record's tile. A record
+/// without layers carries no resource pair of its own, so it inherits the stage
+/// of the last record that did: the records are stored in tile order and a
+/// stage runs over a contiguous block of tiles.
+fn paint_terrain(
+    bytes: &[u8],
+    layout: &Layout,
+    raster: &mut Raster,
+    load: &PairLoader<'_>,
+    pages: &mut HashMap<usize, Vec<(u32, u32, Vec<u8>)>>,
+    canvas: &Canvas,
+    x0: f32,
+    x1: f32,
+) -> usize {
+    let mut carry: Option<usize> = None;
+    let mut drawn = 0usize;
+    for record in &layout.records {
+        let mut tally: HashMap<usize, usize> = HashMap::new();
+        for layer in &record.layers {
+            if layer.pair < 0 {
+                continue;
+            }
+            let slot = layer.pair as usize;
+            if layout.pairs.get(slot).map(Pair::is_panel).unwrap_or(false) {
+                *tally.entry(slot).or_insert(0) += 1;
+            }
+        }
+        if let Some((slot, _)) = tally.into_iter().max_by_key(|(_, count)| *count) {
+            carry = Some(slot);
+        }
+        if record.ext_count == 0 || record.max[0] < x0 || record.min[0] > x1 {
+            continue;
+        }
+        let Some(slot) = carry else {
+            continue;
+        };
+        let Some(pair) = layout.pairs.get(slot) else {
+            continue;
+        };
+        let list = pages.entry(slot).or_insert_with(|| {
+            load(pair)
+                .and_then(|(_, texture)| decode_pages(&texture))
+                .unwrap_or_default()
+        });
+        let Some((page_w, page_h, rgba)) = list.first() else {
+            continue;
+        };
+        let Some(page) = Page::new(*page_w, *page_h, rgba) else {
+            continue;
+        };
+        let blocks = ext_blocks(bytes, record);
+        for (index, block) in blocks.iter().enumerate().rev() {
+            let (world_x, _, _) = ext_center(record, index);
+            let mut dst = [(0.0f32, 0.0f32); 4];
+            let mut uv = [(0.0f32, 0.0f32); 4];
+            for corner in 0..4 {
+                let vertex = block.corners[corner];
+                dst[corner] = canvas.pixel(world_x + vertex.x, vertex.y);
+                uv[corner] = (vertex.u, vertex.v);
+            }
+            paint_quad(raster, dst, uv, &page, [255, 255, 255, 255]);
+            drawn += 1;
+        }
+    }
+    drawn
+}
+
 #[derive(Clone, Copy)]
 pub struct Piece {
     pub page: usize,
@@ -956,19 +1210,87 @@ pub struct Piece {
     pub color: [u8; 4],
 }
 
-/// One entry per skeleton of the paired `.mbs`: the prop's rest pose, already
-/// turned by its own `s7` transform.
+/// One entry per skeleton of the paired `.mbs` at the rest pose (`tick` 0):
+/// every prop is drawn with its own `s7` transform applied.
 pub fn props(quad: &mbs::Quad) -> Vec<Vec<Piece>> {
-    quad.skeleton
-        .iter()
-        .map(|cell| match cell {
-            mbs::quad::Pad::Filled(skeleton) => skeleton_pieces(quad, skeleton),
-            mbs::quad::Pad::Empty(_) => Vec::new(),
-        })
+    props_at(quad, 0)
+}
+
+pub fn props_at(quad: &mbs::Quad, tick: u64) -> Vec<Vec<Piece>> {
+    (0..quad.skeleton.len())
+        .map(|index| prop_at(quad, index, tick))
         .collect()
 }
 
-fn skeleton_pieces(quad: &mbs::Quad, skeleton: &mbs::quad::Skeleton) -> Vec<Piece> {
+pub fn prop_at(quad: &mbs::Quad, index: usize, tick: u64) -> Vec<Piece> {
+    match quad.skeleton.get(index) {
+        Some(mbs::quad::Pad::Filled(skeleton)) => skeleton_pieces(quad, skeleton, tick),
+        _ => Vec::new(),
+    }
+}
+
+/// Pose of one animation at the engine clock. A tick is 1/60 s and advances the
+/// clock by 1000 units; a timeline entry's `time` counts 60 Hz frames, so it is
+/// multiplied by 1000 to compare. `matrix_mix_id` says how to reach the next key:
+/// 0 holds the key, 1 blends, 2 is the engine's Catmull-Rom (treated as blend
+/// here: the difference only shows on curves that overshoot).
+fn pose_matrix(animation: &mbs::quad::Animation, index: usize, tick: u64) -> Option<[f64; 16]> {
+    let timeline = &animation.timeline;
+    let current = timeline.get(index)?;
+    let flags = mbs::quad::hexdec(&current.debug);
+    let mut move_ = current.transform.move_;
+    let mut rotate = current.transform.rotate;
+    let mut scale = current.transform.scale;
+
+    if let Some(next) = timeline.get(index + 1) {
+        let span = ((next.time - current.time).max(1) * 1000) as f32;
+        let elapsed = tick.saturating_sub(current.time.max(0) as u64 * 1000) as f32;
+        let mut t = if current.matrix_mix_id == 0 {
+            0.0
+        } else {
+            elapsed / span
+        };
+        if current.in_rate > 1 {
+            let steps = current.in_rate as f32;
+            t = (t * steps).floor() / steps;
+        }
+        let t = t.clamp(0.0, 1.0);
+        for axis in 0..3 {
+            move_[axis] = blend(current.transform.move_[axis], next.transform.move_[axis], t);
+            rotate[axis] = blend(current.transform.rotate[axis], next.transform.rotate[axis], t);
+        }
+        for axis in 0..2 {
+            scale[axis] = blend(current.transform.scale[axis], next.transform.scale[axis], t);
+        }
+    }
+
+    Some(mbs::matrix::engine_matrix(
+        &move_,
+        &rotate,
+        &scale,
+        flags & 0x01 != 0,
+        flags & 0x02 != 0,
+    ))
+}
+
+/// Index of the key that is in force at `tick`; the last key holds forever.
+fn timeline_index(animation: &mbs::quad::Animation, tick: u64) -> Option<usize> {
+    if animation.timeline.is_empty() {
+        return None;
+    }
+    Some(
+        animation
+            .timeline
+            .partition_point(|entry| entry.time.max(0) as u64 * 1000 <= tick)
+            .saturating_sub(1),
+    )
+}
+
+fn blend(from: f32, to: f32, t: f32) -> f32 {
+    from + (to - from) * t
+}
+
+fn skeleton_pieces(quad: &mbs::Quad, skeleton: &mbs::quad::Skeleton, tick: u64) -> Vec<Piece> {
     let mut out = Vec::new();
     for bone in &skeleton.bone {
         if bone.attach.kind != "animation" {
@@ -978,23 +1300,19 @@ fn skeleton_pieces(quad: &mbs::Quad, skeleton: &mbs::quad::Skeleton) -> Vec<Piec
         else {
             continue;
         };
-        let Some(entry) = animation.timeline.first() else {
+        let Some(index) = timeline_index(animation, tick) else {
             continue;
         };
+        let Some(matrix) = pose_matrix(animation, index, tick) else {
+            continue;
+        };
+        let entry = &animation.timeline[index];
         let Some(attach) = &entry.attach else {
             continue;
         };
         let Some(frame) = frame_of(quad, &attach.kind, attach.id) else {
             continue;
         };
-        let flags = mbs::quad::hexdec(&entry.debug);
-        let matrix = mbs::matrix::engine_matrix(
-            &entry.transform.move_,
-            &entry.transform.rotate,
-            &entry.transform.scale,
-            flags & 0x01 != 0,
-            flags & 0x02 != 0,
-        );
         out.extend(pieces(quad, frame).into_iter().map(|mut piece| {
             for point in piece.dst.iter_mut() {
                 *point = place(&matrix, *point);
@@ -1452,7 +1770,16 @@ pub fn view_at(
         out.note = Some("file is shorter than 0x88 bytes".to_string());
         return out;
     };
-    view_layout(&layout, bytes, dir, map, x0, width, max_side)
+    view_layout(
+        &layout,
+        bytes,
+        dir,
+        map,
+        x0,
+        width,
+        max_side,
+        Render::default(),
+    )
 }
 
 pub fn view_layout(
@@ -1463,6 +1790,7 @@ pub fn view_layout(
     x0: Option<f32>,
     width: f32,
     max_side: u32,
+    render: Render,
 ) -> Projection {
     let mut out = Projection::new("UFB · field background");
     let counts = layout.counts;
@@ -1522,41 +1850,51 @@ pub fn view_layout(
         let dir = dir?;
         let x0 = x0.unwrap_or_else(|| default_window(layout, &scope, width));
         let load = |pair: &Pair| read_pair(dir, pair);
-        compose_window(layout, &scope, x0, width, &load, max_side)
+        compose_window_with(bytes, layout, &scope, x0, width, &load, max_side, render)
     });
 
     if let Some(scene) = rendered {
+        let mut legend = format!(
+            "Layer set {}: {} layers inside the window, {} textured panels drawn, {} props drawn from {} model quads, {} prop layers with no art, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. A panel layer names a quad of the paired .mpd and is textured from the paired .ftx; a prop layer names a skeleton of the paired .mbs, and that whole prop is posed at the engine clock (tick {}, 1/60 s each) and then placed. Both are kept as authored: page space and model space put y downwards, so every quad is mirrored into the upwards world before the layer's scale, roll and pitch are applied; they are painted far to near by z.",
+            scene.map,
+            scene.layers,
+            scene.drawn,
+            scene.models,
+            scene.quads,
+            scene.hollow,
+            scene.missing,
+            1.0 / scene.scale,
+            scene.window[0].round(),
+            scene.window[2].round(),
+            scene.window[1].round(),
+            scene.window[3].round(),
+            scene.tick,
+        );
+        if scene.tiles > 0 {
+            legend.push_str(&format!(
+                " {} ground tiles are drawn behind the billboards: each record carries 6-vertex fans that place a 128-unit atlas rect on a 128-unit grid over its own tile, and a record with no layers inherits the stage of the last record that had one.",
+                scene.tiles
+            ));
+        }
+        legend.push_str(" One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) can be stacked, but the .01P kind is soft cloud: it covers the ground by design, so the viewer shows one set unless the scope names a whole battlefield (AC00).");
         out.color = Some(ColorMap {
             width: scene.raster.width,
             height: scene.raster.height,
             rgba: scene.raster.rgba.clone(),
-            legend: format!(
-                "Layer set {}: {} layers inside the window, {} textured panels drawn, {} props drawn from {} model quads, {} prop layers with no art, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. A panel layer names a quad of the paired .mpd and is textured from the paired .ftx; a prop layer names a skeleton of the paired .mbs, and that whole prop is drawn in its rest pose. Both are kept as authored: page space and model space put y downwards, so every quad is mirrored into the upwards world before the layer's scale, roll and pitch are applied; they are painted far to near by z. One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) can be stacked, but the .01P kind is soft cloud: it covers the ground by design, so the viewer shows one set unless the scope names a whole battlefield (AC00).",
-                scene.map,
-                scene.layers,
-                scene.drawn,
-                scene.models,
-                scene.quads,
-                scene.hollow,
-                scene.missing,
-                1.0 / scene.scale,
-                scene.window[0].round(),
-                scene.window[2].round(),
-                scene.window[1].round(),
-                scene.window[3].round(),
-            ),
+            legend,
         });
         header_rows.push(vec!["layer set".to_string(), scene.map.clone()]);
         header_rows.push(vec![
             "world window".to_string(),
             format!(
-                "x {}..{} · {} layers · {} panels · {} props ({})",
+                "x {}..{} · {} layers · {} panels · {} props ({}) · {} ground tiles",
                 scene.window[0].round(),
                 scene.window[2].round(),
                 scene.layers,
                 scene.drawn,
                 scene.models,
-                scene.quads
+                scene.quads,
+                scene.tiles
             ),
         ]);
     } else if let Some((width, height, rgba, legend)) = area_image(layout, bytes) {

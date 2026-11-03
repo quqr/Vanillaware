@@ -168,7 +168,7 @@ fn a_placement_set_renders_one_window_without_borrowing_other_sets() {
         .expect("AC00_00P is present");
     let x0 = field::default_window(&layout, &target.name, 1920.0);
     let load = |pair: &field::Pair| field::read_pair(dir, pair);
-    let scene = field::compose_window(&layout, &target.name, x0, 1920.0, &load, 1920)
+    let scene = field::compose_window(&bytes, &layout, &target.name, x0, 1920.0, &load, 1920)
         .expect("the window renders");
 
     assert_eq!(scene.map, "AC00_00P");
