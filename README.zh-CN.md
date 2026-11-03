@@ -133,37 +133,6 @@ pnpm tauri dev
 pnpm build
 ```
 
-## 验收
-
-```bash
-cargo test -p archive
-cargo test -p archive --test corpus -- --ignored
-cargo test -p vfs
-cargo test -p vfs --test corpus -- --ignored
-cargo test -p catalog -p formats -p media
-cargo test -p formats --test field_corpus -- --ignored
-cargo test --test archive_mount
-cargo run -p archive --example cpk_probe -- <x.cpk>
-
-npx tsc --noEmit
-```
-
-## 结构
-
-```
-src-tauri/
-├── src/                 应用层：command（薄命令层）/ service（业务与缓存）/ model（DTO）
-└── crates/
-    ├── catalog          目录列举、格式注册表、索引、游戏档案（刻意不依赖 formats）
-    ├── formats          格式语义与投影（文档树、内容视图、纹理解码、反汇编…）
-    ├── archive          CRI CPK 读取器（容器 / @UTF 表 / TOC / CRILAYLA）
-    ├── vfs              归档挂载层：一个路径同时寻址磁盘与归档
-    ├── media            PNG 缓存、音频、影片、内容视图的媒体包装
-    └── schema           Kaitai 生成的结构定义
-src/                     前端：views / components（columns、library、viewers）/ store / lib / i18n
-tools/                   ksc_gen.py（ksy → Kaitai 代码生成）与 rev/（NSO 解包、函数摘取、ADRP+ADD 引用还原等逆向辅助）
-```
-
 设计决策见 `docs/adr/`，领域术语见 `CONTEXT.md`。
 
 ## 参考项目

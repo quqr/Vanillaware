@@ -146,37 +146,6 @@ pnpm tauri dev
 pnpm build
 ```
 
-## Acceptance
-
-```bash
-cargo test -p archive
-cargo test -p archive --test corpus -- --ignored
-cargo test -p vfs
-cargo test -p vfs --test corpus -- --ignored
-cargo test -p catalog -p formats -p media
-cargo test -p formats --test field_corpus -- --ignored
-cargo test --test archive_mount
-cargo run -p archive --example cpk_probe -- <x.cpk>
-
-npx tsc --noEmit
-```
-
-## Layout
-
-```
-src-tauri/
-├── src/                 app layer: command (thin) / service (business + cache) / model (DTO)
-└── crates/
-    ├── catalog          directory listing, format registry, index, game profiles (never depends on formats)
-    ├── formats          format semantics and projections (doc trees, content views, texture decode, disassembly…)
-    ├── archive          CRI CPK reader (container / @UTF tables / TOC / CRILAYLA)
-    ├── vfs              archive mount layer: one path addresses both disk and archive
-    ├── media            PNG cache, audio, movies, media wrappers for content views
-    └── schema           Kaitai-generated structure definitions
-src/                     frontend: views / components (columns, library, viewers) / store / lib / i18n
-tools/                   ksc_gen.py (ksy → Kaitai codegen) and rev/ (NSO unpacking, function extraction, ADRP+ADD reference recovery)
-```
-
 Design decisions live in `docs/adr/`, domain vocabulary in `CONTEXT.md`.
 
 ## References
