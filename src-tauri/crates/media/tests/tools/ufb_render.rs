@@ -3,7 +3,7 @@ use std::path::Path;
 fn main() {
     let mut args = std::env::args().skip(1);
     let Some(source) = args.next() else {
-        println!("usage: ufb_render <Field.ufb> <out.png> [map] [x0] [width]");
+        println!("usage: ufb_render <Field.ufb> <out.png> [map] [x0] [width] [max_side] [tick] [terrain]");
         return;
     };
     let out = args.next().unwrap_or_else(|| "ufb.png".to_string());
@@ -17,6 +17,11 @@ fn main() {
         .next()
         .and_then(|value| value.parse().ok())
         .unwrap_or(1500);
+    let tick: u64 = args
+        .next()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let terrain = args.next().map(|value| value != "0").unwrap_or(false);
 
     let path = Path::new(&source);
     let bytes = match std::fs::read(path) {
@@ -76,20 +81,24 @@ fn main() {
         x0 + width
     );
     let load = |pair: &formats::field::Pair| formats::field::read_pair(dir, pair);
-    let Some(scene) = formats::field::compose_window(&layout, &scope, x0, width, &load, max_side)
-    else {
+    let render = formats::field::Render { tick, terrain };
+    let Some(scene) = formats::field::compose_window_with(
+        &bytes, &layout, &scope, x0, width, &load, max_side, render,
+    ) else {
         println!("compose returned nothing");
         return;
     };
     println!(
-        "  {} layers, {} panels drawn, {} models drawn from {} quads, {} unresolved, raster {}x{}",
+        "  {} layers, {} panels drawn, {} models drawn from {} quads, {} ground tiles, {} unresolved, raster {}x{} at tick {}",
         scene.layers,
         scene.drawn,
         scene.models,
         scene.quads,
+        scene.tiles,
         scene.missing,
         scene.raster.width,
-        scene.raster.height
+        scene.raster.height,
+        scene.tick
     );
     let Some(image) =
         image::RgbaImage::from_raw(scene.raster.width, scene.raster.height, scene.raster.rgba)

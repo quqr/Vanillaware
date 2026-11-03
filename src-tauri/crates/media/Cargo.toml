@@ -58,3 +58,47 @@ path = "tests/tools/content_render.rs"
 [[example]]
 name = "model_render"
 path = "tests/tools/model_render.rs"
+
+[[example]]
+name = "ext_probe"
+path = "tests/tools/ext_probe.rs"
+
+[[example]]
+name = "ext_probe2"
+path = "tests/tools/ext_probe2.rs"
+
+[[example]]
+name = "ext_dump"
+path = "tests/tools/ext_dump.rs"
+
+[[example]]
+name = "ext_grid"
+path = "tests/tools/ext_grid.rs"
+
+[[example]]
+name = "group_dump"
+path = "tests/tools/group_dump.rs"
+
+[[example]]
+name = "raw_dump"
+path = "tests/tools/raw_dump.rs"
+
+[[example]]
+name = "hex_dump"
+path = "tests/tools/hex_dump.rs"
+
+[[example]]
+name = "ext_render"
+path = "tests/tools/ext_render.rs"
+
+[[example]]
+name = "ext_scene"
+path = "tests/tools/ext_scene.rs"
+
+[[example]]
+name = "ext_pair"
+path = "tests/tools/ext_pair.rs"
+
+[[example]]
+name = "anim_probe"
+path = "tests/tools/anim_probe.rs"
