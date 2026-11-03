@@ -174,3 +174,9 @@ tools/                   ksc_gen.py（ksy → Kaitai 代码生成）与 rev/（N
 ```
 
 设计决策见 `docs/adr/`，领域术语见 `CONTEXT.md`。
+
+## 参考项目
+
+- [Web2D_Games](https://github.com/rufaswan/Web2D_Games) —— Vanillaware 引擎重实现与抽取工具
+- [CriFsV2Lib](https://github.com/Sewer56/CriFsV2Lib) —— CRI 文件系统（CPK）读写库
+

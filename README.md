@@ -187,3 +187,9 @@ tools/                   ksc_gen.py (ksy → Kaitai codegen) and rev/ (NSO unpac
 ```
 
 Design decisions live in `docs/adr/`, domain vocabulary in `CONTEXT.md`.
+
+## References
+
+- [Web2D_Games](https://github.com/rufaswan/Web2D_Games) — Vanillaware engine reimplementation and ripping tools
+- [CriFsV2Lib](https://github.com/Sewer56/CriFsV2Lib) — CRI file system (CPK) library
+
