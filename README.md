@@ -9,6 +9,8 @@ tables, meshes, audio, movies, and mountable CPK archives.
 It is not a general unpacker: it only shows native game resources registered in
 the format registry. Everything else is counted under "uncatalogued" and hidden.
 
+![Browsing a mounted CPK archive in the column view while the MBS animation player runs](assets/readme/1.png)
+
 ## Support scope
 
 | Item | Status |
