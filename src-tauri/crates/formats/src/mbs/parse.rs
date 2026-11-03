@@ -141,6 +141,7 @@ fn build(root: &MbsV77, profile: &Profile) -> Result<V55> {
                 in_s7: i64::from(*rec.in_s7()),
                 in_s6: i64::from(*rec.in_s6()),
                 in_s0s1s2: i64::from(*rec.in_s0s1s2()),
+                rate: i64::from(*rec.in_rate()),
             })
             .collect(),
         s9: s9

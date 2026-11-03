@@ -418,7 +418,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
       const state = playhead.bones[index];
       if (!animation || !state) continue;
       state.frameIndex = Math.max(0, Math.min(frame, animation.frames.length - 1));
-      state.elapsed = 0;
+      state.remaining = -1;
       state.done = false;
     }
     playhead.playing = false;
@@ -432,7 +432,7 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     if (playhead.playing) {
       for (const state of playhead.bones) {
         state.done = false;
-        state.elapsed = 0;
+        state.remaining = -1;
       }
     }
     setPlaying(playhead.playing);

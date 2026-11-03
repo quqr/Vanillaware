@@ -65,6 +65,10 @@ pub struct S8Rec {
     pub in_s7: i64,
     pub in_s6: i64,
     pub in_s0s1s2: i64,
+    /// Interpolation step count kept out of the serialised form so the
+    /// PHP oracle comparison stays byte-identical.
+    #[serde(default, skip)]
+    pub rate: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

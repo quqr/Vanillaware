@@ -154,13 +154,34 @@ fn animation_dto(id: i64, animation: &Animation) -> AnimationDto {
     }
 }
 
+fn frame_flags(entry: &TimelineEntry) -> u32 {
+    u32::from_str_radix(entry.debug.trim_start_matches("0x"), 16).unwrap_or(0)
+}
+
 fn frame_dto(entry: &TimelineEntry) -> FrameDto {
+    let flags = frame_flags(entry);
+    let transform = &entry.transform;
     FrameDto {
         time: entry.time,
         flags: entry.debug.clone(),
         attach: entry.attach.as_ref().map(attach_dto),
         color: entry.color.clone(),
-        matrix: entry.matrix.clone(),
+        matrix: formats::mbs::matrix::engine_matrix(
+            &transform.move_,
+            &transform.rotate,
+            &transform.scale,
+            flags & 0x1 != 0,
+            flags & 0x2 != 0,
+        )
+        .to_vec(),
+        move_: transform.move_.to_vec(),
+        rotate: transform.rotate.to_vec(),
+        scale: transform.scale.to_vec(),
+        in_rate: entry.in_rate,
+        matrix_mix_id: entry.matrix_mix_id,
+        dst_quad_mix_id: entry.dstquad_mix_id,
+        fog_quad_mix_id: entry.fogquad_mix_id,
+        hit_quad_mix_id: entry.hitquad_mix_id,
     }
 }
 

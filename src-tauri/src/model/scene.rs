@@ -75,7 +75,17 @@ pub struct FrameDto {
     pub flags: String,
     pub attach: Option<AttachDto>,
     pub color: Option<String>,
+    /// Engine transform matrix (row major, row-vector convention, `p' = p * m`).
     pub matrix: Vec<f64>,
+    #[serde(rename = "move")]
+    pub move_: Vec<f32>,
+    pub rotate: Vec<f32>,
+    pub scale: Vec<f32>,
+    pub in_rate: i64,
+    pub matrix_mix_id: i64,
+    pub dst_quad_mix_id: i64,
+    pub fog_quad_mix_id: i64,
+    pub hit_quad_mix_id: i64,
 }
 
 #[derive(Debug, Serialize)]

@@ -384,6 +384,14 @@ export interface SceneFrame {
   attach: SceneAttach | null;
   color: string | null;
   matrix: number[];
+  move: number[];
+  rotate: number[];
+  scale: number[];
+  inRate: number;
+  matrixMixId: number;
+  dstQuadMixId: number;
+  fogQuadMixId: number;
+  hitQuadMixId: number;
 }
 
 export interface SceneAnimation {
@@ -503,11 +511,18 @@ export interface Content {
   imageNote: string | null;
 }
 
+export interface FieldProp {
+  name: string;
+  count: number;
+}
+
 export interface FieldMap {
   name: string;
   group: string;
   files: string[];
   layers: number;
+  models: number;
+  props: FieldProp[];
   tiles: number;
   window: [number, number, number, number];
 }

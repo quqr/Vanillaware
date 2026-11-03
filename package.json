@@ -10,6 +10,7 @@
     "check:audio": "node --experimental-strip-types --no-warnings scripts/checks/check-audio-decode.mjs",
     "check:video": "node --experimental-strip-types --no-warnings scripts/checks/check-video-decode.mjs",
     "check:window": "node --experimental-strip-types --no-warnings scripts/checks/video-window.mjs",
+    "check:mbs": "node --experimental-strip-types --no-warnings scripts/checks/check-mbs-player.mjs",
     "check:lang": "node scripts/checks/check-code-language.mjs",
     "check:layout": "node scripts/checks/check-test-layout.mjs",
     "tauri": "tauri"

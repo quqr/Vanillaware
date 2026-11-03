@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::v55::{FogQuad, S8Rec, V55};
+use super::v55::{FogQuad, S7Rec, S8Rec, V55};
 use super::{idtag, matrix};
 use crate::{Error, Result};
 
@@ -79,6 +79,28 @@ pub struct Hitbox {
     pub layer: Vec<Pad<HitboxLayer>>,
 }
 
+/// Raw `s7` fields, which is what the engine interpolates (`f_700058c0a0` lerps
+/// the eight floats and the four fog bytes, then rebuilds the rotation matrix
+/// from the mixed angles). Kept out of the serialised form so the PHP oracle
+/// comparison stays byte-identical.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Transform {
+    pub move_: [f32; 3],
+    pub rotate: [f32; 3],
+    pub scale: [f32; 2],
+}
+
+impl Transform {
+    pub fn from_s7(s7: &S7Rec) -> Self {
+        let at = |values: &[f32], index: usize| values.get(index).copied().unwrap_or(0.0);
+        Self {
+            move_: [at(&s7.move_, 0), at(&s7.move_, 1), at(&s7.move_, 2)],
+            rotate: [at(&s7.rotate, 0), at(&s7.rotate, 1), at(&s7.rotate, 2)],
+            scale: [at(&s7.scale, 0), at(&s7.scale, 1)],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TimelineEntry {
     pub debug: String,
@@ -88,11 +110,17 @@ pub struct TimelineEntry {
     pub dstquad_mix_id: i64,
     pub fogquad_mix_id: i64,
     pub hitquad_mix_id: i64,
+    /// Interpolation step count (`in_rate`), kept out of the serialised form so
+    /// the PHP oracle comparison stays byte-identical.
+    #[serde(default, skip)]
+    pub in_rate: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attach: Option<Attach>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     pub matrix: Vec<f64>,
+    #[serde(skip)]
+    pub transform: Transform,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -424,9 +452,11 @@ fn q3d_sas8s9_loop(v55: &V55, salist: &[Pad<SaAnim>], quad: &mut Quad) -> Result
                     dstquad_mix_id: s8v.in_s6,
                     fogquad_mix_id: s8v.in_s6,
                     hitquad_mix_id: s8v.in_s5s3,
+                    in_rate: s8v.rate,
                     attach,
                     color: None,
                     matrix,
+                    transform: Transform::from_s7(s7v),
                 };
                 if s7v.fog != "#ffffffff" {
                     entry.color = Some(s7v.fog.clone());
