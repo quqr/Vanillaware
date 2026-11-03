@@ -41,3 +41,4 @@ lerna-debug.log*
 *.sln
 *.sw?
 .trae/
+/tmp

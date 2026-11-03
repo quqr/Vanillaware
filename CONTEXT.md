@@ -9,6 +9,12 @@ This file is the repository's authoritative glossary. When naming a domain conce
 
 ---
 
+## 支持范围 / Support scope
+
+| 术语 | 中文释义 | English |
+| --- | --- | --- |
+| **支持范围 / Support scope** | 本工具只验证过 **UNICORN OVERLORD** 与 **13 Sentinels: Aegis Rim**（内部代号 ROBO）的 **Switch 版**。其它平台（`ps4_*` / `ps5_*`）的档案可以打开，但结果未经验证，界面在 `tag` 非 `swi_*` 时挂「未经验证」徽标。 | Only the **Switch** releases of **UNICORN OVERLORD** and **13 Sentinels: Aegis Rim** (internal codename ROBO) are verified. Other platforms open but are unverified; the UI shows an "unverified" badge whenever `tag` is not `swi_*`. |
+
 ## 资产层 / Asset layer
 
 | 术语 | 中文释义 | English |
@@ -42,8 +48,35 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | **动画文件 / Animation file** | `.mbs` / `.mbp` 等族文件，装的是骨骼-四边形动画数据。类别 = 动画。 | A family file (`.mbs`, `.mbp`) holding skeleton/quad animation data. Kind = animation. |
 | **音频类别 / Audio kind** | CRI ADX2 的 `.acb`（cue sheet）/ `.awb`（AFS2 wave bank）/ `.acf`（配置表）。表结构按 `@UTF` 逐列解码，载荷（HCA）按字节保留。 | CRI ADX2 containers: `.acb` cue sheet, `.awb` AFS2 wave bank, `.acf` config. Tables decoded column-by-column; HCA payload kept as bytes. |
 | **影片类别 / Video kind** | `.usm`（CRI Sofdec2）容器；块链走到 EOF，视频/音频载荷不解码。 | A `.usm` (CRI Sofdec2) container; the chunk chain is walked to EOF, payloads are not decoded. |
-| **二进制类别 / Binary kind** | 容器可读、载荷不透明的原生资源（如加密目录表的 CRI `.cpk`）。只报元信息与头部字节。 | A native resource whose container is readable but payload opaque (e.g. CRI `.cpk` with an encrypted TOC). Metadata and leading bytes only. |
+| **归档类别 / Archive kind** | 可挂载的容器格式，目前只有 CRI `.cpk`。它不是一种「资源」，而是一个可以进去的目录。见 ADR-0025。 | A mountable container format, currently only CRI `.cpk`. Not a resource but a directory you can enter. See ADR-0025. |
 | **收录 / Catalogued** | 只有格式注册表里登记的原生资源才被收录。`.png`、`.json`、`.txt`、`.quad` 等派生产物在目录列表里被过滤掉，只报数量。 | Only registry-listed native resources are catalogued. Derived artifacts (`.png`, `.json`, `.txt`, `.quad`) are filtered out of listings; only a count is reported. |
+
+## 归档层 / Archive layer
+
+| 术语 | 中文释义 | English |
+| --- | --- | --- |
+| **归档 / Archive** | 一个 CRI `.cpk` 文件：16 字节表容器 + `@UTF` 头表（按列名给出 `TocOffset` / `ContentOffset`）+ `@UTF` TOC（`DirName` / `FileName` / `FileSize` / `ExtractSize` / `FileOffset` / `UserString`）。头表与 TOC 都可能被 XOR 加密。见 ADR-0025。 | A CRI `.cpk`: a 16-byte table container, a `@UTF` header table naming `TocOffset` / `ContentOffset`, and a `@UTF` TOC with dir name, file name, size, extract size and offset. Header and TOC may be XOR-encrypted. See ADR-0025. |
+| **挂载点 / Mount point** | 磁盘上那个 `.cpk` 文件在界面里的身份：它不再是一个文件条目，而是一个可进入的目录项（`kind = archive`）。 | The `.cpk` file's identity in the UI: no longer a file entry but an enterable directory item (`kind = archive`). |
+| **虚拟子目录 / Virtual subdirectory** | 归档内部的目录。`<cpk 路径>\<归档内路径>` 就是一条普通路径，命令层不区分磁盘与归档。 | A directory inside an archive. `<cpk path>\<inner path>` is an ordinary path; the command layer cannot tell disk from archive. |
+| **内存优先 / Memory-first** | 归档内单文件自洽的格式从内存字节解析，磁盘零写入；只有需要同目录邻居或单条超过 32 MB 时才落盘。 | Self-contained formats inside an archive are parsed from memory with no disk write; only formats needing siblings, or entries over 32 MB, are spooled to disk. |
+| **CRILAYLA** | CRI 的压缩格式：头 16 字节（小端）+ 反向位流 + LZ77 回引，末尾 0x100 字节原样前缀。 | CRI's compression: a 16-byte little-endian header, a backwards bitstream with LZ77 back references, and a verbatim 0x100-byte prefix at the tail. |
+
+## 世界层 / World layer
+
+| 术语 | 中文释义 | English |
+| --- | --- | --- |
+| **世界栅格 / World grid** | `Field.ucb`：把整个世界切成 2199 × 1311 个格子，每格记「属于哪片区域、属于哪类地貌」。它不含像素。 | `Field.ucb`: the world cut into a 2199 × 1311 grid, each cell naming the area it belongs to and a terrain class. It carries no pixels. |
+| **区域号 / Area id** | 一个格子属于哪片战场区域。区域与 `Field.ufb` 的区域掩码一一对应。 | Which battlefield area a cell belongs to. Areas correspond one-to-one with the area masks in `Field.ufb`. |
+| **类别码 / Class code** | 与区域号并列的另一个维度：地貌类别。含义尚未还原。 | A dimension beside the area id: the terrain class. Its meaning is not yet recovered. |
+| **摆放记录 / Placement record** | `Field.ufb` 按 138 × 105 瓦片网格存放的一组图层，描述「这一小块世界摆了些什么」。**一个记录的图层可以来自好几个放置集**，所以它不能直接当作一张图来画。 | A set of layers in `Field.ufb` on a 138 × 105 tile grid: what is placed in that patch of world. **One record's layers may come from several placement sets**, so a record is not a picture. |
+| **战场图 / Battlefield map** | 一组共享 `ACxx` 前缀的放置集，合起来构成一张横向全景（`AC00`..`AC10`），宽约六万世界单位、高只有几百。见 ADR-0027。 | The placement sets sharing an `ACxx` prefix, forming one horizontal panorama (`AC00`..`AC10`) some sixty thousand world units wide and only a few hundred tall. See ADR-0027. |
+| **放置集 / Placement set** | 一个 `.MPD` 家族，即 `ACxx_yy`（`AC00_00P`、`AC00_02P`、`AC00_00F2` …），共 25 个。**这是渲染的单位**：一次只画一个。`F` 是远景细条，`P` 是近景层。 | One `.MPD` family, `ACxx_yy` (`AC00_00P`, `AC00_02P`, `AC00_00F2`, …), 25 in total. **The unit of rendering**: one at a time. `F` marks a thin far strip, `P` a near plane. |
+| **面板跨度 / Panel span** | 面板四个角点的包围跨度，是**纹素的 2 倍**（页 2048 → 跨度 4096）。世界尺寸 = `跨度 × 0.5 × 缩放`，即 1 纹素 = 1 世界单位。面板自身的 `x/y` 只是图集排版位置。 | The corner-to-corner span of an MPD panel, **twice the texel count** (a 2048 page gives 4096). World size is `span × 0.5 × scale`, so one texel is one world unit. The panel's own `x/y` is only its place in the atlas. |
+| **视差 / Parallax** | 图层旗标 `+0x34` 的 bit6/bit7 会按 `摄像机字段 × 1e-4` 错动，只影响动态镜头；静态窗口可以不管。放置集仍不能叠，原因不是视差而是混合方式：`+0x34` 的 bit3..4 选了 4 个 shader program，其中 `01P` 那类（program 1）画出来是整幅柔光雾。见 ADR-0029。 | Flags bit6/bit7 of `+0x34` shift a layer by `camera field × 1e-4`, which only matters for a moving camera. Sets still cannot be stacked, but the reason is blending, not parallax: bits 3..4 pick one of four shader programs, and the `01P` kind (program 1) draws as a full-frame glow. See ADR-0029. |
+| **滚转 / Roll** | 图层 `+0x2e`，平面内旋转，单位 65536 = 一圈。`−32768`（180°）是最常见的一档。 | Layer field `+0x2e`, an in-plane rotation with 65536 units per turn. `−32768` (180°) is the common one. |
+| **俯仰 / Pitch** | 图层 `+0x2c`，绕水平轴倾斜，只压纵向（`cos(pitch)`），不影响横向。455 层非零，多是 75° 的贴地板。 | Layer field `+0x2c`, a tilt about the horizontal axis: it only shortens the vertical extent by `cos(pitch)`. 455 layers use it, mostly 75° ground plates. |
+| **世界窗口 / World window** | 从一个放置集的全景带上截取的一段世界 x 区间。看图就是移动这个窗口。 | A world-x interval cut out of a placement set's panorama. Panning means moving this window. |
+| **模型层 / Model layer** | 摆放记录里引用 `.MBS` 的图层。它没有代理四边形，几何在被引用的模型里，而摆放依据尚未闭合。 | A layer referencing a `.MBS`. It carries no proxy quad; the geometry lives in the model, and the placement rule is not closed yet. |
 
 ## 动画格式层 / Animation format layer
 
@@ -103,3 +136,6 @@ This file is the repository's authoritative glossary. When naming a domain conce
 | --- | --- | --- |
 | **主题 / Theme** | daisyUI 内置配色方案，经 `<html data-theme>` 切换；默认 dark，选择存于 `localStorage["vw-theme"]`。见 ADR-0017。 | A daisyUI built-in color scheme switched through `<html data-theme>`; dark by default, persisted in `localStorage["vw-theme"]`. See ADR-0017. |
 | **语义色 / Semantic Color** | 随主题变化的 daisyUI 颜色名（`base-*`、`primary`、`success` 等）；界面不得出现固定色值。 | Theme-aware daisyUI color names (`base-*`, `primary`, `success`, …). Fixed color values must not appear in the UI. |
+| **列 / Column** | 分栏视图里的一列：对应一个目录，列头是它的名字，列体是它的目录项与文件。第一列永远是根。见 ADR-0026。 | One ledger of the column view: one directory, its name in the header, its entries below. The first column is always the root. See ADR-0026. |
+| **预览栏 / Preview pane** | 右侧固定宽度的面板：选中文件时给出元信息与查看器 tab，选中目录时给出目录或归档概览。 | The fixed-width panel on the right: metadata plus viewer tabs for a file, a folder or archive overview for a directory. |
+| **钉住 / Pin** | 双击或回车把当前文件固定到预览栏并装载查看器；换选即取消钉住。 | Double-click or Enter fixes the file into the preview pane and loads its viewer; changing the selection unpins. |
