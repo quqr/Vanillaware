@@ -1,6 +1,6 @@
 # Vanillaware Asset Browser
 
-[中文说明](README.zh-CN.md)
+[中文](README.zh-CN.md)
 
 A read-only local asset browser for the native binary resources of two Vanillaware
 games: textures, animations, scenes, models, battlefield maps, scripts, text,
@@ -150,6 +150,6 @@ Design decisions live in `docs/adr/`, domain vocabulary in `CONTEXT.md`.
 
 ## References
 
-- [Web2D_Games](https://github.com/rufaswan/Web2D_Games) — Vanillaware engine reimplementation and ripping tools
-- [CriFsV2Lib](https://github.com/Sewer56/CriFsV2Lib) — CRI file system (CPK) library
+- [Web2D_Games](https://github.com/rufaswan/Web2D_Games) — Vanillaware ripping tools
+- [CriFsV2Lib](https://github.com/Sewer56/CriFsV2Lib) — CPK library
 
