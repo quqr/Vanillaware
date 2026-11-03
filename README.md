@@ -19,34 +19,6 @@ the format registry. Everything else is counted under "uncatalogued" and hidden.
 | **13 Sentinels: Aegis Rim** (Switch, internal codename ROBO) | Verified |
 | PS4 / PS5 and other platform profiles | Opens, but **unverified**; the UI shows an "unverified" badge whenever the selected `tag` is not `swi_*` |
 
-## Features
-
-- **Column browser**: Finder-style columns with a fixed preview pane on the right;
-  single click shows metadata, double click loads the viewer.
-- **CPK archives**: after `Open archive`, a `.cpk` can be entered like a directory
-  and single entries are unpacked on demand. Self-contained formats never touch the
-  disk; formats that need same-directory siblings (`.mbs`+`.ftx`, `.acb`+`.awb`,
-  `.usm`, …) are spooled into a cache directory. An archive overview panel reports
-  entry count, directory count, compression ratio, table offsets and encryption.
-- **Viewers**: atlas, skeletal animation playback, document tree, content views
-  (tables / bitmaps / polylines / text), disassembly and pseudo-code, dialogue,
-  audio (HCA decoded in the backend + lopus handed to the frontend WebCodecs),
-  USM movies (streamed per GOP), 3D meshes, scene graphs, battlefield maps,
-  reference graphs, hex.
-- **Battlefield maps (UFB/UCB)**: layered rendering at engine precision — panel
-  layers textured from the paired `.mpd`/`.ftx`, prop layers posed from the
-  skeleton of the paired `.mbs` (sampled at the engine clock). Every render
-  reports layer, panel and prop counts plus an unresolved count, and the legend
-  spells out the world window and drawing rules.
-- **Skeletal animation (MBS)**: playback matches the engine — one tick is 1/60 s,
-  keyframe interpolation has three modes (hold / linear / Catmull-Rom), fog color
-  is mixed along the timeline, and layers draw in file order without sorting.
-- **Global search**: a background directory index covering disk directories and
-  entries inside mounted archives.
-- **Format filter**: filter the current column by extension.
-- **UI language**: English by default, one-click switch to Chinese in the toolbar;
-  the preference is stored in `localStorage["locale"]`.
-
 ## Supported formats
 
 Only native game binary resources are catalogued; derived artifacts (`.png`,
