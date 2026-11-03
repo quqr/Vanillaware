@@ -1,16 +1,24 @@
 import { t } from "../i18n";
 import { useLibraryStore } from "../store/libraryStore";
 import { useAppStore } from "../store/appStore";
-import { useRows } from "./library/rows";
 
 export function StatusBar() {
   const root = useLibraryStore((s) => s.root);
   const dir = useLibraryStore((s) => s.dir);
+  const columns = useLibraryStore((s) => s.columns);
   const dirs = useLibraryStore((s) => s.dirs);
+  const files = useLibraryStore((s) => s.files);
   const warnings = useLibraryStore((s) => s.warnings);
   const index = useLibraryStore((s) => s.index);
+  const query = useLibraryStore((s) => s.query);
+  const scope = useLibraryStore((s) => s.scope);
+  const search = useLibraryStore((s) => s.search);
   const tag = useAppStore((s) => s.tag);
-  const { rows, searching, total, truncated } = useRows();
+
+  const searching = scope === "all" && query.trim().length > 0 && search !== null;
+  const shown = searching ? search.items.length : dirs.length + files.length;
+  const total = searching ? search.total : shown;
+  const truncated = searching && search.truncated;
 
   const indexTone =
     index.state === "ready"
@@ -24,9 +32,11 @@ export function StatusBar() {
       <span className="truncate" title={dir ?? ""}>
         {dir ?? root ?? t("library.noDirectory")}
       </span>
+      <span>cols {columns.length}</span>
       <span>dirs {dirs.length}</span>
       <span>
-        {searching ? t("status.hits") : t("status.assets")} {truncated ? `${rows.length}/${total}` : rows.length}
+        {searching ? t("status.hits") : t("status.assets")}{" "}
+        {truncated ? `${shown}/${total}` : shown}
       </span>
       <span className={`flex items-center gap-1 ${indexTone.text}`}>
         <span className={`status status-xs ${indexTone.dot}`} />

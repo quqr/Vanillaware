@@ -2,6 +2,7 @@ import { t } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, type Content, type ContentSection, type FileEntry } from "../../lib/ipc";
+import { ImageViewport } from "../ImageViewport";
 
 export function ContentViewer({ entry }: { entry: FileEntry }) {
   const [content, setContent] = useState<Content | null>(null);
@@ -52,11 +53,10 @@ export function ContentViewer({ entry }: { entry: FileEntry }) {
             <div className="mb-1 text-[10px] text-base-content/50">
               {content.imageNote ?? t("content.bitmap")}
             </div>
-            <img
+            <ImageViewport
+              className="h-72 rounded border border-base-300"
               src={content.image}
               alt={t("content.bitmapAlt")}
-              className="max-w-full bg-base-100 [image-rendering:pixelated]"
-              style={{ imageRendering: "pixelated" }}
             />
           </div>
         )}

@@ -1,5 +1,6 @@
-import { t } from "../i18n";
 import { create } from "zustand";
+
+import { t } from "../i18n";
 import {
   api,
   type DirEntry,
@@ -10,17 +11,27 @@ import {
   type SearchResult,
 } from "../lib/ipc";
 import { clearThumbUrls } from "../lib/thumbCache";
+import {
+  chainFor,
+  columnFrom,
+  emptyColumn,
+  isArchivePath,
+  parentOf,
+  step,
+  withSelection,
+  type Column,
+  type Row,
+} from "../components/columns/model";
 
-export type ViewMode = "list" | "grid";
 export type SearchScope = "dir" | "all";
-
-interface TreeNode {
-  dirs: DirEntry[];
-  phase: "loading" | "ready" | "error";
-}
 
 interface State {
   root: string | null;
+  rootIsArchive: boolean;
+
+  columns: Column[];
+  activeColumn: number;
+
   dir: string | null;
   parent: string | null;
   dirs: DirEntry[];
@@ -33,9 +44,8 @@ interface State {
   history: string[];
   historyIndex: number;
 
-  tree: Record<string, TreeNode>;
-  expanded: Record<string, boolean>;
-
+  previewPath: string | null;
+  previewIsDir: boolean;
   selectedPath: string | null;
   selectedPaths: string[];
   meta: FileMeta | null;
@@ -44,10 +54,9 @@ interface State {
   openedPath: string | null;
   openedViewer: string | null;
 
-  viewMode: ViewMode;
+  columnWidths: number[];
 
   availableFormats: FormatInfo[];
-
   formatFilter: string[];
   query: string;
   scope: SearchScope;
@@ -60,20 +69,26 @@ interface State {
 
 interface Actions {
   openRoot(): Promise<void>;
+  openArchive(): Promise<void>;
   navigate(path: string): Promise<void>;
   back(): void;
   forward(): void;
   up(): Promise<void>;
   reload(): Promise<void>;
-  toggleExpanded(path: string): void;
-  collapseAll(keep: string): void;
 
-  select(path: string | null, additive?: boolean): void;
+  selectRow(index: number, path: string): void;
+  selectSibling(delta: number): void;
+  enterRow(index: number): void;
+  setActiveColumn(index: number): void;
+
+  select(path: string | null): void;
   open(path: string): void;
+  unpin(): void;
   close(): void;
   setViewerTab(id: string): void;
 
-  setViewMode(mode: ViewMode): void;
+  setColumnWidth(index: number, width: number): void;
+
   loadFormats(): Promise<void>;
   toggleFormat(ext: string): void;
   clearFormats(): void;
@@ -88,13 +103,37 @@ export type LibraryState = State & Actions;
 const EMPTY_INDEX: IndexStatus = { state: "idle", count: 0, root: null, error: null };
 const SEARCH_DEBOUNCE = 180;
 const INDEX_POLL = 400;
+const COLUMN_WIDTH = 240;
+const WIDTH_KEY = "vw-column-widths";
 
-let listingSeq = 0;
+let seq = 0;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let indexTimer: ReturnType<typeof setInterval> | null = null;
 
+function loadWidths(): number[] {
+  try {
+    const raw = localStorage.getItem(WIDTH_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value) => typeof value === "number") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveWidths(widths: number[]) {
+  try {
+    localStorage.setItem(WIDTH_KEY, JSON.stringify(widths.slice(0, 16)));
+  } catch {
+    /* ignore */
+  }
+}
+
 const initialState: State = {
   root: null,
+  rootIsArchive: false,
+  columns: [],
+  activeColumn: 0,
   dir: null,
   parent: null,
   dirs: [],
@@ -105,126 +144,158 @@ const initialState: State = {
   listingError: null,
   history: [],
   historyIndex: -1,
-  tree: {},
-  expanded: {},
+  previewPath: null,
+  previewIsDir: false,
   selectedPath: null,
   selectedPaths: [],
   meta: null,
   metaPhase: "idle",
   openedPath: null,
   openedViewer: null,
-  viewMode: "list",
+  columnWidths: loadWidths(),
   availableFormats: [],
   formatFilter: [],
   query: "",
-  scope: "dir",
+  scope: "all",
   search: null,
   searchPhase: "idle",
   index: EMPTY_INDEX,
   cacheEpoch: 0,
 };
 
-function parentOf(path: string): string | null {
-  const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
-  if (cut <= 0) return null;
-  const parent = path.slice(0, cut);
-  return parent.endsWith(":") ? `${parent}\\` : parent;
+function mirror(columns: Column[]): Partial<State> {
+  const last = columns[columns.length - 1];
+  if (!last) return {};
+  const dirs: DirEntry[] = last.entries
+    .filter((row) => row.isDir)
+    .map((row) => ({ path: row.path, name: row.name, kind: row.kind }));
+  const files: FileEntry[] = last.entries
+    .filter((row) => !row.isDir)
+    .map((row) => ({
+      path: row.path,
+      name: row.name,
+      ext: row.ext,
+      size: row.size,
+      mtimeMs: row.mtimeMs,
+      kind: row.kind ?? "text",
+      label: row.label,
+      icon: row.icon,
+      viewers: row.viewers,
+      hasThumb: row.hasThumb,
+    }));
+
+  return {
+    dir: last.dir,
+    parent: parentOf(last.dir),
+    dirs,
+    files,
+    hiddenFiles: last.hiddenFiles,
+    warnings: last.warnings,
+    listingPhase: last.phase,
+    listingError: last.error,
+    activeColumn: columns.length - 1,
+  };
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => {
-
-  function loadDir(path: string, asTree: boolean): Promise<void> {
-    const seq = asTree ? listingSeq : ++listingSeq;
-
-    if (asTree) {
-      set((prev) => ({
-        tree: { ...prev.tree, [path]: { dirs: prev.tree[path]?.dirs ?? [], phase: "loading" } },
-      }));
-    } else {
-      set({ listingPhase: "loading", listingError: null });
-    }
-
-    return (async () => {
-      try {
-        const listing = await api.listDir(path);
-        set((prev) => {
-          const next: Partial<State> = {
-            tree: { ...prev.tree, [listing.path]: { dirs: listing.dirs, phase: "ready" } },
-          };
-          if (!asTree && seq === listingSeq) {
-            next.dir = listing.path;
-            next.parent = listing.parent;
-            next.dirs = listing.dirs;
-            next.files = listing.files;
-            next.hiddenFiles = listing.hiddenFiles;
-            next.warnings = listing.warnings;
-            next.listingPhase = "ready";
-            next.listingError = null;
-          }
-          return next;
-        });
-      } catch (e) {
-        set((prev) => {
-          if (asTree) {
-            return {
-              tree: {
-                ...prev.tree,
-                [path]: { dirs: prev.tree[path]?.dirs ?? [], phase: "error" },
-              },
-            };
-          }
-          if (seq !== listingSeq) return {};
-          return { listingPhase: "error", listingError: String(e) };
-        });
-      }
-    })();
-  }
-
-  async function loadMeta(path: string) {
-    set({ metaPhase: "loading" });
+  async function loadColumn(dir: string): Promise<Column> {
     try {
-      const meta = await api.fileMeta(path);
-      if (get().selectedPath !== path) return;
-      set({ meta, metaPhase: "ready" });
-    } catch {
-      if (get().selectedPath !== path) return;
-      set({ meta: null, metaPhase: "error" });
+      const listing = await api.listDir(dir);
+      return columnFrom(listing);
+    } catch (error) {
+      return { ...emptyColumn(dir), phase: "error", error: String(error) };
     }
   }
 
-  function navigateTo(path: string, pushHistory: boolean) {
-    set((prev) => ({
-      dir: path,
-      files: [],
-      dirs: [],
-      listingPhase: "loading",
-      listingError: null,
-      history: pushHistory
-        ? [...prev.history.slice(0, prev.historyIndex + 1), path]
-        : prev.history,
-      historyIndex: pushHistory ? prev.historyIndex + 1 : prev.historyIndex,
-      selectedPath: null,
-      selectedPaths: [],
+  function selectRowAt(index: number, path: string) {
+    const columns = get().columns;
+    const column = columns[index];
+    if (!column) return;
+    const row = column.entries.find((entry) => entry.path === path);
+    if (!row) return;
+
+    if (row.isDir) {
+      const next = withSelection(columns.slice(0, index + 1), index, path);
+      set({
+        columns: next,
+        previewPath: path,
+        previewIsDir: true,
+        selectedPath: path,
+        selectedPaths: [path],
+        meta: null,
+        metaPhase: "idle",
+        openedPath: null,
+        openedViewer: null,
+        ...mirror(next),
+      });
+      void pushColumn(path, index + 1);
+      return;
+    }
+
+    const next = withSelection(columns, index, path);
+    set({
+      columns: next,
+      previewPath: path,
+      previewIsDir: false,
+      selectedPath: path,
+      selectedPaths: [path],
+      meta: null,
+      metaPhase: "loading",
+      activeColumn: index,
+      openedPath: null,
+      openedViewer: null,
+    });
+    void api
+      .fileMeta(path)
+      .then((meta) => {
+        if (get().previewPath !== path) return;
+        set({ meta, metaPhase: "ready" });
+      })
+      .catch(() => {
+        if (get().previewPath !== path) return;
+        set({ meta: null, metaPhase: "error" });
+      });
+  }
+
+  async function pushColumn(dir: string, index: number) {
+    const token = seq;
+    set((prev) => {
+      const columns = [...prev.columns.slice(0, index), emptyColumn(dir)];
+      return { columns, ...mirror(columns) };
+    });
+    const column = await loadColumn(dir);
+    if (token !== seq) return;
+    set((prev) => {
+      if (prev.columns.length !== index + 1) return {};
+      const columns = [...prev.columns.slice(0, index), column];
+      return { columns, ...mirror(columns) };
+    });
+  }
+
+  async function setChain(chain: string[], selectAt: string | null) {
+    const token = ++seq;
+    const columns: Column[] = chain.map((dir) => emptyColumn(dir));
+    set({
+      columns: [...columns],
+      previewPath: null,
+      previewIsDir: false,
       meta: null,
       metaPhase: "idle",
       openedPath: null,
       openedViewer: null,
-    }));
+      ...mirror(columns),
+    });
 
-    void loadDir(path, false);
-
-    const root = get().root;
-    let cursor: string | null = path;
-    while (cursor && root && cursor.toLowerCase() !== root.toLowerCase()) {
-      const current: string = cursor;
-      if (!get().expanded[current]) {
-        set((prev) => ({ expanded: { ...prev.expanded, [current]: true } }));
-      }
-      const parent = parentOf(current);
-      if (!parent || parent === current) break;
-      if (!get().tree[parent]) void loadDir(parent, true);
-      cursor = parent;
+    for (let index = 0; index < chain.length; index += 1) {
+      const column = await loadColumn(chain[index]);
+      if (token !== seq) return;
+      columns[index] = column;
+      const next = chain[index + 1] ?? selectAt;
+      if (next) column.selected = next;
+      set({ columns: [...columns], ...mirror(columns) });
     }
+
+    if (selectAt) selectRowAt(columns.length - 1, selectAt);
   }
 
   function stopIndexPolling() {
@@ -239,9 +310,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         .indexStatus()
         .then((status) => {
           set({ index: status });
-          if (status.state === "ready" || status.state === "failed" || status.state === "idle") {
-            stopIndexPolling();
-          }
+          if (status.state !== "building") stopIndexPolling();
         })
         .catch(stopIndexPolling);
     }, INDEX_POLL);
@@ -272,6 +341,32 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     }, SEARCH_DEBOUNCE);
   }
 
+  async function start(root: string, isArchive: boolean) {
+    clearThumbUrls();
+    const previous = get();
+    set({
+      ...initialState,
+      root,
+      rootIsArchive: isArchive,
+      availableFormats: previous.availableFormats,
+      formatFilter: previous.formatFilter,
+      columnWidths: previous.columnWidths,
+      cacheEpoch: previous.cacheEpoch,
+      history: [root],
+      historyIndex: 0,
+    });
+
+    await setChain([root], null);
+
+    try {
+      const status = await api.startIndex(root);
+      set({ index: status });
+      startIndexPolling();
+    } catch {
+      set({ index: { ...EMPTY_INDEX, state: "failed", error: t("library.indexStartFailed") } });
+    }
+  }
+
   return {
     ...initialState,
 
@@ -279,56 +374,62 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       let picked: string | string[] | null = null;
       try {
         const { open } = await import("@tauri-apps/plugin-dialog");
-        picked = await open({ directory: true, multiple: false, title: t("library.pickDirectoryTitle") });
-      } catch (e) {
-        set({ listingPhase: "error", listingError: String(e) });
+        picked = await open({
+          directory: true,
+          multiple: false,
+          title: t("library.pickDirectoryTitle"),
+        });
+      } catch (error) {
+        set({ listingPhase: "error", listingError: String(error) });
         return;
       }
       if (typeof picked !== "string") return;
+      await start(picked, false);
+    },
 
-      clearThumbUrls();
-      const previous = get();
-      set({
-        ...initialState,
-        root: picked,
-        viewMode: previous.viewMode,
-        availableFormats: previous.availableFormats,
-        formatFilter: previous.formatFilter,
-        cacheEpoch: previous.cacheEpoch,
-      });
-
-      set({ history: [picked], historyIndex: 0, expanded: { [picked]: true } });
-      await loadDir(picked, false);
-
+    async openArchive() {
+      let picked: string | string[] | null = null;
       try {
-        const status = await api.startIndex(picked);
-        set({ index: status });
-        startIndexPolling();
-      } catch {
-        set({ index: { ...EMPTY_INDEX, state: "failed", error: t("library.indexStartFailed") } });
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        picked = await open({
+          directory: false,
+          multiple: false,
+          title: t("library.pickArchiveTitle"),
+          filters: [{ name: "CPK", extensions: ["cpk", "CPK"] }],
+        });
+      } catch (error) {
+        set({ listingPhase: "error", listingError: String(error) });
+        return;
       }
+      if (typeof picked !== "string") return;
+      await start(picked, true);
     },
 
     async navigate(path) {
-      const same = get().dir?.toLowerCase() === path.toLowerCase();
-      if (same && get().listingPhase !== "error") return;
-      navigateTo(path, true);
+      const root = get().root;
+      if (!root) return;
+      const chain = chainFor(root, path);
+      set((prev) => ({
+        history: [...prev.history.slice(0, prev.historyIndex + 1), path],
+        historyIndex: prev.historyIndex + 1,
+      }));
+      await setChain(chain, null);
     },
 
     back() {
-      const { history, historyIndex } = get();
-      if (historyIndex <= 0) return;
+      const { history, historyIndex, root } = get();
+      if (!root || historyIndex <= 0) return;
       const index = historyIndex - 1;
       set({ historyIndex: index });
-      navigateTo(history[index], false);
+      void setChain(chainFor(root, history[index]), null);
     },
 
     forward() {
-      const { history, historyIndex } = get();
-      if (historyIndex >= history.length - 1) return;
+      const { history, historyIndex, root } = get();
+      if (!root || historyIndex >= history.length - 1) return;
       const index = historyIndex + 1;
       set({ historyIndex: index });
-      navigateTo(history[index], false);
+      void setChain(chainFor(root, history[index]), null);
     },
 
     async up() {
@@ -337,71 +438,78 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
 
     async reload() {
-      const { dir } = get();
-      if (dir) await loadDir(dir, false);
+      const { columns } = get();
+      if (columns.length === 0) return;
+      await setChain(
+        columns.map((column) => column.dir),
+        columns[columns.length - 1].selected,
+      );
     },
 
-    toggleExpanded(path) {
-      const expanded = { ...get().expanded, [path]: !get().expanded[path] };
-      set({ expanded });
-      if (expanded[path] && !get().tree[path]) void loadDir(path, true);
+    selectRow(index, path) {
+      selectRowAt(index, path);
     },
 
-    collapseAll(keep) {
-      const expanded: Record<string, boolean> = {};
-      for (const key of Object.keys(get().expanded)) {
-        if (key.toLowerCase() === keep.toLowerCase()) expanded[key] = true;
-      }
-      set({ expanded });
+    selectSibling(delta) {
+      const { columns, activeColumn } = get();
+      const column = columns[activeColumn];
+      if (!column) return;
+      const next = step(column.entries, column.selected, delta);
+      if (next) selectRowAt(activeColumn, next);
     },
 
-    select(path, additive = false) {
-      if (!path) {
-        set({ selectedPath: null, selectedPaths: [], meta: null, metaPhase: "idle" });
+    enterRow(index) {
+      const { columns } = get();
+      const column = columns[index];
+      if (!column?.selected) return;
+      const row = column.entries.find((entry) => entry.path === column.selected);
+      if (!row) return;
+      if (row.isDir) {
+        selectRowAt(index, row.path);
         return;
       }
+      set({ openedPath: row.path, openedViewer: row.viewers[0] ?? null });
+    },
 
-      if (!additive && get().meta?.entry.path === path && get().metaPhase === "ready") {
-        const entry = get().meta?.entry;
+    setActiveColumn(index) {
+      const { columns } = get();
+      if (index < 0 || index >= columns.length) return;
+      set({ activeColumn: index });
+    },
+
+    select(path) {
+      if (!path) {
         set({
-          selectedPath: path,
-          selectedPaths: [path],
-          openedPath: path,
-          openedViewer: entry?.viewers[0] ?? get().openedViewer,
+          previewPath: null,
+          previewIsDir: false,
+          selectedPath: null,
+          selectedPaths: [],
+          meta: null,
+          metaPhase: "idle",
         });
         return;
       }
-
-      const selectedPaths = additive
-        ? get().selectedPaths.includes(path)
-          ? get().selectedPaths.filter((p) => p !== path)
-          : [...get().selectedPaths, path]
-        : [path];
-
-      const entry =
-        get().files.find((file) => file.path === path) ??
-        get().search?.items.find((item) => item.path === path);
-
-      set({
-        selectedPath: path,
-        selectedPaths,
-        meta: null,
-        metaPhase: "loading",
-        openedPath: path,
-        openedViewer: entry?.viewers[0] ?? get().openedViewer,
-      });
-      void loadMeta(path);
+      const { columns } = get();
+      const index = columns.findIndex((column) =>
+        column.entries.some((entry) => entry.path === path),
+      );
+      if (index < 0) {
+        set({ previewPath: path, selectedPath: path, selectedPaths: [path], metaPhase: "loading" });
+        return;
+      }
+      selectRowAt(index, path);
     },
 
     open(path) {
-      const entry =
-        get().files.find((f) => f.path === path) ??
-        get().search?.items.find((f) => f.path === path) ??
-        (get().meta?.entry.path === path ? get().meta?.entry : undefined);
-      if (!entry) return;
+      const row: Row | undefined = get()
+        .columns.flatMap((column) => column.entries)
+        .find((entry) => entry.path === path);
+      set({ openedPath: path, openedViewer: row?.viewers[0] ?? null });
+      if (get().previewPath !== path) get().select(path);
+    },
 
-      if (get().selectedPath !== path) get().select(path);
-      set({ openedPath: path, openedViewer: entry.viewers[0] ?? null });
+    unpin() {
+      set({ openedPath: null, openedViewer: null });
     },
 
     close() {
@@ -412,8 +520,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       set({ openedViewer: id });
     },
 
-    setViewMode(viewMode) {
-      set({ viewMode });
+    setColumnWidth(index, width) {
+      const widths = [...get().columnWidths];
+      widths[index] = width;
+      set({ columnWidths: widths });
+      saveWidths(widths);
     },
 
     async loadFormats() {
@@ -421,6 +532,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       try {
         set({ availableFormats: await api.listFormats() });
       } catch {
+        /* ignore */
       }
     },
 
@@ -462,3 +574,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     },
   };
 });
+
+export const COLUMN_WIDTH_DEFAULT = COLUMN_WIDTH;
+export { isArchivePath };

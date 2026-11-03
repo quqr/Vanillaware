@@ -6,18 +6,15 @@ import { Breadcrumbs } from "./Breadcrumbs";
 const BAR = "flex flex-wrap items-center gap-2 border-b border-base-300 bg-base-200 px-2 py-1.5";
 
 export function Toolbar({
-  treeOpen,
   viewerOpen,
-  onToggleTree,
   onToggleViewer,
 }: {
-  treeOpen: boolean;
   viewerOpen: boolean;
-  onToggleTree: () => void;
   onToggleViewer: () => void;
 }) {
   const root = useLibraryStore((s) => s.root);
   const openRoot = useLibraryStore((s) => s.openRoot);
+  const openArchive = useLibraryStore((s) => s.openArchive);
   const back = useLibraryStore((s) => s.back);
   const forward = useLibraryStore((s) => s.forward);
   const up = useLibraryStore((s) => s.up);
@@ -33,8 +30,6 @@ export function Toolbar({
   const formatFilter = useLibraryStore((s) => s.formatFilter);
   const toggleFormat = useLibraryStore((s) => s.toggleFormat);
   const clearFormats = useLibraryStore((s) => s.clearFormats);
-  const viewMode = useLibraryStore((s) => s.viewMode);
-  const setViewMode = useLibraryStore((s) => s.setViewMode);
 
   const hiddenFiles = useLibraryStore((s) => s.hiddenFiles);
   const index = useLibraryStore((s) => s.index);
@@ -48,14 +43,19 @@ export function Toolbar({
   const setProfileMode = useAppStore((s) => s.setProfileMode);
   const locale = useAppStore((s) => s.locale);
   const setLocale = useAppStore((s) => s.setLocale);
+  const tag = useAppStore((s) => s.tag);
 
   const searching = scope === "all" && query.trim().length > 0;
+  const unverified = !tag.startsWith("swi_");
 
   return (
     <div className="flex flex-none flex-col">
       <div className={BAR}>
         <button className="btn btn-sm btn-primary" onClick={() => void openRoot()}>
           {t("library.openDirectory")}
+        </button>
+        <button className="btn btn-sm" onClick={() => void openArchive()} title={t("library.openArchiveHint")}>
+          {t("library.openArchive")}
         </button>
 
         <button className="btn btn-sm btn-square btn-ghost" onClick={back} disabled={!canBack} title={t("library.back")}>
@@ -71,6 +71,12 @@ export function Toolbar({
         <Breadcrumbs />
 
         <div className="flex-1" />
+
+        {unverified && (
+          <span className="badge badge-sm badge-warning" title={t("library.unverifiedHint")}>
+            {t("library.unverified")}
+          </span>
+        )}
 
         <details className="dropdown dropdown-end">
           <summary className="btn btn-sm btn-ghost gap-1.5" title={t("library.profileHint")}>
@@ -135,13 +141,6 @@ export function Toolbar({
           {t("locale.name")}
         </button>
 
-        <button
-          className={`btn btn-sm btn-square btn-ghost ${treeOpen ? "btn-active" : ""}`}
-          onClick={onToggleTree}
-          title={t("library.treeToggle")}
-        >
-          {t("library.tree")}
-        </button>
         <button
           className={`btn btn-sm btn-ghost ${viewerOpen ? "btn-active" : ""}`}
           onClick={onToggleViewer}
@@ -228,21 +227,6 @@ export function Toolbar({
             {t("library.notCatalogued", { count: hiddenFiles })}
           </span>
         )}
-
-        <div className="join">
-          <button
-            className={`btn btn-xs join-item ${viewMode === "list" ? "btn-active" : ""}`}
-            onClick={() => setViewMode("list")}
-          >
-            {t("library.list")}
-          </button>
-          <button
-            className={`btn btn-xs join-item ${viewMode === "grid" ? "btn-active" : ""}`}
-            onClick={() => setViewMode("grid")}
-          >
-            {t("library.grid")}
-          </button>
-        </div>
 
         {root && (
           <button className="btn btn-sm btn-ghost" onClick={() => void reload()} title={t("library.reloadHint")}>
