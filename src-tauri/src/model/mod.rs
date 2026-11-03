@@ -13,7 +13,7 @@ pub use audio::{AudioBundleDto, AudioClipDto, AudioCodecCountDto, AudioTrackDto}
 pub use dialogue::{
     DialogueDto, DialogueEntryDto, DialogueLineDto, DialoguePoolDto, DialogueStatsDto,
 };
-pub use field::{FieldMapDto, FieldPropDto};
+pub use field::{FieldMapDto, FieldOverviewDto, FieldPropDto};
 pub use scene::{
     AnimationDto, AtlasFrameDto, AttachDto, FrameDto, HitboxDto, HitboxLayerDto, KeyframeDto,
     LayerDto, SceneDto, SkeletonDto,

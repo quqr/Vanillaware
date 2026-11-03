@@ -19,3 +19,12 @@ pub struct FieldMapDto {
     pub tiles: u32,
     pub window: [f32; 4],
 }
+
+/// The whole layer set as one strip, plus the world box it covers, so the
+/// viewer can draw a minimap and turn a click into a world x.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldOverviewDto {
+    pub image: Option<String>,
+    pub span: [f32; 4],
+}

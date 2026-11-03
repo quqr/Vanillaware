@@ -3,12 +3,14 @@ use std::path::Path;
 use tauri::State;
 
 use formats::content::UcbMode;
+use formats::field::Render;
 use media::ContentDto;
 
-use crate::model::FieldMapDto;
+use crate::model::{FieldMapDto, FieldOverviewDto};
 use crate::state::AppState;
 
 const MAX_SIDE: u32 = 1920;
+const OVERVIEW_SIDE: u32 = 2400;
 
 #[tauri::command]
 pub async fn field_maps(
@@ -36,16 +38,24 @@ pub async fn field_render(
     x0: Option<f32>,
     width: Option<f32>,
     mode: Option<String>,
+    tick: Option<u64>,
+    terrain: Option<bool>,
 ) -> Result<ContentDto, String> {
     let ext = catalog::fslist::extension(Path::new(&path));
     let width = width.unwrap_or(1920.0).clamp(400.0, 12000.0);
+    let render = Render {
+        tick: tick.unwrap_or(0),
+        terrain: terrain.unwrap_or(false),
+    };
     let key = format!(
-        "{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{}",
         path.to_lowercase(),
         layer.clone().unwrap_or_default(),
         x0.map(|value| value.round() as i32).unwrap_or(i32::MIN),
         width.round() as i32,
         mode.clone().unwrap_or_default(),
+        render.tick,
+        render.terrain,
         ext
     );
 
@@ -73,6 +83,7 @@ pub async fn field_render(
                     x0,
                     width,
                     MAX_SIDE,
+                    render,
                 )
             }
             "ucb" => formats::content::ucb_at(&bytes, mode),
@@ -85,5 +96,55 @@ pub async fn field_render(
 
     let dto = std::sync::Arc::new(dto);
     cache.store(key, dto.clone());
+    Ok((*dto).clone())
+}
+
+/// One strip for the whole layer set, used as the minimap behind the window.
+#[tauri::command]
+pub async fn field_overview(
+    state: State<'_, AppState>,
+    path: String,
+    layer: Option<String>,
+) -> Result<FieldOverviewDto, String> {
+    if catalog::fslist::extension(Path::new(&path)) != "ufb" {
+        return Err("only .ufb files carry a field layout".to_string());
+    }
+    let (bytes, size, mtime_ms, directory) = super::read_source(&state, &path)?;
+    let cache = state.field_cache();
+    let key = format!(
+        "overview|{}|{}",
+        path.to_lowercase(),
+        layer.clone().unwrap_or_default()
+    );
+    if let Some(hit) = cache.overview(&key) {
+        return Ok((*hit).clone());
+    }
+
+    let worker = cache.clone();
+    let dto = tokio::task::spawn_blocking(move || -> Result<FieldOverviewDto, String> {
+        let (layout, maps) = worker.open(&path, size, mtime_ms, &bytes)?;
+        let dir = directory.ok_or("the file has no directory")?;
+        let scope = layer
+            .clone()
+            .or_else(|| maps.first().map(|entry| entry.name.clone()))
+            .ok_or("the field has no layer set")?;
+        let content = media::content::render(formats::field::overview_view(
+            &bytes,
+            &layout,
+            Some(&dir),
+            &scope,
+            OVERVIEW_SIDE,
+        ));
+        let span = formats::field::scope_span(&layout, &scope).unwrap_or([0.0; 4]);
+        Ok(FieldOverviewDto {
+            image: content.image,
+            span,
+        })
+    })
+    .await
+    .map_err(|error| format!("join error: {error}"))??;
+
+    let dto = std::sync::Arc::new(dto);
+    cache.store_overview(key, dto.clone());
     Ok((*dto).clone())
 }

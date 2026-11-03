@@ -67,6 +67,7 @@ pub fn run() {
             command::archive::archive_cache_clear,
             command::field::field_maps,
             command::field::field_render,
+            command::field::field_overview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

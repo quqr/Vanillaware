@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use formats::field::{FieldMap, Layout};
 use media::ContentDto;
 
-use crate::model::{FieldMapDto, FieldPropDto};
+use crate::model::{FieldMapDto, FieldOverviewDto, FieldPropDto};
 
 const RENDER_CAPACITY: usize = 6;
 
@@ -25,6 +25,7 @@ struct Rendered {
 pub struct FieldCache {
     layout: Arc<Mutex<Option<LayoutEntry>>>,
     renders: Arc<Mutex<VecDeque<Rendered>>>,
+    overviews: Arc<Mutex<VecDeque<(String, Arc<FieldOverviewDto>)>>>,
 }
 
 impl Default for FieldCache {
@@ -38,6 +39,7 @@ impl FieldCache {
         Self {
             layout: Arc::new(Mutex::new(None)),
             renders: Arc::new(Mutex::new(VecDeque::new())),
+            overviews: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -88,6 +90,25 @@ impl FieldCache {
             .iter()
             .find(|entry| entry.key == key)
             .map(|entry| entry.dto.clone())
+    }
+
+    pub fn overview(&self, key: &str) -> Option<Arc<FieldOverviewDto>> {
+        let guard = self.overviews.lock().ok()?;
+        guard
+            .iter()
+            .find(|(entry, _)| entry == key)
+            .map(|(_, dto)| dto.clone())
+    }
+
+    pub fn store_overview(&self, key: String, dto: Arc<FieldOverviewDto>) {
+        let Ok(mut guard) = self.overviews.lock() else {
+            return;
+        };
+        guard.retain(|(entry, _)| *entry != key);
+        guard.push_front((key, dto));
+        while guard.len() > 4 {
+            guard.pop_back();
+        }
     }
 
     pub fn store(&self, key: String, dto: Arc<ContentDto>) {
