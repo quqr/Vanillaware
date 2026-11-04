@@ -35,9 +35,12 @@ the format registry. Everything else is counted under "uncatalogued" and hidden.
   reference graphs, hex.
 - **Battlefield maps (UFB/UCB)**: layered rendering at engine precision — panel
   layers textured from the paired `.mpd`/`.ftx`, prop layers posed from the
-  skeleton of the paired `.mbs` (sampled at the engine clock). Every render
-  reports layer, panel and prop counts plus an unresolved count, and the legend
-  spells out the world window and drawing rules.
+  skeleton of the paired `.mbs` (sampled at the engine clock, with a play button
+  and a scrubber). The viewer keeps a whole-map minimap that you can click to
+  jump, pans by dragging and zooms around the cursor; `ground` overlays the
+  per-record atlas tiles. Every render reports layer, panel and prop counts plus
+  an unresolved count, and the legend spells out the world window and drawing
+  rules.
 - **Skeletal animation (MBS)**: playback matches the engine — one tick is 1/60 s,
   keyframe interpolation has three modes (hold / linear / Catmull-Rom), fog color
   is mixed along the timeline, and layers draw in file order without sorting.

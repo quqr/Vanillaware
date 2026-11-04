@@ -17,7 +17,7 @@ fn main() {
         .next()
         .and_then(|value| value.parse().ok())
         .unwrap_or(1500);
-    let tick: u64 = args
+    let clock: u64 = args
         .next()
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
@@ -81,7 +81,7 @@ fn main() {
         x0 + width
     );
     let load = |pair: &formats::field::Pair| formats::field::read_pair(dir, pair);
-    let render = formats::field::Render { tick, terrain };
+    let render = formats::field::Render { clock, terrain };
     let Some(scene) = formats::field::compose_window_with(
         &bytes, &layout, &scope, x0, width, &load, max_side, render,
     ) else {
@@ -98,7 +98,7 @@ fn main() {
         scene.missing,
         scene.raster.width,
         scene.raster.height,
-        scene.tick
+        scene.clock
     );
     let Some(image) =
         image::RgbaImage::from_raw(scene.raster.width, scene.raster.height, scene.raster.rgba)

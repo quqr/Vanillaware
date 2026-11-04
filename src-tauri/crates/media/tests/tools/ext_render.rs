@@ -24,9 +24,16 @@ fn main() {
     let (pw, ph, rgba) = &pages[0];
     let page = Page::new(*pw, *ph, rgba).unwrap();
 
-    let cols = ((record.max[0] - record.min[0]).abs() / cell).round().max(1.0) as usize;
-    let rows = ((record.max[2] - record.min[2]).abs() / cell).round().max(1.0) as usize;
-    println!("record {} ext {} grid {}x{} cell {}", record.index, record.ext_count, cols, rows, cell);
+    let cols = ((record.max[0] - record.min[0]).abs() / cell)
+        .round()
+        .max(1.0) as usize;
+    let rows = ((record.max[2] - record.min[2]).abs() / cell)
+        .round()
+        .max(1.0) as usize;
+    println!(
+        "record {} ext {} grid {}x{} cell {}",
+        record.index, record.ext_count, cols, rows, cell
+    );
 
     let scale = 2.0f32;
     let width = (cols as f32 * cell * scale) as u32;
@@ -45,7 +52,12 @@ fn main() {
                 (base_y + cell * 0.5 + y) * scale,
             )
         };
-        let (p1, p2, p3, p4) = (map(verts[1].x, verts[1].y), map(verts[2].x, verts[2].y), map(verts[3].x, verts[3].y), map(verts[4].x, verts[4].y));
+        let (p1, p2, p3, p4) = (
+            map(verts[1].x, verts[1].y),
+            map(verts[2].x, verts[2].y),
+            map(verts[3].x, verts[3].y),
+            map(verts[4].x, verts[4].y),
+        );
         let dst = [p1, p2, p3, p4];
         let uv = [
             (verts[1].u, verts[1].v),

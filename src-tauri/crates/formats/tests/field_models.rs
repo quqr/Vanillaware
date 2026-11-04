@@ -199,3 +199,82 @@ fn the_model_unit_is_one_world_unit_per_model_unit() {
     // two units agree; half of it would put every prop inside half its box
     assert_eq!(field::MODEL_UNIT, 1.0);
 }
+
+fn keyed(
+    time: i64,
+    mix: i64,
+    rate: i64,
+    attach: Option<Attach>,
+    transform: Transform,
+) -> TimelineEntry {
+    TimelineEntry {
+        matrix_mix_id: mix,
+        in_rate: rate,
+        ..entry(time, attach, transform)
+    }
+}
+
+fn moving(mix: i64, rate: i64) -> Quad {
+    let far = Transform {
+        move_: [10.0, 0.0, 0.0],
+        rotate: [0.0; 3],
+        scale: [1.0, 1.0],
+    };
+    quad(
+        vec![
+            keyed(0, mix, rate, Some(attach("slot", 0)), rest()),
+            keyed(1, mix, rate, Some(attach("slot", 0)), far),
+        ],
+        vec![frame(vec![layer(plain_dst(), 0)])],
+    )
+}
+
+#[test]
+fn a_blended_key_reaches_the_next_key_one_frame_later() {
+    let quad = moving(1, 0);
+    let at =
+        |clock: u64| field::model_bounds(&layer_at(4096, 4096), &field::props_at(&quad, clock)[0]);
+
+    assert_eq!(
+        at(0),
+        Some([-50.0, 0.0, 50.0, 100.0]),
+        "the first key holds"
+    );
+    assert_eq!(
+        at(500),
+        Some([-45.0, 0.0, 55.0, 100.0]),
+        "one frame is 1000 units, so half of it is the midpoint"
+    );
+    assert_eq!(at(1000), Some([-40.0, 0.0, 60.0, 100.0]), "the second key");
+    assert_eq!(
+        at(60_000),
+        Some([-40.0, 0.0, 60.0, 100.0]),
+        "the last key holds forever"
+    );
+}
+
+#[test]
+fn a_stepped_key_holds_until_the_next_one() {
+    let quad = moving(0, 0);
+    let at =
+        |clock: u64| field::model_bounds(&layer_at(4096, 4096), &field::props_at(&quad, clock)[0]);
+    assert_eq!(at(500), Some([-50.0, 0.0, 50.0, 100.0]), "mix 0 holds");
+    assert_eq!(at(1000), Some([-40.0, 0.0, 60.0, 100.0]), "and then snaps");
+}
+
+#[test]
+fn a_rate_quantises_the_blend_into_steps() {
+    let quad = moving(1, 4);
+    let at =
+        |clock: u64| field::model_bounds(&layer_at(4096, 4096), &field::props_at(&quad, clock)[0]);
+    assert_eq!(
+        at(200),
+        Some([-50.0, 0.0, 50.0, 100.0]),
+        "a fifth of the way in, the first of four steps still holds"
+    );
+    assert_eq!(
+        at(750),
+        Some([-42.5, 0.0, 57.5, 100.0]),
+        "three quarters in, the third of four steps is exact"
+    );
+}

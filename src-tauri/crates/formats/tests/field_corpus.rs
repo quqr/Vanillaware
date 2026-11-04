@@ -411,3 +411,151 @@ fn the_authored_box_is_the_quad_rotated_into_the_world() {
         "the drawn quad must reproduce the authored box width ({rate:.4})"
     );
 }
+
+#[test]
+#[ignore]
+fn every_ground_tile_is_a_closed_fan_on_the_records_grid() {
+    let Some(path) = corpus() else {
+        eprintln!("no corpus, set CORPUS_UFB");
+        return;
+    };
+    let bytes = std::fs::read(&path).expect("read ufb");
+    let layout = field::parse(&bytes).expect("layout");
+
+    let (mut records, mut blocks) = (0usize, 0usize);
+    let (mut closed, mut square, mut centred, mut inside_uv, mut on_grid, mut in_cell) =
+        (0, 0, 0, 0, 0, 0);
+    for record in &layout.records {
+        if record.ext_count == 0 {
+            continue;
+        }
+        records += 1;
+        let (cols, rows) = field::ext_grid(record);
+        if cols * rows == record.ext_count {
+            on_grid += 1;
+        }
+        for index in 0..record.ext_count {
+            let verts = field::vertices(&bytes, record.ext_at + index * field::EXT, 6);
+            if verts.len() < 6 {
+                break;
+            }
+            blocks += 1;
+            let tail = &verts[5];
+            if tail.x == verts[1].x
+                && tail.y == verts[1].y
+                && tail.u == verts[1].u
+                && tail.v == verts[1].v
+            {
+                closed += 1;
+            }
+            let mut low = (f32::MAX, f32::MAX);
+            let mut high = (f32::MIN, f32::MIN);
+            for vertex in &verts[1..5] {
+                low = (low.0.min(vertex.x), low.1.min(vertex.y));
+                high = (high.0.max(vertex.x), high.1.max(vertex.y));
+            }
+            if (high.0 - low.0 - field::TERRAIN_CELL).abs() < 0.5
+                && (high.1 - low.1 - field::TERRAIN_CELL).abs() < 0.5
+            {
+                square += 1;
+            }
+            let centre = &verts[0];
+            if centre.x >= low.0 - 0.5
+                && centre.x <= high.0 + 0.5
+                && centre.y >= low.1 - 0.5
+                && centre.y <= high.1 + 0.5
+            {
+                centred += 1;
+            }
+            if verts
+                .iter()
+                .all(|v| (0.0..=1.0).contains(&v.u) && (0.0..=1.0).contains(&v.v))
+            {
+                inside_uv += 1;
+            }
+            if low.0 >= -field::TERRAIN_CELL * 0.5 - 0.5
+                && high.0 <= field::TERRAIN_CELL * 0.5 + 0.5
+                && low.1 >= -field::TERRAIN_CELL * 0.5 - 0.5
+                && high.1 <= field::TERRAIN_CELL * 0.5 + 0.5
+            {
+                in_cell += 1;
+            }
+        }
+    }
+
+    eprintln!(
+        "{records} records carry {blocks} atlas tiles: {closed} closed on v1, {square} fill their 128-unit cell, {in_cell} stay inside it, {centred} keep their centre inside, {inside_uv} stay in uv 0..1, {on_grid} records have exactly one tile per grid cell"
+    );
+    assert!(blocks > 260_000, "the corpus carries {blocks} tiles");
+    assert_eq!(closed, blocks, "every fan must repeat its first corner");
+    assert!(
+        in_cell * 10 > blocks * 7,
+        "most tiles fit one cell, the rest are pieces that span more ({in_cell}/{blocks})"
+    );
+    assert_eq!(inside_uv, blocks, "every uv must stay in the atlas");
+    assert!(
+        square * 10 > blocks * 7,
+        "most tiles fill their cell, the rest are inset pieces ({square}/{blocks})"
+    );
+    assert!(
+        centred as f32 / blocks as f32 > 0.99,
+        "a bent tile still keeps its centre inside its corners"
+    );
+}
+
+#[test]
+#[ignore]
+fn props_move_when_the_engine_clock_advances() {
+    use std::collections::HashMap;
+
+    let Some(path) = corpus() else {
+        eprintln!("no corpus, set CORPUS_UFB");
+        return;
+    };
+    let dir = path.parent().expect("directory").to_path_buf();
+    let bytes = std::fs::read(&path).expect("read ufb");
+    let layout = field::parse(&bytes).expect("layout");
+
+    let mut seen: HashMap<&str, (usize, usize)> = HashMap::new();
+    let mut files = 0usize;
+    for pair in &layout.pairs {
+        if pair.is_panel() {
+            continue;
+        }
+        let name = pair.model.rsplit(['/', '\\']).next().unwrap_or("");
+        let Ok(data) = std::fs::read(dir.join(name)) else {
+            continue;
+        };
+        let Ok(v55) = formats::mbs::parse_bytes(&data, field::MBS_TAG) else {
+            continue;
+        };
+        let Ok(quad) = formats::mbs::convert(&v55) else {
+            continue;
+        };
+        let rest = field::props_at(&quad, 0);
+        let later = field::props_at(&quad, 200_000);
+        let mut moving = 0usize;
+        for (left, right) in rest.iter().zip(later.iter()) {
+            if left.len() != right.len()
+                || left.iter().zip(right.iter()).any(|(a, b)| {
+                    (a.dst[0].0 - b.dst[0].0).abs() > 0.01 || (a.dst[0].1 - b.dst[0].1).abs() > 0.01
+                })
+            {
+                moving += 1;
+            }
+        }
+        if !rest.is_empty() {
+            files += 1;
+            seen.insert(name, (moving, rest.len()));
+        }
+    }
+
+    let moving: usize = seen.values().map(|(moving, _)| moving).sum();
+    let total: usize = seen.values().map(|(_, props)| props).sum();
+    eprintln!("{files} .mbs files: {moving} of {total} props move within 3 s");
+    assert!(files > 5, "the corpus pairs {files} .mbs files");
+    assert!(
+        moving * 5 > total,
+        "one prop in five should be animated ({moving}/{total})"
+    );
+}

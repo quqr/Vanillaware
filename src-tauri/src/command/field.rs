@@ -38,13 +38,13 @@ pub async fn field_render(
     x0: Option<f32>,
     width: Option<f32>,
     mode: Option<String>,
-    tick: Option<u64>,
+    clock: Option<u64>,
     terrain: Option<bool>,
 ) -> Result<ContentDto, String> {
     let ext = catalog::fslist::extension(Path::new(&path));
     let width = width.unwrap_or(1920.0).clamp(400.0, 12000.0);
     let render = Render {
-        tick: tick.unwrap_or(0),
+        clock: clock.unwrap_or(0),
         terrain: terrain.unwrap_or(false),
     };
     let key = format!(
@@ -54,7 +54,7 @@ pub async fn field_render(
         x0.map(|value| value.round() as i32).unwrap_or(i32::MIN),
         width.round() as i32,
         mode.clone().unwrap_or_default(),
-        render.tick,
+        render.clock,
         render.terrain,
         ext
     );

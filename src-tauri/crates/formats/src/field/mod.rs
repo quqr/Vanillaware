@@ -560,7 +560,7 @@ pub struct Scene {
     pub hollow: usize,
     pub missing: usize,
     pub tiles: usize,
-    pub tick: u64,
+    pub clock: u64,
     pub scale: f32,
     pub window: [f32; 4],
 }
@@ -765,8 +765,8 @@ pub type PairLoader<'a> = dyn Fn(&Pair) -> Option<(Vec<u8>, Vec<u8>)> + 'a;
 /// What a render asks for beyond the window itself.
 #[derive(Clone, Copy, Default)]
 pub struct Render {
-    /// Engine clock: one tick is 1/60 s, and prop poses are sampled at it.
-    pub tick: u64,
+    /// Engine clock in units of 1000 per 1/60 s tick; prop poses are sampled at it.
+    pub clock: u64,
     /// Draw the ground tiles of every record that carries them.
     pub terrain: bool,
 }
@@ -915,7 +915,7 @@ pub fn compose_window_with(
                 missing += 1;
                 continue;
             };
-            let list = prop_at(quad, layer.panel as usize, render.tick);
+            let list = prop_at(quad, layer.panel as usize, render.clock);
             if list.is_empty() {
                 hollow += 1;
                 continue;
@@ -1003,7 +1003,7 @@ pub fn compose_window_with(
         hollow,
         missing,
         tiles,
-        tick: render.tick,
+        clock: render.clock,
         scale,
         window: [x0, min_y, x1, max_y],
     })
@@ -1210,21 +1210,21 @@ pub struct Piece {
     pub color: [u8; 4],
 }
 
-/// One entry per skeleton of the paired `.mbs` at the rest pose (`tick` 0):
+/// One entry per skeleton of the paired `.mbs` at the rest pose (clock 0):
 /// every prop is drawn with its own `s7` transform applied.
 pub fn props(quad: &mbs::Quad) -> Vec<Vec<Piece>> {
     props_at(quad, 0)
 }
 
-pub fn props_at(quad: &mbs::Quad, tick: u64) -> Vec<Vec<Piece>> {
+pub fn props_at(quad: &mbs::Quad, clock: u64) -> Vec<Vec<Piece>> {
     (0..quad.skeleton.len())
-        .map(|index| prop_at(quad, index, tick))
+        .map(|index| prop_at(quad, index, clock))
         .collect()
 }
 
-pub fn prop_at(quad: &mbs::Quad, index: usize, tick: u64) -> Vec<Piece> {
+pub fn prop_at(quad: &mbs::Quad, index: usize, clock: u64) -> Vec<Piece> {
     match quad.skeleton.get(index) {
-        Some(mbs::quad::Pad::Filled(skeleton)) => skeleton_pieces(quad, skeleton, tick),
+        Some(mbs::quad::Pad::Filled(skeleton)) => skeleton_pieces(quad, skeleton, clock),
         _ => Vec::new(),
     }
 }
@@ -1234,7 +1234,7 @@ pub fn prop_at(quad: &mbs::Quad, index: usize, tick: u64) -> Vec<Piece> {
 /// multiplied by 1000 to compare. `matrix_mix_id` says how to reach the next key:
 /// 0 holds the key, 1 blends, 2 is the engine's Catmull-Rom (treated as blend
 /// here: the difference only shows on curves that overshoot).
-fn pose_matrix(animation: &mbs::quad::Animation, index: usize, tick: u64) -> Option<[f64; 16]> {
+fn pose_matrix(animation: &mbs::quad::Animation, index: usize, clock: u64) -> Option<[f64; 16]> {
     let timeline = &animation.timeline;
     let current = timeline.get(index)?;
     let flags = mbs::quad::hexdec(&current.debug);
@@ -1244,7 +1244,7 @@ fn pose_matrix(animation: &mbs::quad::Animation, index: usize, tick: u64) -> Opt
 
     if let Some(next) = timeline.get(index + 1) {
         let span = ((next.time - current.time).max(1) * 1000) as f32;
-        let elapsed = tick.saturating_sub(current.time.max(0) as u64 * 1000) as f32;
+        let elapsed = clock.saturating_sub(current.time.max(0) as u64 * 1000) as f32;
         let mut t = if current.matrix_mix_id == 0 {
             0.0
         } else {
@@ -1257,7 +1257,11 @@ fn pose_matrix(animation: &mbs::quad::Animation, index: usize, tick: u64) -> Opt
         let t = t.clamp(0.0, 1.0);
         for axis in 0..3 {
             move_[axis] = blend(current.transform.move_[axis], next.transform.move_[axis], t);
-            rotate[axis] = blend(current.transform.rotate[axis], next.transform.rotate[axis], t);
+            rotate[axis] = blend(
+                current.transform.rotate[axis],
+                next.transform.rotate[axis],
+                t,
+            );
         }
         for axis in 0..2 {
             scale[axis] = blend(current.transform.scale[axis], next.transform.scale[axis], t);
@@ -1273,15 +1277,15 @@ fn pose_matrix(animation: &mbs::quad::Animation, index: usize, tick: u64) -> Opt
     ))
 }
 
-/// Index of the key that is in force at `tick`; the last key holds forever.
-fn timeline_index(animation: &mbs::quad::Animation, tick: u64) -> Option<usize> {
+/// Index of the key that is in force at `clock`; the last key holds forever.
+fn timeline_index(animation: &mbs::quad::Animation, clock: u64) -> Option<usize> {
     if animation.timeline.is_empty() {
         return None;
     }
     Some(
         animation
             .timeline
-            .partition_point(|entry| entry.time.max(0) as u64 * 1000 <= tick)
+            .partition_point(|entry| entry.time.max(0) as u64 * 1000 <= clock)
             .saturating_sub(1),
     )
 }
@@ -1290,7 +1294,7 @@ fn blend(from: f32, to: f32, t: f32) -> f32 {
     from + (to - from) * t
 }
 
-fn skeleton_pieces(quad: &mbs::Quad, skeleton: &mbs::quad::Skeleton, tick: u64) -> Vec<Piece> {
+fn skeleton_pieces(quad: &mbs::Quad, skeleton: &mbs::quad::Skeleton, clock: u64) -> Vec<Piece> {
     let mut out = Vec::new();
     for bone in &skeleton.bone {
         if bone.attach.kind != "animation" {
@@ -1300,10 +1304,10 @@ fn skeleton_pieces(quad: &mbs::Quad, skeleton: &mbs::quad::Skeleton, tick: u64) 
         else {
             continue;
         };
-        let Some(index) = timeline_index(animation, tick) else {
+        let Some(index) = timeline_index(animation, clock) else {
             continue;
         };
-        let Some(matrix) = pose_matrix(animation, index, tick) else {
+        let Some(matrix) = pose_matrix(animation, index, clock) else {
             continue;
         };
         let entry = &animation.timeline[index];
@@ -1868,7 +1872,7 @@ pub fn view_layout(
             scene.window[2].round(),
             scene.window[1].round(),
             scene.window[3].round(),
-            scene.tick,
+            scene.clock,
         );
         if scene.tiles > 0 {
             legend.push_str(&format!(

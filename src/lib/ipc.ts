@@ -516,6 +516,11 @@ export interface FieldProp {
   count: number;
 }
 
+export interface FieldOverview {
+  image: string | null;
+  span: [number, number, number, number];
+}
+
 export interface FieldMap {
   name: string;
   group: string;
@@ -624,7 +629,20 @@ export const api = {
     x0: number | null,
     width: number,
     mode?: string,
-  ) => invoke<Content>("field_render", { path, layer, x0, width, mode: mode ?? null }),
+    clock?: number,
+    terrain?: boolean,
+  ) =>
+    invoke<Content>("field_render", {
+      path,
+      layer,
+      x0,
+      width,
+      mode: mode ?? null,
+      clock: clock ?? 0,
+      terrain: terrain ?? false,
+    }),
+  fieldOverview: (path: string, layer: string | null) =>
+    invoke<FieldOverview>("field_overview", { path, layer }),
 
   dialogueOpen: (path: string) => invoke<Dialogue>("dialogue_open", { path }),
 
