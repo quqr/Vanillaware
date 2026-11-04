@@ -4,7 +4,7 @@ import re
 import sys
 
 BASE = 0x7000000000
-ROOT = os.environ.get("VW_GEN_MAIN", "")
+ROOT = os.environ.get("VW_GEN_MAIN", r"F:/Codes/UNICORN OVERLORD/gen/main")
 
 FN_DEF = re.compile(r"^void (f_[0-9a-f]+)\(Cpu \*c\) \{\s*$", re.M)
 BASE_RE = re.compile(r"c->x\[(\d+)\] = \(uint64_t\)\((0x700[0-9a-f]{4}000)ull\);")

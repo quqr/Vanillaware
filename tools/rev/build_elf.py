@@ -1,10 +1,12 @@
+import os
 import struct
 import sys
 
-sys.path.insert(0, "F:/Codes/Vanillaware/tmp/rev")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nso import Image, BASE
 
-OUT = r"F:/Codes/Vanillaware/tmp/rev/uo.elf"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tmp", "rev", "uo.elf")
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
 
 img = Image()
 
