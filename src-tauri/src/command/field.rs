@@ -11,6 +11,9 @@ use crate::state::AppState;
 
 const MAX_SIDE: u32 = 1920;
 const OVERVIEW_SIDE: u32 = 2400;
+/// A prepared window keeps one band per moving prop, so it is only worth it
+/// while it stays smaller than this.
+const PLAYBACK_BYTES: usize = 256 << 20;
 
 #[tauri::command]
 pub async fn field_maps(
@@ -47,6 +50,15 @@ pub async fn field_render(
         clock: clock.unwrap_or(0),
         terrain: terrain.unwrap_or(false),
     };
+    let play_key = format!(
+        "play|{}|{}|{}|{}|{}|{}",
+        path.to_lowercase(),
+        layer.clone().unwrap_or_default(),
+        x0.map(|value| value.round() as i32).unwrap_or(i32::MIN),
+        width.round() as i32,
+        ext,
+        render.terrain
+    );
     let key = format!(
         "{}|{}|{}|{}|{}|{}|{}|{}",
         path.to_lowercase(),
@@ -64,6 +76,17 @@ pub async fn field_render(
         return Ok((*hit).clone());
     }
 
+    // Playing back a warm window costs one composite of the bands plus the
+    // props that move, so a frame lands in tens of milliseconds.
+    if ext == "ufb"
+        && let Some((play, layout)) = cache.playback(&play_key)
+    {
+        let scene = play.frame(render.clock);
+        return Ok(media::content::render(formats::field::scene_projection(
+            scene, &layout,
+        )));
+    }
+
     let (bytes, size, mtime_ms, directory) = super::read_source(&state, &path)?;
     let mode = match mode.as_deref() {
         Some("class") => UcbMode::Class,
@@ -75,16 +98,37 @@ pub async fn field_render(
         let projection = match ext.as_str() {
             "ufb" => {
                 let (layout, _) = worker.open(&path, size, mtime_ms, &bytes)?;
-                formats::field::view_layout(
-                    &layout,
-                    &bytes,
-                    directory.as_deref(),
-                    layer.as_deref(),
-                    x0,
-                    width,
-                    MAX_SIDE,
-                    render,
-                )
+                let prepared = directory.as_deref().and_then(|dir| {
+                    formats::field::prepare_window(
+                        &bytes,
+                        &layout,
+                        dir,
+                        layer.as_deref(),
+                        x0,
+                        width,
+                        MAX_SIDE,
+                        render,
+                    )
+                });
+                if let Some(play) = prepared {
+                    let scene = play.frame(render.clock);
+                    let play = std::sync::Arc::new(play);
+                    if play.footprint() <= PLAYBACK_BYTES {
+                        worker.store_playback(play_key, play.clone(), layout.clone());
+                    }
+                    formats::field::scene_projection(scene, &layout)
+                } else {
+                    formats::field::view_layout(
+                        &layout,
+                        &bytes,
+                        directory.as_deref(),
+                        layer.as_deref(),
+                        x0,
+                        width,
+                        MAX_SIDE,
+                        render,
+                    )
+                }
             }
             "ucb" => formats::content::ucb_at(&bytes, mode),
             other => return Err(format!(".{other} has no field view")),
@@ -95,7 +139,9 @@ pub async fn field_render(
     .map_err(|error| format!("join error: {error}"))??;
 
     let dto = std::sync::Arc::new(dto);
-    cache.store(key, dto.clone());
+    if render.clock == 0 {
+        cache.store(key, dto.clone());
+    }
     Ok((*dto).clone())
 }
 

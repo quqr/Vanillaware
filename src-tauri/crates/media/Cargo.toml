@@ -62,3 +62,11 @@ path = "tests/tools/model_render.rs"
 [[example]]
 name = "ext_render"
 path = "tests/tools/ext_render.rs"
+
+[[example]]
+name = "ground_probe"
+path = "tests/tools/ground_probe.rs"
+
+[[example]]
+name = "frame_bench"
+path = "tests/tools/frame_bench.rs"

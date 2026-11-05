@@ -4,6 +4,10 @@ use std::path::{Path, PathBuf};
 use super::content::{ColorMap, Projection, Section};
 use super::document::rdr;
 use super::mbs;
+mod play;
+
+pub use play::Playback;
+
 use super::raster::{paint_quad, Page, Raster};
 
 pub const HEAD: usize = 0x88;
@@ -13,6 +17,10 @@ pub const EXT: usize = 0x90;
 pub const MASK_HEAD: usize = 0x3c;
 pub const GROUP_HEAD: usize = 4;
 pub const GROUP_ENTRY: usize = 0xf0;
+/// A group block holds three parallel arrays per entry: four vertices (0x60),
+/// four copies of one placement record (0x70) and four unknown pairs (0x20).
+pub const GROUP_QUAD: usize = 0x60;
+pub const GROUP_PLACE: usize = 0x70;
 pub const VERTEX: usize = 0x18;
 pub const PANEL: usize = 0xa0;
 pub const COLUMNS: usize = 138;
@@ -97,6 +105,16 @@ pub struct GroupBlock {
     pub id: u16,
     pub slot: u8,
     pub count: u8,
+}
+
+/// One ground piece of a group block: four corners in the record's local space
+/// plus the world cell it is pinned to.
+#[derive(Clone, Copy, Default)]
+pub struct GroundQuad {
+    pub at: (f32, f32),
+    pub corners: [(f32, f32); 4],
+    pub uv: [(f32, f32); 4],
+    pub color: u32,
 }
 
 pub struct Record {
@@ -471,10 +489,49 @@ pub fn vertices(bytes: &[u8], at: usize, count: usize) -> Vec<Vertex> {
     out
 }
 
+#[derive(Clone, Copy)]
 pub struct Panel {
     pub page: u16,
     pub corners: [(f32, f32); 4],
     pub uv: [(f32, f32); 4],
+}
+
+/// Placed ground pieces of a group block, in the order the file stores them.
+/// The block is three parallel arrays: `count` quads of four vertices, then
+/// `count` placements (each written out four times, once per vertex), then a
+/// tail of four pairs per quad that is still unread.
+pub fn ground_quads(bytes: &[u8], block: &GroupBlock) -> Vec<GroundQuad> {
+    let count = block.count as usize;
+    let data = block.at + GROUP_HEAD;
+    let places = data + count * GROUP_QUAD;
+    let mut out = Vec::with_capacity(count);
+    for index in 0..count {
+        let quad = data + index * GROUP_QUAD;
+        let place = places + index * GROUP_PLACE;
+        let mut corners = [(0.0f32, 0.0f32); 4];
+        let mut uv = [(0.0f32, 0.0f32); 4];
+        for slot in 0..4 {
+            let at = quad + slot * VERTEX;
+            corners[slot] = (
+                rdr::f32_at(bytes, at).unwrap_or(0.0),
+                rdr::f32_at(bytes, at + 4).unwrap_or(0.0),
+            );
+            uv[slot] = (
+                rdr::f32_at(bytes, at + 0x10).unwrap_or(0.0),
+                rdr::f32_at(bytes, at + 0x14).unwrap_or(0.0),
+            );
+        }
+        out.push(GroundQuad {
+            at: (
+                rdr::f32_at(bytes, place).unwrap_or(0.0),
+                rdr::f32_at(bytes, place + 8).unwrap_or(0.0),
+            ),
+            corners,
+            uv,
+            color: rdr::u32_at(bytes, quad + 0x0c).unwrap_or(0xffff_ffff),
+        });
+    }
+    out
 }
 
 /// Ground tiles of a record, in the order the file stores them.
@@ -761,6 +818,69 @@ pub fn default_window(layout: &Layout, map: &str, span: f32) -> f32 {
     best_start - span * 0.1
 }
 
+/// Every layer of one layer set that can show up in `x0..x1`, in file order and
+/// with duplicates dropped: a tile record repeats a layer verbatim across the
+/// tiles it covers, and only one copy may be drawn.
+pub(crate) fn gather<'a>(layout: &'a Layout, map: &str, x0: f32, x1: f32) -> Vec<&'a Layer> {
+    let slots: HashSet<usize> = layout
+        .pairs
+        .iter()
+        .enumerate()
+        .filter(|(_, pair)| matches(map, pair))
+        .map(|(slot, _)| slot)
+        .collect();
+    if slots.is_empty() {
+        return Vec::new();
+    }
+    let mut layers: Vec<&Layer> = Vec::new();
+    let mut seen: HashSet<[u32; 9]> = HashSet::new();
+    for record in &layout.records {
+        for layer in &record.layers {
+            if layer.pair < 0 || !slots.contains(&(layer.pair as usize)) {
+                continue;
+            }
+            if layer.max[0] < x0 || layer.min[0] > x1 {
+                continue;
+            }
+            let key = [
+                layer.pair as u32,
+                layer.panel as u32,
+                layer.sample as u32,
+                layer.flags as u32,
+                layer.ext as u32,
+                layer.min[0].to_bits(),
+                layer.min[1].to_bits(),
+                layer.max[0].to_bits(),
+                layer.max[1].to_bits(),
+            ];
+            if !seen.insert(key) {
+                continue;
+            }
+            layers.push(layer);
+        }
+    }
+    layers
+}
+
+/// Pixel scale and vertical window for a layer set. A window is tight in x, so
+/// the scale comes from `max_side / width`; the height is capped at twice that
+/// and squeezed if the layer stack is taller.
+pub(crate) fn fit(layers: &[&Layer], width: f32, max_side: u32) -> (f32, f32, f32) {
+    let mut min_y = f32::MAX;
+    let mut max_y = f32::MIN;
+    for layer in layers {
+        let half = (layer.max[1] - layer.min[1]).abs() * 0.5;
+        min_y = min_y.min(layer.center_y - half);
+        max_y = max_y.max(layer.center_y + half);
+    }
+    let span_y = (max_y - min_y).max(1.0);
+    let mut scale = max_side as f32 / width.max(1.0);
+    if span_y * scale > max_side as f32 * 2.0 {
+        scale = max_side as f32 * 2.0 / span_y;
+    }
+    (scale, min_y, max_y)
+}
+
 pub type PairLoader<'a> = dyn Fn(&Pair) -> Option<(Vec<u8>, Vec<u8>)> + 'a;
 /// What a render asks for beyond the window itself.
 #[derive(Clone, Copy, Default)]
@@ -805,60 +925,12 @@ pub fn compose_window_with(
     let width = width.max(1.0);
     let x1 = x0 + width;
 
-    let slots: HashSet<usize> = layout
-        .pairs
-        .iter()
-        .enumerate()
-        .filter(|(_, pair)| matches(map, pair))
-        .map(|(slot, _)| slot)
-        .collect();
-    if slots.is_empty() {
-        return None;
-    }
-
-    let mut layers: Vec<&Layer> = Vec::new();
-    let mut seen: HashSet<[u32; 9]> = HashSet::new();
-    for record in &layout.records {
-        for layer in &record.layers {
-            if layer.pair < 0 || !slots.contains(&(layer.pair as usize)) {
-                continue;
-            }
-            if layer.max[0] < x0 || layer.min[0] > x1 {
-                continue;
-            }
-            let key = [
-                layer.pair as u32,
-                layer.panel as u32,
-                layer.sample as u32,
-                layer.flags as u32,
-                layer.ext as u32,
-                layer.min[0].to_bits(),
-                layer.min[1].to_bits(),
-                layer.max[0].to_bits(),
-                layer.max[1].to_bits(),
-            ];
-            if !seen.insert(key) {
-                continue;
-            }
-            layers.push(layer);
-        }
-    }
+    let layers = gather(layout, map, x0, x1);
     if layers.is_empty() {
         return None;
     }
-
-    let mut min_y = f32::MAX;
-    let mut max_y = f32::MIN;
-    for layer in &layers {
-        let half = (layer.max[1] - layer.min[1]).abs() * 0.5;
-        min_y = min_y.min(layer.center_y - half);
-        max_y = max_y.max(layer.center_y + half);
-    }
+    let (scale, min_y, max_y) = fit(&layers, width, max_side);
     let span_y = (max_y - min_y).max(1.0);
-    let mut scale = max_side as f32 / width;
-    if span_y * scale > max_side as f32 * 2.0 {
-        scale = max_side as f32 * 2.0 / span_y;
-    }
 
     let out_width = (width * scale).ceil().max(1.0) as u32;
     let out_height = (span_y * scale).ceil().max(1.0) as u32;
@@ -1135,10 +1207,18 @@ impl Canvas {
     }
 }
 
-/// Ground tiles are 128-unit atlas rects laid over each record's tile. A record
-/// without layers carries no resource pair of its own, so it inherits the stage
-/// of the last record that did: the records are stored in tile order and a
-/// stage runs over a contiguous block of tiles.
+/// Ground tiles are 128-unit atlas rects that line the back of a record's tile.
+/// A group block carries their placement outright, so it is read first; the
+/// extension blocks keep the older geometry, which only gets used for a record
+/// that has no group block at all.
+///
+/// A record without layers carries no resource pair of its own, so it inherits
+/// the stage of the last record that did: the records are stored in tile order
+/// and a stage runs over a contiguous block of tiles.
+///
+/// Every piece sits in the same 128-unit band, so depth is what decides the
+/// picture: the band is painted far to near by the placement's z, which leaves
+/// the near row showing.
 fn paint_terrain(
     bytes: &[u8],
     layout: &Layout,
@@ -1150,7 +1230,7 @@ fn paint_terrain(
     x1: f32,
 ) -> usize {
     let mut carry: Option<usize> = None;
-    let mut drawn = 0usize;
+    let mut pieces: Vec<(usize, GroundQuad)> = Vec::new();
     for record in &layout.records {
         let mut tally: HashMap<usize, usize> = HashMap::new();
         for layer in &record.layers {
@@ -1165,39 +1245,79 @@ fn paint_terrain(
         if let Some((slot, _)) = tally.into_iter().max_by_key(|(_, count)| *count) {
             carry = Some(slot);
         }
-        if record.ext_count == 0 || record.max[0] < x0 || record.min[0] > x1 {
+        if record.ext_count == 0 && record.groups.is_empty() {
+            continue;
+        }
+        if record.max[0] < x0 || record.min[0] > x1 {
             continue;
         }
         let Some(slot) = carry else {
             continue;
         };
-        let Some(pair) = layout.pairs.get(slot) else {
+        if layout.pairs.get(slot).is_none() {
             continue;
-        };
-        let list = pages.entry(slot).or_insert_with(|| {
-            load(pair)
+        }
+        if !record.groups.is_empty() {
+            for block in &record.groups {
+                for quad in ground_quads(bytes, block) {
+                    pieces.push((slot, quad));
+                }
+            }
+            continue;
+        }
+        for (index, block) in ext_blocks(bytes, record).into_iter().enumerate() {
+            let (world_x, world_z, _) = ext_center(record, index);
+            let mut corners = [(0.0f32, 0.0f32); 4];
+            let mut uv = [(0.0f32, 0.0f32); 4];
+            for corner in 0..4 {
+                let vertex = block.corners[corner];
+                corners[corner] = (vertex.x, vertex.y);
+                uv[corner] = (vertex.u, vertex.v);
+            }
+            pieces.push((
+                slot,
+                GroundQuad {
+                    at: (world_x - 64.0, world_z - 64.0),
+                    corners,
+                    uv,
+                    color: block.center.color,
+                },
+            ));
+        }
+    }
+
+    pieces.sort_by(|left, right| {
+        right
+            .1
+            .at
+            .1
+            .partial_cmp(&left.1.at.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut drawn = 0usize;
+    for (slot, quad) in pieces {
+        if !pages.contains_key(&slot) {
+            let Some(pair) = layout.pairs.get(slot) else {
+                continue;
+            };
+            let list = load(pair)
                 .and_then(|(_, texture)| decode_pages(&texture))
-                .unwrap_or_default()
-        });
-        let Some((page_w, page_h, rgba)) = list.first() else {
+                .unwrap_or_default();
+            pages.insert(slot, list);
+        }
+        let Some((page_w, page_h, rgba)) = pages.get(&slot).and_then(|list| list.first()) else {
             continue;
         };
         let Some(page) = Page::new(*page_w, *page_h, rgba) else {
             continue;
         };
-        let blocks = ext_blocks(bytes, record);
-        for (index, block) in blocks.iter().enumerate().rev() {
-            let (world_x, _, _) = ext_center(record, index);
-            let mut dst = [(0.0f32, 0.0f32); 4];
-            let mut uv = [(0.0f32, 0.0f32); 4];
-            for corner in 0..4 {
-                let vertex = block.corners[corner];
-                dst[corner] = canvas.pixel(world_x + vertex.x, vertex.y);
-                uv[corner] = (vertex.u, vertex.v);
-            }
-            paint_quad(raster, dst, uv, &page, [255, 255, 255, 255]);
-            drawn += 1;
+        let mut dst = [(0.0f32, 0.0f32); 4];
+        for corner in 0..4 {
+            dst[corner] = canvas.pixel(quad.at.0 + quad.corners[corner].0, quad.corners[corner].1);
         }
+        paint_quad(raster, dst, quad.uv, &page, tint(quad.color));
+        drawn += 1;
     }
     drawn
 }
@@ -1755,6 +1875,28 @@ pub fn cross_check(layout: &Layout, bytes: &[u8], ucb: &[u8]) -> Option<Match> {
     })
 }
 
+/// Prepare a window for playback, defaulting the layer set and the left edge
+/// exactly the way a view does.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_window(
+    bytes: &[u8],
+    layout: &Layout,
+    dir: &Path,
+    map: Option<&str>,
+    x0: Option<f32>,
+    width: f32,
+    max_side: u32,
+    render: Render,
+) -> Option<Playback> {
+    let width = width.clamp(400.0, 12000.0);
+    let scope = map
+        .map(str::to_string)
+        .or_else(|| default_scope(layout, width).map(|(_, stage, _)| stage))?;
+    let x0 = x0.unwrap_or_else(|| default_window(layout, &scope, width));
+    let load = |pair: &Pair| read_pair(dir, pair);
+    Playback::prepare(bytes, layout, &scope, x0, width, &load, max_side, render)
+}
+
 pub const WINDOW_DEFAULT: f32 = 3000.0;
 
 pub fn view(bytes: &[u8], dir: Option<&Path>, max_side: u32) -> Projection {
@@ -1786,16 +1928,7 @@ pub fn view_at(
     )
 }
 
-pub fn view_layout(
-    layout: &Layout,
-    bytes: &[u8],
-    dir: Option<&Path>,
-    map: Option<&str>,
-    x0: Option<f32>,
-    width: f32,
-    max_side: u32,
-    render: Render,
-) -> Projection {
+fn header(layout: &Layout) -> (Projection, Vec<Vec<String>>) {
     let mut out = Projection::new("UFB · field background");
     let counts = layout.counts;
     let derived = layout.derived;
@@ -1814,7 +1947,7 @@ pub fn view_layout(
         total_names
     ));
 
-    let mut header_rows = vec![
+    let rows = vec![
         row2("records", counts.records),
         row2("group blocks", counts.group_blocks),
         row2("objects", counts.objects),
@@ -1843,8 +1976,78 @@ pub fn view_layout(
             derived.group_entries.to_string(),
         ],
     ];
+    (out, rows)
+}
+
+/// One scene as a projection: the picture plus the sentence that says what was
+/// drawn, without the format tables.
+pub fn scene_projection(scene: Scene, layout: &Layout) -> Projection {
+    let (mut out, mut header_rows) = header(layout);
+    out.color = Some(ColorMap {
+        width: scene.raster.width,
+        height: scene.raster.height,
+        rgba: scene.raster.rgba.clone(),
+        legend: scene_legend(&scene),
+    });
+    header_rows.push(vec!["layer set".to_string(), scene.map.clone()]);
+    header_rows.push(vec![
+        "world window".to_string(),
+        format!(
+            "x {}..{} · {} layers · {} panels · {} props ({}) · {} ground tiles",
+            scene.window[0].round(),
+            scene.window[2].round(),
+            scene.layers,
+            scene.drawn,
+            scene.models,
+            scene.quads,
+            scene.tiles
+        ),
+    ]);
+    out
+}
+
+/// What a rendered window is, in one sentence.
+pub fn scene_legend(scene: &Scene) -> String {
+    let mut legend = format!(
+        "Layer set {}: {} layers inside the window, {} textured panels drawn, {} props drawn from {} model quads, {} prop layers with no art, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. A panel layer names a quad of the paired .mpd and is textured from the paired .ftx; a prop layer names a skeleton of the paired .mbs, and that whole prop is posed at the engine clock (tick {}, 1/60 s each) and then placed. Both are kept as authored: page space and model space put y downwards, so every quad is mirrored into the upwards world before the layer's scale, roll and pitch are applied; they are painted far to near by z.",
+        scene.map,
+        scene.layers,
+        scene.drawn,
+        scene.models,
+        scene.quads,
+        scene.hollow,
+        scene.missing,
+        1.0 / scene.scale,
+        scene.window[0].round(),
+        scene.window[2].round(),
+        scene.window[1].round(),
+        scene.window[3].round(),
+        scene.clock,
+    );
+    if scene.tiles > 0 {
+        legend.push_str(&format!(
+            " {} ground tiles are drawn behind the billboards: a group block lists each 128-unit atlas rect with the world cell it is pinned to, and the band is painted far to near so the near row shows. A record with no layers inherits the stage of the last record that had one.",
+            scene.tiles
+        ));
+    }
+    legend.push_str(" One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) can be stacked, but the .01P kind is soft cloud: it covers the ground by design, so the viewer shows one set unless the scope names a whole battlefield (AC00).");
+    legend
+}
+
+pub fn view_layout(
+    layout: &Layout,
+    bytes: &[u8],
+    dir: Option<&Path>,
+    map: Option<&str>,
+    x0: Option<f32>,
+    width: f32,
+    max_side: u32,
+    render: Render,
+) -> Projection {
+    let (mut out, mut header_rows) = header(layout);
 
     let catalog = maps(layout);
+    let total_names = layout.samples.len() + layout.group_names.len() + layout.names.len();
     let width = width.clamp(400.0, 12000.0);
     let scope = map
         .map(|name| name.to_string())
@@ -1858,29 +2061,7 @@ pub fn view_layout(
     });
 
     if let Some(scene) = rendered {
-        let mut legend = format!(
-            "Layer set {}: {} layers inside the window, {} textured panels drawn, {} props drawn from {} model quads, {} prop layers with no art, {} unresolved. 1 px = {:.2} world units. World window x {}..{}, y {}..{} with y growing upwards. A panel layer names a quad of the paired .mpd and is textured from the paired .ftx; a prop layer names a skeleton of the paired .mbs, and that whole prop is posed at the engine clock (tick {}, 1/60 s each) and then placed. Both are kept as authored: page space and model space put y downwards, so every quad is mirrored into the upwards world before the layer's scale, roll and pitch are applied; they are painted far to near by z.",
-            scene.map,
-            scene.layers,
-            scene.drawn,
-            scene.models,
-            scene.quads,
-            scene.hollow,
-            scene.missing,
-            1.0 / scene.scale,
-            scene.window[0].round(),
-            scene.window[2].round(),
-            scene.window[1].round(),
-            scene.window[3].round(),
-            scene.clock,
-        );
-        if scene.tiles > 0 {
-            legend.push_str(&format!(
-                " {} ground tiles are drawn behind the billboards: each record carries 6-vertex fans that place a 128-unit atlas rect on a 128-unit grid over its own tile, and a record with no layers inherits the stage of the last record that had one.",
-                scene.tiles
-            ));
-        }
-        legend.push_str(" One tile record mixes layers from several layer sets, so the set is chosen first and only its layers are drawn. Stages of the same battlefield (.00P, .02P, .00F2 …) can be stacked, but the .01P kind is soft cloud: it covers the ground by design, so the viewer shows one set unless the scope names a whole battlefield (AC00).");
+        let legend = scene_legend(&scene);
         out.color = Some(ColorMap {
             width: scene.raster.width,
             height: scene.raster.height,

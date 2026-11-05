@@ -54,6 +54,7 @@ impl<'a> Page<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct Raster {
     pub width: u32,
     pub height: u32,
@@ -94,13 +95,66 @@ impl Raster {
             self.rgba[at..at + 4].copy_from_slice(&color);
             return;
         }
-        for (channel, value) in color.iter().take(3).enumerate() {
-            let under = self.rgba[at + channel] as f32;
-            self.rgba[at + channel] = (*value as f32 * alpha + under * (1.0 - alpha)).round() as u8;
-        }
         let under_alpha = self.rgba[at + 3] as f32 / 255.0;
         let out = alpha + under_alpha * (1.0 - alpha);
+        if out <= 0.0 {
+            return;
+        }
+        let scale = 1.0 / out;
+        let keep = under_alpha * (1.0 - alpha);
+        for (channel, value) in color.iter().take(3).enumerate() {
+            let under = self.rgba[at + channel] as f32;
+            let mixed = *value as f32 * alpha + under * keep;
+            self.rgba[at + channel] = (mixed * scale).round().clamp(0.0, 255.0) as u8;
+        }
         self.rgba[at + 3] = (out * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+
+    /// Composite another raster over this one at `left, top`. Pixels are either
+    /// clear (skipped) or opaque (copied), which is what a band of field panels
+    /// and props is most of the time, so only edges cost arithmetic.
+    pub fn over(&mut self, source: &Raster) {
+        self.over_at(source, 0, 0);
+    }
+
+    pub fn over_at(&mut self, source: &Raster, left: u32, top: u32) {
+        if left >= self.width || top >= self.height {
+            return;
+        }
+        let width = (source.width).min(self.width - left);
+        let height = (source.height).min(self.height - top);
+        for y in 0..height {
+            let start = (((top + y) * self.width + left) * 4) as usize;
+            let end = start + width as usize * 4;
+            let from = (y * source.width * 4) as usize;
+            let row = &source.rgba[from..from + width as usize * 4];
+            Self::over_row(&mut self.rgba[start..end], row);
+        }
+    }
+
+    fn over_row(target: &mut [u8], source: &[u8]) {
+        for (target, pixel) in target.chunks_exact_mut(4).zip(source.chunks_exact(4)) {
+            match pixel[3] {
+                0 => continue,
+                255 => target.copy_from_slice(pixel),
+                alpha => {
+                    let alpha = alpha as f32 / 255.0;
+                    let under_alpha = target[3] as f32 / 255.0;
+                    let out = alpha + under_alpha * (1.0 - alpha);
+                    if out <= 0.0 {
+                        continue;
+                    }
+                    let scale = 1.0 / out;
+                    let keep = under_alpha * (1.0 - alpha);
+                    for channel in 0..3 {
+                        let under = target[channel] as f32;
+                        let mixed = pixel[channel] as f32 * alpha + under * keep;
+                        target[channel] = (mixed * scale).round().clamp(0.0, 255.0) as u8;
+                    }
+                    target[3] = (out * 255.0).round().clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
     }
 
     pub fn blit(&mut self, source: &Raster, left: u32, top: u32) {

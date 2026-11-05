@@ -92,7 +92,9 @@ export function FieldViewer({ entry }: { entry: FileEntry }) {
   useEffect(() => {
     if (isUcb || !layer) return;
     const id = ++request.current;
-    setBusy(true);
+    if (!playing) setBusy(true);
+    // Playback asks for the next frame as soon as the clock moves; only an idle
+    // viewer waits for the sliders to settle.
     const timer = window.setTimeout(() => {
       api
         .fieldRender(entry.path, layer, x0, width, undefined, clock, terrain)
@@ -108,9 +110,9 @@ export function FieldViewer({ entry }: { entry: FileEntry }) {
         .finally(() => {
           if (request.current === id) setBusy(false);
         });
-    }, 160);
+    }, playing ? 0 : 160);
     return () => window.clearTimeout(timer);
-  }, [entry.path, layer, x0, width, clock, terrain, isUcb]);
+  }, [entry.path, layer, x0, width, clock, terrain, isUcb, playing]);
 
   useEffect(() => {
     if (!isUcb) return;
@@ -132,9 +134,14 @@ export function FieldViewer({ entry }: { entry: FileEntry }) {
 
   useEffect(() => {
     if (!playing || isUcb) return;
+    let last = performance.now();
     const step = window.setInterval(() => {
-      setClock((value) => (value >= CLOCK_MAX ? 0 : value + TICK * 3));
-    }, 200);
+      const now = performance.now();
+      const elapsed = Math.min(400, now - last);
+      last = now;
+      const advance = Math.round((elapsed / 1000) * 60 * TICK);
+      setClock((value) => (value + advance >= CLOCK_MAX ? 0 : value + advance));
+    }, 40);
     return () => window.clearInterval(step);
   }, [playing, isUcb]);
 

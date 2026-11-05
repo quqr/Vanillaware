@@ -414,7 +414,7 @@ fn the_authored_box_is_the_quad_rotated_into_the_world() {
 
 #[test]
 #[ignore]
-fn every_ground_tile_is_a_closed_fan_on_the_records_grid() {
+fn every_ground_piece_is_one_atlas_cell_pinned_inside_its_record() {
     let Some(path) = corpus() else {
         eprintln!("no corpus, set CORPUS_UFB");
         return;
@@ -422,84 +422,113 @@ fn every_ground_tile_is_a_closed_fan_on_the_records_grid() {
     let bytes = std::fs::read(&path).expect("read ufb");
     let layout = field::parse(&bytes).expect("layout");
 
-    let (mut records, mut blocks) = (0usize, 0usize);
-    let (mut closed, mut square, mut centred, mut inside_uv, mut on_grid, mut in_cell) =
-        (0, 0, 0, 0, 0, 0);
+    let mut records = 0usize;
+    let mut blocks = 0usize;
+    let mut pieces = 0usize;
+    let mut square = 0usize;
+    let mut one_cell = 0usize;
+    let mut centred = 0usize;
+    let mut inside = 0usize;
+    let mut on_cell = 0usize;
+    let mut closed = 0usize;
+
     for record in &layout.records {
-        if record.ext_count == 0 {
+        if record.groups.is_empty() {
             continue;
         }
         records += 1;
-        let (cols, rows) = field::ext_grid(record);
-        if cols * rows == record.ext_count {
-            on_grid += 1;
-        }
-        for index in 0..record.ext_count {
-            let verts = field::vertices(&bytes, record.ext_at + index * field::EXT, 6);
-            if verts.len() < 6 {
-                break;
-            }
+        for block in &record.groups {
             blocks += 1;
-            let tail = &verts[5];
-            if tail.x == verts[1].x
-                && tail.y == verts[1].y
-                && tail.u == verts[1].u
-                && tail.v == verts[1].v
-            {
+            let end = block.at + field::GROUP_HEAD + block.count as usize * field::GROUP_ENTRY;
+            let next = record.at + record.size;
+            if end <= next {
                 closed += 1;
             }
-            let mut low = (f32::MAX, f32::MAX);
-            let mut high = (f32::MIN, f32::MIN);
-            for vertex in &verts[1..5] {
-                low = (low.0.min(vertex.x), low.1.min(vertex.y));
-                high = (high.0.max(vertex.x), high.1.max(vertex.y));
-            }
-            if (high.0 - low.0 - field::TERRAIN_CELL).abs() < 0.5
-                && (high.1 - low.1 - field::TERRAIN_CELL).abs() < 0.5
-            {
-                square += 1;
-            }
-            let centre = &verts[0];
-            if centre.x >= low.0 - 0.5
-                && centre.x <= high.0 + 0.5
-                && centre.y >= low.1 - 0.5
-                && centre.y <= high.1 + 0.5
-            {
-                centred += 1;
-            }
-            if verts
-                .iter()
-                .all(|v| (0.0..=1.0).contains(&v.u) && (0.0..=1.0).contains(&v.v))
-            {
-                inside_uv += 1;
-            }
-            if low.0 >= -field::TERRAIN_CELL * 0.5 - 0.5
-                && high.0 <= field::TERRAIN_CELL * 0.5 + 0.5
-                && low.1 >= -field::TERRAIN_CELL * 0.5 - 0.5
-                && high.1 <= field::TERRAIN_CELL * 0.5 + 0.5
-            {
-                in_cell += 1;
+            let quads = field::ground_quads(&bytes, block);
+            assert_eq!(quads.len(), block.count as usize);
+            for quad in quads {
+                pieces += 1;
+                let (mut lx, mut ly, mut hx, mut hy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for corner in &quad.corners {
+                    lx = lx.min(corner.0);
+                    ly = ly.min(corner.1);
+                    hx = hx.max(corner.0);
+                    hy = hy.max(corner.1);
+                }
+                if (hx - lx - field::TERRAIN_CELL).abs() < 1e-3
+                    && (hy - ly - field::TERRAIN_CELL).abs() < 1e-3
+                {
+                    square += 1;
+                }
+                let (mut u0, mut v0, mut u1, mut v1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+                for uv in &quad.uv {
+                    u0 = u0.min(uv.0);
+                    v0 = v0.min(uv.1);
+                    u1 = u1.max(uv.0);
+                    v1 = v1.max(uv.1);
+                }
+                if (u1 - u0 - 0.125).abs() < 1e-4
+                    && (v1 - v0 - 0.25).abs() < 1e-4
+                    && (0.0..=1.0).contains(&u0)
+                    && (0.0..=1.0).contains(&v1)
+                {
+                    one_cell += 1;
+                }
+                if ((lx + hx) * 0.5).abs() < 1e-3 && ((ly + hy) * 0.5).abs() < 1e-3 {
+                    centred += 1;
+                }
+                if quad.at.0 >= record.min[0]
+                    && quad.at.0 <= record.max[0]
+                    && quad.at.1 >= record.min[2]
+                    && quad.at.1 <= record.max[2]
+                {
+                    inside += 1;
+                }
+                let (col, row) = (
+                    (quad.at.0 - record.min[0] - field::TERRAIN_CELL * 0.5) / field::TERRAIN_CELL,
+                    (quad.at.1 - record.min[2] - field::TERRAIN_CELL * 0.5) / field::TERRAIN_CELL,
+                );
+                if (col - col.round()).abs() < 0.01 && (row - row.round()).abs() < 0.01 {
+                    on_cell += 1;
+                }
             }
         }
     }
 
     eprintln!(
-        "{records} records carry {blocks} atlas tiles: {closed} closed on v1, {square} fill their 128-unit cell, {in_cell} stay inside it, {centred} keep their centre inside, {inside_uv} stay in uv 0..1, {on_grid} records have exactly one tile per grid cell"
+        "{records} records carry {blocks} group blocks and {pieces} placed pieces: {square} are exactly one 128-unit cell, {one_cell} cover exactly one atlas cell, {centred} are centred on their own origin, {inside} sit inside their record, {on_cell} land on a cell centre, {closed} blocks close inside their record"
     );
-    assert!(blocks > 260_000, "the corpus carries {blocks} tiles");
-    assert_eq!(closed, blocks, "every fan must repeat its first corner");
-    assert!(
-        in_cell * 10 > blocks * 7,
-        "most tiles fit one cell, the rest are pieces that span more ({in_cell}/{blocks})"
-    );
-    assert_eq!(inside_uv, blocks, "every uv must stay in the atlas");
-    assert!(
-        square * 10 > blocks * 7,
-        "most tiles fill their cell, the rest are inset pieces ({square}/{blocks})"
+    assert_eq!(
+        pieces, layout.derived.group_entries as usize,
+        "every entry is one quad"
     );
     assert!(
-        centred as f32 / blocks as f32 > 0.99,
-        "a bent tile still keeps its centre inside its corners"
+        pieces > 190_000,
+        "the corpus carries {pieces} placed pieces"
+    );
+    assert_eq!(
+        square, pieces,
+        "every placed piece must be one 128-unit cell"
+    );
+    assert_eq!(
+        one_cell, pieces,
+        "every placed piece must cover one atlas cell"
+    );
+    assert!(
+        centred as f32 / pieces as f32 > 0.9999,
+        "a placed piece is authored about its own origin ({centred}/{pieces})"
+    );
+    assert_eq!(
+        inside, pieces,
+        "a piece may not leave the record it belongs to"
+    );
+    assert_eq!(
+        closed, blocks,
+        "every group block must close inside its record"
+    );
+    assert!(
+        on_cell * 5 > pieces * 2,
+        "about half pin to a cell centre, the rest sit a fraction off ({on_cell}/{pieces})"
     );
 }
 
@@ -557,5 +586,77 @@ fn props_move_when_the_engine_clock_advances() {
     assert!(
         moving * 5 > total,
         "one prop in five should be animated ({moving}/{total})"
+    );
+}
+
+#[test]
+#[ignore]
+fn playback_reproduces_a_full_render_frame_by_frame() {
+    let Some(path) = corpus() else {
+        eprintln!("no corpus, set CORPUS_UFB");
+        return;
+    };
+    let dir = path.parent().expect("directory").to_path_buf();
+    let bytes = std::fs::read(&path).expect("read ufb");
+    let layout = field::parse(&bytes).expect("layout");
+    let load = |pair: &field::Pair| field::read_pair(&dir, pair);
+
+    let (scope, _, x0) = field::default_scope(&layout, 1920.0).expect("a layer set");
+    let started = std::time::Instant::now();
+    let play = field::Playback::prepare(
+        &bytes,
+        &layout,
+        &scope,
+        x0,
+        1920.0,
+        &load,
+        1200,
+        field::Render::default(),
+    )
+    .expect("prepared");
+    let prepare = started.elapsed().as_secs_f64() * 1000.0;
+    assert!(play.moving > 0, "the window should carry moving props");
+
+    let mut worst = 0i32;
+    let mut frames_ms = Vec::new();
+    for step in 0..4u64 {
+        let clock = step * 15_000;
+        let started = std::time::Instant::now();
+        let fast = play.frame(clock);
+        frames_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+        let exact = field::compose_window_with(
+            &bytes,
+            &layout,
+            &scope,
+            x0,
+            1920.0,
+            &load,
+            1200,
+            field::Render {
+                clock,
+                terrain: false,
+            },
+        )
+        .expect("exact");
+        assert_eq!(fast.raster.width, exact.raster.width);
+        assert_eq!(fast.raster.height, exact.raster.height);
+        for (a, b) in fast.raster.rgba.iter().zip(exact.raster.rgba.iter()) {
+            worst = worst.max((*a as i32 - *b as i32).abs());
+        }
+    }
+    eprintln!(
+        "playback of {scope}: {prepare:.0} ms to prepare, {} bands over {} moving props, {:.1} MB, frames {frames_ms:?}, worst channel {worst}",
+        play.moving,
+        play.moving,
+        play.footprint() as f64 / (1024.0 * 1024.0)
+    );
+    assert!(
+        worst <= 8,
+        "a playback frame must match the full render up to rounding (worst {worst})"
+    );
+    assert!(
+        play.footprint() < 200 << 20,
+        "the band set must stay small ({})",
+        play.footprint()
     );
 }

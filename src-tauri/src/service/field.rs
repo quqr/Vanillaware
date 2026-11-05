@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use formats::field::{FieldMap, Layout};
+use formats::field::{FieldMap, Layout, Playback};
 use media::ContentDto;
 
 use crate::model::{FieldMapDto, FieldOverviewDto, FieldPropDto};
@@ -21,11 +21,20 @@ struct Rendered {
     dto: Arc<ContentDto>,
 }
 
+/// A prepared window. Playback reruns only the props that move, so the layout
+/// it was built from is kept next to it: a frame must not read the file again.
+struct Prepared {
+    key: String,
+    play: Arc<Playback>,
+    layout: Arc<Layout>,
+}
+
 #[derive(Clone)]
 pub struct FieldCache {
     layout: Arc<Mutex<Option<LayoutEntry>>>,
     renders: Arc<Mutex<VecDeque<Rendered>>>,
     overviews: Arc<Mutex<VecDeque<(String, Arc<FieldOverviewDto>)>>>,
+    prepared: Arc<Mutex<Option<Prepared>>>,
 }
 
 impl Default for FieldCache {
@@ -40,6 +49,7 @@ impl FieldCache {
             layout: Arc::new(Mutex::new(None)),
             renders: Arc::new(Mutex::new(VecDeque::new())),
             overviews: Arc::new(Mutex::new(VecDeque::new())),
+            prepared: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -82,6 +92,25 @@ impl FieldCache {
             .ok()?
             .as_ref()
             .map(|entry| entry.maps.clone())
+    }
+
+    /// The window that is currently being played back, if it is still warm.
+    pub fn playback(&self, key: &str) -> Option<(Arc<Playback>, Arc<Layout>)> {
+        let guard = self.prepared.lock().ok()?;
+        let entry = guard.as_ref()?;
+        if entry.key != key {
+            return None;
+        }
+        Some((entry.play.clone(), entry.layout.clone()))
+    }
+
+    /// One prepared window is enough: it is the one on screen, and a band set
+    /// costs tens of megabytes.
+    pub fn store_playback(&self, key: String, play: Arc<Playback>, layout: Arc<Layout>) {
+        let Ok(mut guard) = self.prepared.lock() else {
+            return;
+        };
+        *guard = Some(Prepared { key, play, layout });
     }
 
     pub fn cached(&self, key: &str) -> Option<Arc<ContentDto>> {
