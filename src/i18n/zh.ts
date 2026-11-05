@@ -185,6 +185,12 @@ export const zh: Record<MsgKey, string> = {
   "scene.hitbox": "命中框",
   "scene.outline": "四边形描边",
   "scene.tint": "应用雾色",
+  "scene.hideLayer": "隐藏该图层",
+  "scene.showLayer": "显示该图层",
+  "scene.attributes": "属性位（{count}）",
+  "scene.noAttributes": "没有图层带属性位",
+  "scene.attributeHint": "勾选的位视为对象已具备，带该位的图层会被跳过",
+  "scene.showEverything": "全部显示",
 
   "audio.noSamples": "没有解码出样本",
   "audio.play": "播放",

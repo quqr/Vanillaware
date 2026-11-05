@@ -218,6 +218,44 @@ export interface ResolvedScene {
   bones: number;
 }
 
+/**
+ * What the layer list lets the viewer switch off. `hidden` holds the keys of
+ * layers the viewer turned off by hand, `attributes` the `s4.attrib` bits that
+ * are treated as present on the object.
+ */
+export interface LayerFilter {
+  hidden: ReadonlySet<string>;
+  attributes: ReadonlySet<string>;
+}
+
+export const NO_FILTER: LayerFilter = { hidden: new Set(), attributes: new Set() };
+
+/**
+ * Stable identity for one `s4` record. The same keyframe is reached from every
+ * bone that plays it and the resolved list is rebuilt on each frame, so the
+ * toggle cannot key on the row position; the record's own content is stable.
+ */
+export function layerKey(layer: SceneLayer): string {
+  const shape = layer.dst.slice(2, 10).join(",");
+  return `${layer.flags}|${layer.blendId}|${layer.texId ?? "-"}|${shape}`;
+}
+
+/**
+ * `s4.attrib` is the object-level mask the engine tests with
+ * `(object_mask & part_mask) != 0 -> skip` (`f_70005914d0`). The preview has no
+ * character customisation record, so the viewer supplies the object mask: a
+ * ticked bit hides every layer that carries it. An empty mask keeps everything,
+ * i.e. "no customisation" — 34% of the corpus layers carry at least one bit.
+ */
+export function layerVisible(layer: SceneLayer, filter: LayerFilter): boolean {
+  if (filter.hidden.has(layerKey(layer))) return false;
+  if (filter.attributes.size === 0 || !layer.attribute) return true;
+  for (const bit of layer.attribute) {
+    if (filter.attributes.has(bit)) return false;
+  }
+  return true;
+}
+
 /** Catmull-Rom weights used by `f_700058c1c8`, ordered as prev / cur / next / next+1. */
 export function splineWeights(t: number): [number, number, number, number] {
   const c0 = t * t;

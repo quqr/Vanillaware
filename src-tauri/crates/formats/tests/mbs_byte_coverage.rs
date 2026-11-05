@@ -47,10 +47,11 @@ fn coverage_of_the_closed_file() {
     }
 
     let mut files = Vec::new();
-    collect(&dir, &mut files, 120);
+    collect(&dir, &mut files, 400);
     files.sort();
 
-    let (mut s4_total, mut s4_color, mut s4_attr, mut s4_flags) = (0usize, 0usize, 0usize, [0usize; 8]);
+    let (mut s4_total, mut s4_color, mut s4_attr, mut s4_flags) =
+        (0usize, 0usize, 0usize, [0usize; 8]);
     let (mut s5_total, mut s5_bits) = (0usize, 0usize);
     let (mut s6_total, mut s6_flags) = (0usize, 0usize);
     let (mut s3_total, mut s3_xyz) = (0usize, 0usize);
@@ -130,7 +131,11 @@ fn coverage_of_the_closed_file() {
             let Pad::Filled(keyframe) = entry else {
                 continue;
             };
-            layers += keyframe.layer.iter().filter(|l| matches!(l, Pad::Filled(_))).count();
+            layers += keyframe
+                .layer
+                .iter()
+                .filter(|l| matches!(l, Pad::Filled(_)))
+                .count();
         }
     }
     println!("keyframe layers that survive the skip flag: {layers}");

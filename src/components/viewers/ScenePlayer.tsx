@@ -1,5 +1,5 @@
 import { t } from "../../i18n";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Texture } from "pixi.js";
 import { api, type Scene, type SceneAnimation, type SceneAttach, type SceneLayer } from "../../lib/ipc";
 import {
@@ -17,13 +17,17 @@ import {
   boundsOf,
   boneAnimation,
   fitCamera,
+  layerKey,
+  layerVisible,
   newBoneStates,
+  NO_FILTER,
   quadPoints,
   resolveBones,
   skeletonLength,
   srcUvs,
   stepBone,
   type BoneState,
+  type LayerFilter,
 } from "../../lib/sceneDraw";
 
 interface Playhead {
@@ -55,6 +59,8 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   const [showHitbox, setShowHitbox] = useState(false);
   const [showOutline, setShowOutline] = useState(false);
   const [applyTint, setApplyTint] = useState(true);
+  const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
+  const [attributeMask, setAttributeMask] = useState<Set<string>>(new Set());
   const [hud, setHud] = useState<Hud>({
     frame: 0,
     frames: 0,
@@ -78,8 +84,28 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     speed: 1,
     dirty: true,
   });
-  const optionsRef = useRef({ showHitbox: false, showOutline: false, applyTint: true });
+  const optionsRef = useRef({
+    showHitbox: false,
+    showOutline: false,
+    applyTint: true,
+    filter: NO_FILTER as LayerFilter,
+  });
   const hudAtRef = useRef(0);
+
+  const attributeBits = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const keyframe of scene?.keyframe ?? []) {
+      for (const layer of keyframe?.layers ?? []) {
+        for (const bit of layer?.attribute ?? []) counts.set(bit, (counts.get(bit) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [scene]);
+
+  const filter = useMemo<LayerFilter>(
+    () => ({ hidden: hiddenLayers, attributes: attributeMask }),
+    [hiddenLayers, attributeMask],
+  );
 
   useEffect(() => {
     playheadRef.current.playing = playing;
@@ -87,9 +113,9 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
   }, [playing, speed]);
 
   useEffect(() => {
-    optionsRef.current = { showHitbox, showOutline, applyTint };
+    optionsRef.current = { showHitbox, showOutline, applyTint, filter };
     playheadRef.current.dirty = true;
-  }, [showHitbox, showOutline, applyTint]);
+  }, [showHitbox, showOutline, applyTint, filter]);
 
   useEffect(() => {
     if (!path) {
@@ -103,6 +129,8 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     setError(null);
     setTextureError(null);
     setSkeletonIndex(0);
+    setHiddenLayers(new Set());
+    setAttributeMask(new Set());
 
     api
       .previewScene(path, tag)
@@ -206,10 +234,12 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     const animations = animationsRef.current;
     const bones = scene.skeletons[playhead.skeletonIndex]?.bones ?? [];
     const resolved = resolveBones(scene, bones, playhead.bones, animations);
+    const filter = optionsRef.current.filter;
 
     const renderLayers: RenderLayer[] = [];
     for (const item of resolved.layers) {
       const layer = item.layer;
+      if (!layerVisible(layer, filter)) continue;
       const texture = layer.texId === null ? null : texturesRef.current.get(layer.texId);
       if (!texture || layer.src === null) {
         if (layer.texId !== null) ensureTexture(scene.mbsPath, layer.texId);
@@ -438,6 +468,29 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
     setPlaying(playhead.playing);
   }
 
+  function toggleLayer(key: string) {
+    setHiddenLayers((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAttribute(bit: string) {
+    setAttributeMask((previous) => {
+      const next = new Set(previous);
+      if (next.has(bit)) next.delete(bit);
+      else next.add(bit);
+      return next;
+    });
+  }
+
+  function showEverything() {
+    setHiddenLayers(new Set());
+    setAttributeMask(new Set());
+  }
+
   if (!path) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 font-mono text-sm text-base-content/50">
@@ -593,14 +646,49 @@ export function ScenePlayer({ path, tag }: { path: string; tag: string }) {
           {currentLayers.length === 0 && (
             <div className="font-mono text-xs text-base-content/50">{t("scene.noLayers")}</div>
           )}
-          {currentLayers.map((layer, index) => (
-            <LayerRow key={index} index={index} layer={layer} />
-          ))}
-
+          <div className="max-h-56 overflow-y-auto">
+            {currentLayers.map((layer, index) => (
+              <LayerRow key={index} index={index} layer={layer} filter={filter} onToggle={toggleLayer} />
+            ))}
+          </div>
           <div className="mt-2 border-t border-base-300 pt-1.5">
             <ToggleRow label={t("scene.hitbox")} checked={showHitbox} onChange={setShowHitbox} />
             <ToggleRow label={t("scene.outline")} checked={showOutline} onChange={setShowOutline} />
             <ToggleRow label={t("scene.tint")} checked={applyTint} onChange={setApplyTint} />
+          </div>
+
+          <div className="mt-1 border-t border-base-300 pt-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-[11px] text-base-content/60">
+                {t("scene.attributes", { count: attributeBits.length })}
+              </span>
+              {(hiddenLayers.size > 0 || attributeMask.size > 0) && (
+                <button className="btn btn-ghost btn-xs" onClick={showEverything}>
+                  {t("scene.showEverything")}
+                </button>
+              )}
+            </div>
+            {attributeBits.length === 0 ? (
+              <div className="font-mono text-[11px] text-base-content/40">{t("scene.noAttributes")}</div>
+            ) : (
+              attributeBits.map(([bit, count]) => (
+                <label
+                  key={bit}
+                  className="flex cursor-pointer items-center gap-1.5 py-0.5 font-mono text-[11px]"
+                  title={t("scene.attributeHint")}
+                >
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={attributeMask.has(bit)}
+                    onChange={() => toggleAttribute(bit)}
+                  />
+                  <span className={attributeMask.has(bit) ? "text-base-content" : "text-base-content/60"}>
+                    {bit} · {count}
+                  </span>
+                </label>
+              ))
+            )}
           </div>
         </div>
       </details>
@@ -618,19 +706,47 @@ function positionsOf(quad: number[], matrix: number[]): Float32Array {
   return out;
 }
 
-function LayerRow({ index, layer }: { index: number; layer: SceneLayer }) {
+function LayerRow({
+  index,
+  layer,
+  filter,
+  onToggle,
+}: {
+  index: number;
+  layer: SceneLayer;
+  filter: LayerFilter;
+  onToggle: (key: string) => void;
+}) {
   const fog = layer.fog?.[0] ?? null;
+  const key = layerKey(layer);
+  const visible = layerVisible(layer, filter);
+  const bits = layer.attribute?.join(" ") ?? null;
+  const detail = [
+    `tex ${layer.texId ?? "-"}`,
+    `b${layer.blendId}`,
+    layer.flags,
+    bits,
+    layer.colorize,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <div
       className={`flex items-center gap-1.5 border-b border-base-300 px-1 py-0.5 font-mono text-[11px] text-base-content/80 ${
-        layer.texId === null ? "opacity-40" : ""
+        visible && layer.texId !== null ? "" : "opacity-40"
       }`}
     >
+      <input
+        type="checkbox"
+        className="checkbox checkbox-xs shrink-0"
+        checked={!filter.hidden.has(key)}
+        onChange={() => onToggle(key)}
+        title={visible ? t("scene.hideLayer") : t("scene.showLayer")}
+      />
       <span className="size-2 shrink-0 border border-base-300" style={{ background: fog ?? "transparent" }} />
       <span className="w-6 shrink-0 text-base-content/50">{index}</span>
-      <span className="min-w-0 truncate" title={`${layer.flags} · blend ${layer.blendId}`}>
-        tex {layer.texId ?? "-"} · b{layer.blendId} · {layer.flags}
-        {layer.colorize ? ` · ${layer.colorize}` : ""}
+      <span className="min-w-0 truncate" title={detail}>
+        {detail}
       </span>
     </div>
   );

@@ -185,6 +185,12 @@ export const en = {
   "scene.hitbox": "Hitboxes",
   "scene.outline": "Quad outlines",
   "scene.tint": "Apply fog colour",
+  "scene.hideLayer": "Hide this layer",
+  "scene.showLayer": "Show this layer",
+  "scene.attributes": "Attribute bits ({count})",
+  "scene.noAttributes": "No layer carries an attribute bit",
+  "scene.attributeHint": "Ticked bits are treated as present on the object; layers carrying them are skipped",
+  "scene.showEverything": "Show all",
 
   "audio.noSamples": "No samples decoded",
   "audio.play": "Play",

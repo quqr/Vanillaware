@@ -254,4 +254,48 @@ function frameOf(time, extra = {}) {
   close(plain.layers[0].matrix[12], 0, "mix id 0 keeps the current transform", 1e-9);
 }
 
+// --- The layer panel hides a record by its own content, and a ticked
+// attribute bit drops every layer that carries it, mirroring the engine's
+// `(object_mask & layer_mask) != 0 -> skip` test.
+{
+  const { layerKey, layerVisible, NO_FILTER } = await import(
+    new URL("../../src/lib/sceneDraw.ts", import.meta.url).href
+  );
+  const quad = (offset) => [0, 0, offset, 0, offset + 10, 0, offset + 10, 10, offset, 10, offset, 0];
+  const base = {
+    flags: "0x1",
+    dst: quad(0),
+    src: [0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0],
+    texId: 3,
+    blendId: 0,
+    fog: null,
+    colorize: null,
+    attribute: null,
+  };
+  report.check(layerKey(base) !== layerKey({ ...base, dst: quad(20) }), "different quads split the key");
+  report.check(
+    layerKey(base) === layerKey({ ...base, colorize: "COLOR_1" }),
+    "cosmetic fields stay out of the key",
+  );
+  report.check(layerVisible(base, NO_FILTER), "visible by default");
+  report.check(
+    !layerVisible(base, { hidden: new Set([layerKey(base)]), attributes: new Set() }),
+    "manual hide wins",
+  );
+
+  const tagged = { ...base, attribute: ["keyattr_1"] };
+  report.check(
+    !layerVisible(tagged, { hidden: new Set(), attributes: new Set(["keyattr_1"]) }),
+    "a ticked attribute bit hides the tagged layer",
+  );
+  report.check(
+    layerVisible(tagged, { hidden: new Set(), attributes: new Set(["keyattr_2"]) }),
+    "an unrelated bit keeps it",
+  );
+  report.check(
+    layerVisible(base, { hidden: new Set(), attributes: new Set(["keyattr_1"]) }),
+    "an untagged layer survives the mask",
+  );
+}
+
 process.exit(report.print());
