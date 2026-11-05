@@ -18,9 +18,14 @@ pub const MASK_HEAD: usize = 0x3c;
 pub const GROUP_HEAD: usize = 4;
 pub const GROUP_ENTRY: usize = 0xf0;
 /// A group block holds three parallel arrays per entry: four vertices (0x60),
-/// four copies of one placement record (0x70) and four unknown pairs (0x20).
+/// four copies of one placement record (0x70) and four copies of one colour
+/// pair (0x20).
 pub const GROUP_QUAD: usize = 0x60;
 pub const GROUP_PLACE: usize = 0x70;
+/// Where the colour array starts, relative to the first entry.
+pub const GROUP_TAIL: usize = GROUP_QUAD + GROUP_PLACE;
+/// One entry of the colour array: a tint and a fog colour.
+pub const GROUP_COLOUR: usize = 0x20;
 pub const VERTEX: usize = 0x18;
 pub const PANEL: usize = 0xa0;
 pub const COLUMNS: usize = 138;
@@ -107,14 +112,21 @@ pub struct GroupBlock {
     pub count: u8,
 }
 
-/// One ground piece of a group block: four corners in the record's local space
-/// plus the world cell it is pinned to.
+/// One ground piece of a group block: four corners in the record's local space,
+/// the world cell it is pinned to, and the two colours the block stores for it.
+///
+/// `tint` and `fog` use the same encoding as a layer's `+0x18` colour and
+/// `+0x1c` fog: low 24 bits are RGB, the top byte is the alpha that doubles as
+/// a switch (`0xffffff` = no fog). Both are written out once per vertex and the
+/// four copies are always identical, so the piece carries a flat pair.
 #[derive(Clone, Copy, Default)]
 pub struct GroundQuad {
     pub at: (f32, f32),
     pub corners: [(f32, f32); 4],
     pub uv: [(f32, f32); 4],
     pub color: u32,
+    pub tint: u32,
+    pub fog: u32,
 }
 
 pub struct Record {
@@ -498,16 +510,18 @@ pub struct Panel {
 
 /// Placed ground pieces of a group block, in the order the file stores them.
 /// The block is three parallel arrays: `count` quads of four vertices, then
-/// `count` placements (each written out four times, once per vertex), then a
-/// tail of four pairs per quad that is still unread.
+/// `count` placements (each written out four times, once per vertex), then
+/// `count` colour pairs, again one per vertex.
 pub fn ground_quads(bytes: &[u8], block: &GroupBlock) -> Vec<GroundQuad> {
     let count = block.count as usize;
     let data = block.at + GROUP_HEAD;
     let places = data + count * GROUP_QUAD;
+    let colours = data + count * GROUP_TAIL;
     let mut out = Vec::with_capacity(count);
     for index in 0..count {
         let quad = data + index * GROUP_QUAD;
         let place = places + index * GROUP_PLACE;
+        let colour = colours + index * GROUP_COLOUR;
         let mut corners = [(0.0f32, 0.0f32); 4];
         let mut uv = [(0.0f32, 0.0f32); 4];
         for slot in 0..4 {
@@ -529,6 +543,8 @@ pub fn ground_quads(bytes: &[u8], block: &GroupBlock) -> Vec<GroundQuad> {
             corners,
             uv,
             color: rdr::u32_at(bytes, quad + 0x0c).unwrap_or(0xffff_ffff),
+            tint: rdr::u32_at(bytes, colour).unwrap_or(0xffff_ffff),
+            fog: rdr::u32_at(bytes, colour + 4).unwrap_or(0x00ff_ffff),
         });
     }
     out
@@ -1281,6 +1297,8 @@ fn paint_terrain(
                     corners,
                     uv,
                     color: block.center.color,
+                    tint: 0xffff_ffff,
+                    fog: 0x00ff_ffff,
                 },
             ));
         }

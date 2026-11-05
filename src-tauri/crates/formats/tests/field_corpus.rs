@@ -534,6 +534,87 @@ fn every_ground_piece_is_one_atlas_cell_pinned_inside_its_record() {
 
 #[test]
 #[ignore]
+fn every_ground_piece_carries_one_colour_pair() {
+    use std::collections::BTreeSet;
+
+    let Some(path) = corpus() else {
+        eprintln!("no corpus, set CORPUS_UFB");
+        return;
+    };
+    let bytes = std::fs::read(&path).expect("read ufb");
+    let layout = field::parse(&bytes).expect("layout");
+
+    let mut pieces = 0usize;
+    let mut flat = 0usize;
+    let mut opaque_tint = 0usize;
+    let mut no_fog = 0usize;
+    let mut tints: BTreeSet<u32> = BTreeSet::new();
+    let mut fogs: BTreeSet<u32> = BTreeSet::new();
+
+    for record in &layout.records {
+        for block in &record.groups {
+            let count = block.count as usize;
+            let colours = block.at + field::GROUP_HEAD + count * field::GROUP_TAIL;
+            for (index, quad) in field::ground_quads(&bytes, block).into_iter().enumerate() {
+                pieces += 1;
+                let at = colours + index * field::GROUP_COLOUR;
+                let tint = u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+                let fog = u32::from_le_bytes(bytes[at + 4..at + 8].try_into().unwrap());
+                let mut same = 0;
+                for vertex in 1..4 {
+                    let copy = at + vertex * 8;
+                    if bytes[copy..copy + 8] == bytes[at..at + 8] {
+                        same += 1;
+                    }
+                }
+                if same == 3 {
+                    flat += 1;
+                }
+                assert_eq!(quad.tint, tint, "the reader takes the first copy");
+                assert_eq!(quad.fog, fog, "the reader takes the second word");
+                if tint >> 24 == 0xff {
+                    opaque_tint += 1;
+                }
+                if fog & 0x00ff_ffff == 0x00ff_ffff && fog >> 24 == 0 {
+                    no_fog += 1;
+                }
+                tints.insert(tint);
+                fogs.insert(fog);
+            }
+        }
+    }
+
+    eprintln!(
+        "{pieces} ground pieces: {flat} write the same colour pair for all four vertices; {opaque_tint} tints are opaque; {no_fog} are the white no-fog marker; {} tints and {} fogs in use",
+        tints.len(),
+        fogs.len()
+    );
+    assert!(
+        pieces > 190_000,
+        "the corpus carries {pieces} placed pieces"
+    );
+    assert_eq!(
+        flat, pieces,
+        "a colour pair is flat across the four vertices it is written for"
+    );
+    assert_eq!(
+        opaque_tint, pieces,
+        "the tint is an RGBA colour with alpha 255"
+    );
+    assert!(
+        tints.len() <= 8,
+        "the tint is a palette, {} values seen",
+        tints.len()
+    );
+    assert!(
+        fogs.len() <= 64,
+        "the fog is a palette, {} values seen",
+        fogs.len()
+    );
+}
+
+#[test]
+#[ignore]
 fn props_move_when_the_engine_clock_advances() {
     use std::collections::HashMap;
 

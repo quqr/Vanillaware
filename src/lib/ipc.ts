@@ -631,6 +631,7 @@ export const api = {
     mode?: string,
     clock?: number,
     terrain?: boolean,
+    side?: number,
   ) =>
     invoke<Content>("field_render", {
       path,
@@ -640,6 +641,7 @@ export const api = {
       mode: mode ?? null,
       clock: clock ?? 0,
       terrain: terrain ?? false,
+      side: side ?? null,
     }),
   fieldOverview: (path: string, layer: string | null) =>
     invoke<FieldOverview>("field_overview", { path, layer }),

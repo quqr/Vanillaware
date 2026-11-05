@@ -43,24 +43,27 @@ pub async fn field_render(
     mode: Option<String>,
     clock: Option<u64>,
     terrain: Option<bool>,
+    side: Option<u32>,
 ) -> Result<ContentDto, String> {
     let ext = catalog::fslist::extension(Path::new(&path));
     let width = width.unwrap_or(1920.0).clamp(400.0, 12000.0);
+    let side = side.unwrap_or(MAX_SIDE).clamp(320, MAX_SIDE);
     let render = Render {
         clock: clock.unwrap_or(0),
         terrain: terrain.unwrap_or(false),
     };
     let play_key = format!(
-        "play|{}|{}|{}|{}|{}|{}",
+        "play|{}|{}|{}|{}|{}|{}|{}",
         path.to_lowercase(),
         layer.clone().unwrap_or_default(),
         x0.map(|value| value.round() as i32).unwrap_or(i32::MIN),
         width.round() as i32,
         ext,
-        render.terrain
+        render.terrain,
+        side
     );
     let key = format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}",
         path.to_lowercase(),
         layer.clone().unwrap_or_default(),
         x0.map(|value| value.round() as i32).unwrap_or(i32::MIN),
@@ -68,7 +71,8 @@ pub async fn field_render(
         mode.clone().unwrap_or_default(),
         render.clock,
         render.terrain,
-        ext
+        ext,
+        side
     );
 
     let cache = state.field_cache();
@@ -106,7 +110,7 @@ pub async fn field_render(
                         layer.as_deref(),
                         x0,
                         width,
-                        MAX_SIDE,
+                        side,
                         render,
                     )
                 });
@@ -125,7 +129,7 @@ pub async fn field_render(
                         layer.as_deref(),
                         x0,
                         width,
-                        MAX_SIDE,
+                        side,
                         render,
                     )
                 }

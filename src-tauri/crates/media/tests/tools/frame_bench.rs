@@ -16,6 +16,10 @@ fn main() {
     let dir = path.parent().unwrap().to_path_buf();
     let load = |pair: &formats::field::Pair| formats::field::read_pair(&dir, pair);
     let render = formats::field::Render { clock: 0, terrain };
+    let x0: f32 = match args.get(3).map(String::as_str) {
+        Some("auto") | None => formats::field::default_window(&layout, &map, width),
+        _ => x0,
+    };
 
     let started = Instant::now();
     let Some(play) =

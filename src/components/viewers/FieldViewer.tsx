@@ -11,6 +11,10 @@ import {
 const MIN_WIDTH = 800;
 const MAX_WIDTH = 12000;
 const DEFAULT_WIDTH = 1920;
+/** Raster width while playing: a heavy window (dozens of full-screen fog
+ *  layers) costs a few hundred milliseconds per frame at full size, and the
+ *  panel scales the image anyway. Paused frames go back to full size. */
+const PLAYBACK_SIDE = 600;
 /** Engine clock units in one 60 Hz tick; a second is 60 of them. */
 const TICK = 1000;
 const CLOCK_MAX = TICK * 60 * 10;
@@ -97,7 +101,16 @@ export function FieldViewer({ entry }: { entry: FileEntry }) {
     // viewer waits for the sliders to settle.
     const timer = window.setTimeout(() => {
       api
-        .fieldRender(entry.path, layer, x0, width, undefined, clock, terrain)
+        .fieldRender(
+          entry.path,
+          layer,
+          x0,
+          width,
+          undefined,
+          clock,
+          terrain,
+          playing ? PLAYBACK_SIDE : undefined,
+        )
         .then((next) => {
           if (request.current !== id) return;
           setContent(next);

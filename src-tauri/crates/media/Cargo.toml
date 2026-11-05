@@ -70,3 +70,7 @@ path = "tests/tools/ground_probe.rs"
 [[example]]
 name = "frame_bench"
 path = "tests/tools/frame_bench.rs"
+
+[[example]]
+name = "quad_fill"
+path = "tests/tools/quad_fill.rs"
